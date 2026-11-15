@@ -5,7 +5,7 @@ window.BOOK = {
   id: '01-measure',
   title: 'Measure first',
   brand: 'Module 1',
-  tagline: 'Module 1 of 18 · LLM inference in Python',
+  tagline: 'Module 1 of 20 · LLM inference in Python',
   courseHref: '../index.html',
   storageKey: 'llm101-01-measure-done',
   buildPage: '08-build-the-harness.html',

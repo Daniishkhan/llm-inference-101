@@ -20,6 +20,7 @@ on; D00 is the diagnostic drill set; RAG is the optional module after the capsto
 | Arrays and hashing: a dict or set to remember what you have seen | Two Sum; Top K Frequent Elements; Group Anagrams | D00, M1 drills | M2 (pair counts), M4 (top-k), M11 (block hashes), M13 (n-gram index), M17 (requests by adapter) | in progress |
 | Partition around a pivot; quickselect | Sort Colors; Kth Largest Element in an Array | M1 (percentiles) | M4 (top-k) | in progress |
 | Big-O: counting operations, best, average and worst case | | M1 (quickselect against sorting) | every module; M3 (attention is quadratic) | in progress |
+| Prefix sums: a running total, and a dict of the totals seen so far | Subarray Sum Equals K; Range Sum Query | M1 drills (count_stretches) | M4 (top-p cutoff) | in progress |
 | Two pointers | Valid Palindrome; 3Sum; Merge Sorted Array | M13 (verifying drafts) | | planned |
 | Sliding window | Longest Substring Without Repeating Characters; Sliding Window Maximum | M4 (repetition penalty) | M12, M19 (rate metrics) | planned |
 | Stack | Valid Parentheses; Daily Temperatures | D00 (balanced brackets) | M13 (JSON nesting) | in progress |
@@ -75,9 +76,11 @@ on; D00 is the diagnostic drill set; RAG is the optional module after the capsto
 | Concept | Introduced | Reused | Status |
 |---|---|---|---|
 | Wall time against CPU time: `time.perf_counter_ns`, `time.process_time_ns` | M1 ([ch. 1](docs/book/01-measure/01-two-clocks.html)) | every measurement | in progress |
+| Closures and `nonlocal`: a function that remembers the variables of the call that made it | M1 ([ch. 1](docs/book/01-measure/01-two-clocks.html)) | | in progress |
 | Profiling: cProfile and pstats; tracing against sampling; `sys.settrace`, frames and line numbers | M1 ([ch. 5](docs/book/01-measure/05-where-the-time-goes.html)) | M3, M8, M14 | in progress |
 | Boxed objects and `sys.getsizeof`; why numpy beats Python loops | M1 ([ch. 6](docs/book/01-measure/06-boxes-and-arrays.html)) | M3, M5, M16 | in progress |
 | rich: `Console`, `Table`, bars, a live display | M1 ([ch. 4](docs/book/01-measure/04-pictures-in-the-terminal.html)) | M4, M9, M10, M19 | in progress |
+| `argparse` and `python -m`: a program that takes arguments | M1 ([ch. 4](docs/book/01-measure/04-pictures-in-the-terminal.html)) | | in progress |
 | pytest; hypothesis property tests and shrinking | M1 ([ch. 2](docs/book/01-measure/02-tails-and-percentiles.html)) | every module; M10 (random alloc and free) | in progress |
 | `dataclasses`, type hints | M1 | every module | in progress |
 | `bytes`, `str.encode`, `heapq` | M2 | M4, M12 | planned |

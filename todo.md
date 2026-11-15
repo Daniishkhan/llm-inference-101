@@ -62,7 +62,7 @@ open the answers. In every drill block, redos come first, and every attempt gets
 
 - [ ] Block 1: the redos of `group_anagrams` and `tidy_path`, then `longest_streak` (30 min). Its
       redos fall due on Sat 21 and Thu 26 Nov.
-- [ ] Block 3: chapter 4, Pictures in the terminal (15 programs, 3 Try its, 7 questions).
+- [ ] Block 3: chapter 4, Pictures in the terminal (17 programs, 3 Try its, 7 questions).
 - [ ] Block 4: finish M4. `uv run pytest tests/m01/test_percentile.py` is the first half of "Done
       when"; commit `M4: percentile green`. Then M5: `summarise`, `render_report` and `main`.
       `uv run pytest tests/m01 -k summarise` and `uv run pytest tests/m01/test_report.py`, then look at
