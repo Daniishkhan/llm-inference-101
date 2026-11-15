@@ -257,10 +257,32 @@ def first_difference(want: str, got: str) -> str:
     return "they differ"
 
 
+DROPPED_ENV = {
+    "FORCE_COLOR",
+    "CLICOLOR_FORCE",
+    "HYPOTHESIS_PROFILE",
+    # The variables by which hypothesis (and others) recognise a CI service.
+    "CI",
+    "GITHUB_ACTIONS",
+    "TF_BUILD",
+    "BUILDKITE",
+    "CIRCLECI",
+    "CIRRUS_CI",
+    "CODEBUILD_BUILD_ID",
+    "GITLAB_CI",
+    "HEROKU_TEST_RUN_ID",
+    "TEAMCITY_VERSION",
+    "BUILD_ID",
+    "JENKINS_URL",
+}
+
+
 def run_block(python: str, text: str, fname: str, tmp: Path) -> subprocess.CompletedProcess | None:
     folder = Path(tempfile.mkdtemp(dir=tmp))
     (folder / fname).write_text(text, encoding="utf-8")
-    env = {k: v for k, v in os.environ.items() if k not in ("FORCE_COLOR", "CLICOLOR_FORCE")}
+    # Run each example as it runs on the reader's machine: no forced colour, and none of the
+    # variables a CI service sets, because hypothesis notices them and changes what it prints.
+    env = {k: v for k, v in os.environ.items() if k not in DROPPED_ENV}
     env.update({"COLUMNS": "80", "LINES": "25", "NO_COLOR": "1"})
     try:
         return subprocess.run(

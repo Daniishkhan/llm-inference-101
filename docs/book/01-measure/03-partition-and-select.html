@@ -478,19 +478,18 @@ cards = np.array([8, 3, 10, 5, 3, 12, 7, 1, 9])
 split = np.partition(cards, 4)  # a new array; cards itself is not changed
 
 print("cards:      ", cards)
-print("partitioned:", split)
 print("position 4: ", split[4])
-print("smaller:    ", split[:4], "(in no particular order)")
-print("larger:     ", split[5:], "(in no particular order)")
+print("smaller:    ", np.sort(split[:4]), "(sorted here only to print them)")
+print("larger:     ", np.sort(split[5:]), "(sorted here only to print them)")
 print("sorted, to check:", np.sort(cards))
 </code></pre>
 <pre class="output" data-for="numpy_partition.py"><code>cards:       [ 8  3 10  5  3 12  7  1  9]
-partitioned: [ 1  3  3  5  7  8 12 10  9]
 position 4:  7
-smaller:     [1 3 3 5] (in no particular order)
-larger:      [ 8 12 10  9] (in no particular order)
+smaller:     [1 3 3 5] (sorted here only to print them)
+larger:      [ 8  9 10 12] (sorted here only to print them)
 sorted, to check: [ 1  3  3  5  7  8  9 10 12]
 </code></pre>
+<p>Only position 4, and which values sit on each side of it, are promised. The order inside each side depends on the machine: numpy runs different selection code on an Apple chip and on an Intel one, so printed whole, the partitioned array differs between them. That is why the program sorts each side before printing it.</p>
 
 <p>Position 4 is 7, as in your table. The smaller side happens to come out in order; the larger, 8 12 10 9, shows that nothing promises it. Now both methods in C, on ten million random numbers:</p>
 
