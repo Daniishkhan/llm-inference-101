@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>07 · Drills — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Practice</p>
+<h1>Drills</h1>
+<p class="lede">The nine small problems of this module, and the eight patterns behind them, each taught on a different problem. At the end you can name the pattern a drill needs, and you know where to look, the idea and the shape for every one of them, without a line of its solution.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>How a drill runs: hands only, a time box, out loud, a row in the ledger, two redos.</li>
+<li>The order of this module: set 00 cold on day 1, then set 01 on days 2 to 4.</li>
+<li>Eight patterns, each on a problem of its own: remembering what you have seen, grouping by a key, a set for membership, runs, a stack, intervals, a sliding window, and the three piles of a partition.</li>
+<li>The nine drills, each with its stub, its time box and three rungs of its hint ladder, folded away.</li>
+</ul>
+</div>
+
+<h2>How the drills work</h2>
+<p>A <strong>drill</strong> is a small, classic problem that you solve by hand against a clock: a statement in a docstring, a function whose body says <code>TODO(you)</code>, and a test file beside it. Interviews are made of problems like these, and so is a lot of the code inside an inference engine: a dict that counts, a stack that checks nesting, a window that slides along a stream of numbers. The point of a drill is not the answer, which is on a thousand websites. The point is that your hands produce it, from an empty function body, in a fixed time, while you say what you are doing.</p>
+<p>The full rules are in <a href="../../../docs/methodology.md">docs/methodology.md</a>, under "Drills and the ledger". In short:</p>
+<ul>
+<li><strong>Hands only.</strong> No agent, no completion, no paste. The Python docs are allowed, and every lookup is written down: the list of lookups is the next morning's warm-up.</li>
+<li><strong>A time box.</strong> Each stub's docstring ends with its time box. Start a timer when you open the stub. At the bell, ask Claude for one rung of the hint ladder, or log a timeout.</li>
+<li><strong>Out loud.</strong> Say what you are doing as you do it. An interviewer grades what they hear, and saying a plan out loud is how you notice that it has a hole.</li>
+<li><strong>The ledger.</strong> Every attempt gets a row in <a href="../../../ledger.md">ledger.md</a>: the minutes, the highest rung you used, the number of lookups, and the result (<code>green</code>, <code>green+hint</code> or <code>timeout</code>). The pattern column is filled in after you solve it: naming the pattern is part of the exercise.</li>
+<li><strong>Two redos.</strong> Two days and seven days after the first attempt, empty the function (git keeps your first version) and type it again, cold. A problem you cannot redo is not solved yet.</li>
+<li><strong>No reveal after a timeout.</strong> A timed-out drill stays open. It comes back at its +2 day redo, with the rungs you have not used yet.</li>
+<li><strong>One commit per solved drill</strong>, with the minutes in the message: <code>pair_with_sum: 11 min, no hints</code>.</li>
+</ul>
+<p>Run one drill's tests from the repository root:</p>
+<pre class="shell"><code>$ uv run pytest drills/00-diagnostic/test_run_length.py
+$ uv run pytest drills/01-arrays-hashing
+</code></pre>
+<p>Drills never run in CI: a redo empties a function, and an empty function is meant to be red.</p>
+
+<div class="callout note"><span class="label">The hint ladder in this chapter</span>
+<p>Each drill below has three rungs, folded: <strong>Rung 1, where to look</strong> (a test to read, a line of the docstring), <strong>Rung 2, the idea in words</strong> (plain English, no code), and <strong>Rung 3, the shape</strong> (which data structure, which loop goes where, what to test first). Open one rung at a time, and only at the bell or when you are truly stuck; write the rung in the ledger. Rung 4, the same mechanism on a different problem, you get from Claude by asking for it. There is no rung 5, and no solution anywhere in this book.</p>
+</div>
+
+<h2>The order of this module</h2>
+<p>Two sets, nine problems. The first set measures where you start; the second is the module's own pattern.</p>
+<table>
+<thead><tr><th>Day</th><th>Set</th><th>Problems</th><th>Time</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><a href="../../../drills/00-diagnostic/README.md">00, the diagnostic</a></td><td><code>run_length</code>, <code>top_endpoints</code>, <code>pair_with_sum</code>, <code>balanced</code>, <code>merge_intervals</code>, <code>moving_average</code>, in that order</td><td>Two hours, this once</td></tr>
+<tr><td>2</td><td><a href="../../../drills/01-arrays-hashing/README.md">01, arrays and hashing</a></td><td><code>group_anagrams</code></td><td>25 minutes, then redos</td></tr>
+<tr><td>3</td><td>01</td><td><code>sort_colours</code>, before milestone M3</td><td>25 minutes, then the redos of day 1</td></tr>
+<tr><td>4</td><td>01</td><td><code>longest_streak</code></td><td>30 minutes, then redos</td></tr>
+<tr><td>6</td><td></td><td>A mock round: say "mock", and Claude interviews you on a fresh problem</td><td>The drill block</td></tr>
+</tbody>
+</table>
+<p><strong>The diagnostic is cold.</strong> Do set 00 on day 1 before you read the pattern sections of this chapter. It is a measurement, not a test: how long each problem takes you today and what you had to look up, before any teaching. Six problems with time boxes that add up to 115 minutes, one after the other; stop each one at green or at its bell, whichever comes first, and move on. Unfinished is a result too. When all six are done, or two hours have passed, ask Claude for the review.</p>
+<p><strong>Then read the patterns.</strong> From day 2 on, read the pattern section that a drill needs before its first attempt (each drill below names its section), and read the sections of the diagnostic's problems before their +2 day redos. <code>sort_colours</code> comes on day 3 because it is the partition step that your quickselect (M3) is built on.</p>
+
+<h2>Remembering what you have seen</h2>
+<p>A surprising number of problems have the same core: as you walk through the input once, you need to know whether you have met something before, or how many times, or where. Without a memory, the only way to answer "have I seen this word before?" is to walk back over everything behind you, and that walk gets longer with every step. With a <strong>set</strong> (which remembers only that you saw a thing) or a <strong>dict</strong> (which remembers a value for each thing: a count, a position), the question costs the same small amount of time however much you have seen.</p>
+
+<div class="callout principle"><span class="label">First principle</span>
+<p>A set or a dict does not search. It turns the key into a number, its <strong>hash</strong>, and uses that number to jump to one slot of a table in memory. That is why <code>word in seen</code> takes about the same time with ten words in <code>seen</code> as with a million, and why only things that cannot change (strings, numbers, tuples) can be keys: if a key could change after it was stored, its hash would change, and the slot it was filed under would be the wrong one.</p>
+</div>
+
+<p>Two small questions about text: which word is the first to appear a second time, and how many times does each letter appear?</p>
+<pre class="code" data-lang="python" data-file="first_repeat.py" data-check="run"><code>def first_repeated_word(sentence):
+    seen = set()
+    for word in sentence.lower().split():
+        if word in seen:
+            return word
+        seen.add(word)
+    return None
+
+
+def letter_counts(word):
+    counts = {}
+    for letter in word:
+        counts[letter] = counts.get(letter, 0) + 1
+    return counts
+
+
+print(first_repeated_word("The cat saw the dog chase the cat"))
+print(first_repeated_word("every word here is new"))
+print(letter_counts("banana"))
+print(letter_counts(""))
+</code></pre>
+<pre class="output" data-for="first_repeat.py"><code>the
+None
+{'b': 1, 'a': 3, 'n': 2}
+{}
+</code></pre>
+<p><code>first_repeated_word</code> asks the set before it adds to it. If it added first, every word would be "seen" the moment it arrived, and the first word would always be the answer. In <code>letter_counts</code>, <code>counts.get(letter, 0)</code> reads the count so far, or 0 for a letter met for the first time, so one line handles both cases. The dict comes back in the order the letters were first met: a dict keeps its keys in insertion order (since Python 3.7, a promise of the language).</p>
+
+<div class="callout analogy"><span class="label">Analogy</span>
+<p>A cloakroom. You hand in a coat and get a ticket with a number; the attendant goes straight to that hook, never along the rail. The hook number is the hash. Where it breaks: two coats can get the same hook number (a <strong>collision</strong>), and then the attendant has to check a few coats. Python's tables are kept less than two-thirds full so that this stays rare, which is why "about the same time" is an average, not a promise.</p>
+</div>
+
+<p>A wider version: a dict that remembers <em>where</em> each word was last seen, so that a repeat can say how far back its twin was.</p>
+<pre class="code" data-lang="python" data-file="last_seen.py" data-check="run"><code>sentence = "to be or not to be that is the question to ask"
+
+last_seen = {}
+for position, word in enumerate(sentence.split()):
+    if word in last_seen:
+        gap = position - last_seen[word]
+        print(f"{word!r} at {position}: seen {gap} words earlier")
+    last_seen[word] = position
+
+print(last_seen)
+</code></pre>
+<pre class="output" data-for="last_seen.py"><code>'to' at 4: seen 4 words earlier
+'be' at 5: seen 4 words earlier
+'to' at 10: seen 6 words earlier
+{'to': 10, 'be': 5, 'or': 2, 'not': 3, 'that': 6, 'is': 7, 'the': 8, 'question': 9, 'ask': 11}
+</code></pre>
+<p>Again the order inside the loop matters: look up first, then store. Storing first would overwrite the old position with the new one before you had used it, and every gap would come out as 0.</p>
+
+<div class="callout note"><span class="label">Python you need</span>
+<p><code>collections.Counter</code> is a dict made for counting: give it anything you can loop over and it counts the items. A missing key reads as 0 instead of raising <code>KeyError</code>.</p>
+<pre class="code" data-lang="python" data-file="counter_look.py" data-check="run"><code>from collections import Counter
+
+counts = Counter("mississippi")
+print(counts)
+print(counts["s"], counts["z"])
+print(dict(counts))
+</code></pre>
+<pre class="output" data-for="counter_look.py"><code>Counter({'i': 4, 's': 4, 'p': 2, 'm': 1})
+4 0
+{'m': 1, 'i': 4, 's': 4, 'p': 2}
+</code></pre>
+<p>A <code>Counter</code> prints its biggest counts first, and among equal counts it keeps the order of first appearance ("i" before "s"). It does not order them alphabetically.</p>
+</div>
+
+<div class="callout twin"><span class="label">In a real engine</span>
+<p>vLLM's prefix cache is this pattern at its centre. Each full block of a prompt's tokens gets a hash, built from the tokens and the hash of the block before it, and the block pool (<code>vllm/v1/core/block_pool.py</code>) keeps a dict from that hash to the cached block. A new request that starts with the same system prompt looks its blocks up and skips their computation. You build the same thing in Module 9.</p>
+</div>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>Change <code>first_repeated_word</code> so that "Cat," and "cat" count as the same word. What do you have to do to each word before the set sees it?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>Make each word into a <strong>canonical form</strong> before it goes near the set: lower case (already done) and with the punctuation removed, for example with <code>word.strip(".,;:!?")</code>. The set only knows "equal" and "not equal", so anything you want treated as the same must be made equal first. That idea, a key that all the "same" things share, comes back in the next section.</p>
+</details>
+
+<h2>Grouping by a key into a dict of lists</h2>
+<p>Counting tells you how many of each kind there are. <strong>Grouping</strong> keeps the things themselves: every item goes into the list of its kind. The shape is a dict whose keys are the kinds and whose values are lists. The whole skill is choosing the key: a value you can compute from one item alone, which is the same for every item that belongs together and different for items that do not.</p>
+<p>Fruit, grouped by the length of the name:</p>
+<pre class="code" data-lang="python" data-file="group_by_length.py" data-check="run"><code>words = ["fig", "apple", "kiwi", "pear", "plum", "banana", "date", "lime"]
+
+by_length = {}
+for word in words:
+    if len(word) not in by_length:
+        by_length[len(word)] = []
+    by_length[len(word)].append(word)
+
+print(by_length)
+print(list(by_length.values()))
+</code></pre>
+<pre class="output" data-for="group_by_length.py"><code>{3: ['fig'], 5: ['apple'], 4: ['kiwi', 'pear', 'plum', 'date', 'lime'], 6: ['banana']}
+[['fig'], ['apple'], ['kiwi', 'pear', 'plum', 'date', 'lime'], ['banana']]
+</code></pre>
+<p>One pass over the words, and each word does one lookup and one append. Because a dict keeps insertion order, the groups come out in the order of the first word of each group (3, then 5, then 4), and inside a group the words keep the order they arrived in. Nothing was sorted; the order is a side effect of walking the input once from the front.</p>
+<p>The <code>if ... not in ...</code> step, which makes an empty list the first time a key appears, is so common that the standard library has a dict that does it for you. A <code>defaultdict(list)</code> calls <code>list()</code> to make the missing value whenever you read a key that is not there yet:</p>
+<pre class="code" data-lang="python" data-file="group_by_letter.py" data-check="run"><code>from collections import defaultdict
+
+words = ["pear", "apple", "plum", "avocado", "banana", "peach", "apricot"]
+
+by_first_letter = defaultdict(list)
+for word in words:
+    by_first_letter[word[0]].append(word)
+
+for letter, group in by_first_letter.items():
+    print(letter, group)
+print(len(by_first_letter), "groups for", len(words), "words")
+</code></pre>
+<pre class="output" data-for="group_by_letter.py"><code>p ['pear', 'plum', 'peach']
+a ['apple', 'avocado', 'apricot']
+b ['banana']
+3 groups for 7 words
+</code></pre>
+
+<div class="callout trap"><span class="label">Trap</span>
+<p>A list cannot be a key, because a list can change. When the key you want is made of several parts, make it a tuple (or a string), which cannot.</p>
+<pre class="code" data-lang="python" data-file="list_as_key.py" data-check="error"><code>shelf = {}
+shelf[("red", 3)] = "tuple keys are fine"
+print(shelf)
+shelf[["red", 3]] = "list keys are not"
+</code></pre>
+<pre class="output"><code>{('red', 3): 'tuple keys are fine'}
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/list_as_key.py", line 4, in &lt;module&gt;
+    shelf[["red", 3]] = "list keys are not"
+    ~~~~~^^^^^^^^^^^^
+TypeError: unhashable type: 'list'
+</code></pre>
+</div>
+
+<h2>A set for constant-time membership</h2>
+<p>"Is this number in my collection?" is a question with two very different prices. A list answers it by looking at its items one by one until it finds a match or runs out: for an absent number, that is every item. A set answers it with one hash and one jump. If you ask once, the difference does not matter. If you ask once for every item of the input, the list version does about n times n steps, and the set version about n.</p>
+<p>Which numbers from 1 to n are missing from a list?</p>
+<pre class="code" data-lang="python" data-file="missing_numbers.py" data-check="run"><code>def missing(numbers, n):
+    present = set(numbers)
+    return [k for k in range(1, n + 1) if k not in present]
+
+
+print(missing([3, 7, 1, 2, 8, 4, 5], 10))
+print(missing([2, 2, 2], 3))
+print(missing([], 2))
+</code></pre>
+<pre class="output" data-for="missing_numbers.py"><code>[6, 9, 10]
+[1, 3]
+[1, 2]
+</code></pre>
+<p>Building the set costs one pass over the numbers. After that, each of the n questions costs about the same small amount, so the whole function is proportional to n plus the length of the list. Repeats vanish on the way in (<code>[2, 2, 2]</code> becomes the set <code>{2}</code>), which is usually what you want when the question is only "is it there?".</p>
+<p>How big is the difference? One lookup of an absent number, timed in a list and in a set of 100,000 numbers. One run on the M5; yours will differ:</p>
+<pre class="code" data-lang="python" data-file="list_or_set.py" data-check="run"><code>import time
+
+numbers = list(range(100_000))
+as_set = set(numbers)
+absent = -1  # never there: the worst case for a list
+
+start = time.perf_counter_ns()
+for _ in range(200):
+    absent in numbers
+list_ns = (time.perf_counter_ns() - start) / 200
+
+start = time.perf_counter_ns()
+for _ in range(200):
+    absent in as_set
+set_ns = (time.perf_counter_ns() - start) / 200
+
+print(f"list: {list_ns:12,.0f} ns per lookup")
+print(f"set:  {set_ns:12,.0f} ns per lookup")
+print(f"the set is about {list_ns / set_ns:,.0f} times faster here")
+</code></pre>
+<pre class="output"><code>list:      199,697 ns per lookup
+set:            19 ns per lookup
+the set is about 10,535 times faster here
+</code></pre>
+<p>Thousands of times faster at this size, and the gap grows with the size of the list, because the list's price grows and the set's does not. Chapter 3 (<a href="03-partition-and-select.html">Partition and select</a>) puts names on these growth rates: the list lookup is O(n), the set lookup is O(1) on average.</p>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>Predict, then measure: what does the list line print if <code>absent</code> is <code>0</code> instead of <code>-1</code>? And if it is <code>99_999</code>?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>With <code>0</code> the list finds it at the first item, so the list is about as fast as the set (tens of nanoseconds). With <code>99_999</code> it is the last item, and the list costs about as much as for an absent number. A list's price depends on where the item is; a set's does not. That is the difference between the best case and the worst case, and benchmarks that only try the best case lie.</p>
+</details>
+
+<h2>Runs in a sequence</h2>
+<p>Some questions are about neighbours: is each value the same as the one before, bigger, smaller? A stretch of neighbours that agree is a <strong>run</strong>. The pattern is to walk the sequence once, compare each item with the one before it, and keep a little state about the run you are in. The traps are always at the edges: the first item has nobody before it, and when the sequence ends, the run you were in ends too, without anything telling you.</p>
+<p>A temperature series, read once an hour. How many times does it change direction, from rising to falling or back?</p>
+<pre class="code" data-lang="python" data-file="direction_changes.py" data-check="run"><code>temperatures = [12, 14, 15, 15, 13, 11, 12, 16, 16, 14]
+
+changes = 0
+previous = 0  # +1 rising, -1 falling, 0 for "no direction yet"
+for before, after in zip(temperatures, temperatures[1:]):
+    if after == before:
+        continue  # a flat step has no direction: skip it
+    direction = 1 if after &gt; before else -1
+    if previous != 0 and direction != previous:
+        changes += 1
+    previous = direction
+
+print(changes, "changes of direction")
+</code></pre>
+<pre class="output" data-for="direction_changes.py"><code>3 changes of direction
+</code></pre>
+<p>Up to 15, a flat hour, down to 11, up to 16, a flat hour, down to 14: three turns. Two decisions make it right. The flat steps are skipped, so that 15, 15 is neither a turn nor a run of its own. And <code>previous</code> starts at 0, meaning "no direction yet", so that the first real step is never counted as a change.</p>
+
+<div class="callout note"><span class="label">Python you need</span>
+<p><code>zip(xs, xs[1:])</code> pairs every item with the one after it. The slice <code>xs[1:]</code> is the list without its first item, and <code>zip</code> stops at the shorter of the two, so the last item is never paired with nothing.</p>
+<pre class="code" data-lang="python" data-file="neighbours_zip.py" data-check="run"><code>readings = [12, 14, 15]
+print(list(zip(readings, readings[1:])))
+print(list(zip([12], [])))
+</code></pre>
+<pre class="output" data-for="neighbours_zip.py"><code>[(12, 14), (14, 15)]
+[]
+</code></pre>
+<p>A list of one gives no pairs at all, which is often exactly the edge case you would otherwise have to write by hand.</p>
+</div>
+
+<p>A wider version, with positions instead of <code>zip</code>: where are the peaks and the troughs?</p>
+<pre class="code" data-lang="python" data-file="turning_points.py" data-check="run"><code>def turning_points(series):
+    """(position, "peak" or "trough") wherever the series changes direction."""
+    points = []
+    previous = 0
+    for i in range(1, len(series)):
+        if series[i] == series[i - 1]:
+            continue
+        direction = 1 if series[i] &gt; series[i - 1] else -1
+        if previous != 0 and direction != previous:
+            points.append((i - 1, "peak" if previous == 1 else "trough"))
+        previous = direction
+    return points
+
+
+temperatures = [12, 14, 15, 15, 13, 11, 12, 16, 16, 14]
+print(turning_points(temperatures))
+print(turning_points([1, 2, 3]))
+print(turning_points([5]))
+</code></pre>
+<pre class="output" data-for="turning_points.py"><code>[(3, 'peak'), (5, 'trough'), (8, 'peak')]
+[]
+[]
+</code></pre>
+<p>A turn is found one step late: you only know that position 3 was a peak when position 4 turns out lower. That is normal for runs, and it is why the end of the input needs thought: a run that is still going when the input stops has not been "finished" by any comparison inside the loop.</p>
+
+<h2>A stack</h2>
+<p>A <strong>stack</strong> is a pile where you only touch the top: you put a thing on top (<strong>push</strong>) and take the top thing off (<strong>pop</strong>). The last thing in is the first thing out. You need one whenever the most recent unfinished business must be finished first: nested brackets, an undo button, the calls of a running program (each call waits for the one it made to return, which is why Python's error reports are called a <em>stack</em> trace).</p>
+
+<div class="callout analogy"><span class="label">Analogy</span>
+<p>A pile of plates in a canteen: you take from the top and put back on the top, never from the middle. Where it breaks: a real pile is easy to lift and look under. A stack in a program gives you only the top; if you need to look at the rest, you have chosen the wrong structure.</p>
+</div>
+
+<p>In Python a list is a stack: <code>append</code> pushes onto the end, <code>pop()</code> takes from the end, and both are cheap. Popping an empty list raises an error:</p>
+<pre class="code" data-lang="python" data-file="pop_empty.py" data-check="error"><code>plates = ["blue", "green"]
+print(plates.pop(), plates.pop())
+print(plates)
+plates.pop()
+</code></pre>
+<pre class="output"><code>green blue
+[]
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/pop_empty.py", line 4, in &lt;module&gt;
+    plates.pop()
+    ~~~~~~~~~~^^
+IndexError: pop from empty list
+</code></pre>
+<p>The worked example is <strong>reverse Polish notation</strong> (RPN), a way to write arithmetic without brackets: the operator comes after its two numbers. <code>3 4 + 2 *</code> means "3 plus 4, then times 2". To evaluate it, read the tokens from left to right; push every number; at an operator, pop two numbers, combine them, and push the result. The program prints the stack after each token, so you can watch it grow and shrink:</p>
+<pre class="code" data-lang="python" data-file="rpn.py" data-check="run"><code>def evaluate_rpn(expression):
+    stack = []
+    for token in expression.split():
+        if token in ("+", "-", "*", "/"):
+            if len(stack) &lt; 2:
+                raise ValueError(f"{token!r} needs two numbers, found {len(stack)}")
+            right = stack.pop()
+            left = stack.pop()
+            if token == "+":
+                stack.append(left + right)
+            elif token == "-":
+                stack.append(left - right)
+            elif token == "*":
+                stack.append(left * right)
+            else:
+                stack.append(left / right)
+        else:
+            stack.append(float(token))
+        print(f"{token:&gt;3}  {stack}")
+    if len(stack) != 1:
+        raise ValueError(f"{len(stack)} numbers left over, expected 1")
+    return stack[0]
+
+
+print(evaluate_rpn("3 4 + 2 *"))
+print()
+print(evaluate_rpn("10 2 8 * + 3 -"))
+</code></pre>
+<pre class="output" data-for="rpn.py"><code>  3  [3.0]
+  4  [3.0, 4.0]
+  +  [7.0]
+  2  [7.0, 2.0]
+  *  [14.0]
+14.0
+
+ 10  [10.0]
+  2  [10.0, 2.0]
+  8  [10.0, 2.0, 8.0]
+  *  [10.0, 16.0]
+  +  [26.0]
+  3  [26.0, 3.0]
+  -  [23.0]
+23.0
+</code></pre>
+<p>The first pop gives the <em>right</em> number, because it was pushed last; for <code>-</code> and <code>/</code> the order matters. A well-formed expression leaves exactly one number on the stack, and the function checks both ways an expression can be malformed: an operator that finds fewer than two numbers, and numbers left over at the end.</p>
+<pre class="code" data-lang="python" data-file="rpn_too_few.py" data-check="error"><code>def evaluate_rpn(expression):
+    stack = []
+    for token in expression.split():
+        if token in ("+", "-", "*", "/"):
+            if len(stack) &lt; 2:
+                raise ValueError(f"{token!r} needs two numbers, found {len(stack)}")
+            right = stack.pop()
+            left = stack.pop()
+            stack.append(left + right if token == "+" else left * right)
+        else:
+            stack.append(float(token))
+    return stack[0]
+
+
+print(evaluate_rpn("3 +"))
+</code></pre>
+<pre class="output"><code>Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/rpn_too_few.py", line 15, in &lt;module&gt;
+    print(evaluate_rpn("3 +"))
+          ~~~~~~~~~~~~^^^^^^^
+  File "…/llm-inference-101/scratch/rpn_too_few.py", line 6, in evaluate_rpn
+    raise ValueError(f"{token!r} needs two numbers, found {len(stack)}")
+ValueError: '+' needs two numbers, found 1
+</code></pre>
+
+<h2>Intervals</h2>
+<p>An <strong>interval</strong> is a stretch between a start and an end: a booking, a request's lifetime, a range of line numbers. Questions about many intervals (do any overlap? how many are open at once?) are hard when the intervals come in any order, because any one of them might overlap any other: n intervals have about n squared over 2 pairs. Sorting by start changes that. Once the intervals are in order of their start, an interval can only overlap ones that started before it and have not ended yet, and the question becomes a walk that compares each interval with what came just before.</p>
+<p>First, decide what the ends mean. A room booked from 13 to 15 is free again at 15, so a booking from 15 to 16 does not clash with it: the end is not part of the booking. That is a <strong>half-open</strong> interval. An interval that includes both of its ends is <strong>closed</strong>, and then two intervals that touch at one number share that number.</p>
+<pre class="code" data-lang="python" data-file="room_clashes.py" data-check="run"><code>def first_clash(bookings):
+    """The first two bookings, in order of start, that use the room at the same time; or None.
+
+    A booking (name, start, end) holds the room from start up to end: at `end` it is free again.
+    """
+    in_order = sorted(bookings, key=lambda booking: booking[1])
+    for earlier, later in zip(in_order, in_order[1:]):
+        if later[1] &lt; earlier[2]:
+            return earlier[0], later[0]
+    return None
+
+
+week = [("Ana", 9, 11), ("Ben", 13, 15), ("Cy", 10, 12), ("Dee", 15, 16)]
+print(first_clash(week))
+print(first_clash([("Ben", 13, 15), ("Dee", 15, 16)]))
+print(week)
+</code></pre>
+<pre class="output" data-for="room_clashes.py"><code>('Ana', 'Cy')
+None
+[('Ana', 9, 11), ('Ben', 13, 15), ('Cy', 10, 12), ('Dee', 15, 16)]
+</code></pre>
+<p>In order of start the bookings are Ana (9 to 11), Cy (10 to 12), Ben (13 to 15), Dee (15 to 16). Cy starts at 10, before Ana's end at 11: a clash. Ben and Dee touch at 15 and do not clash, because <code>&lt;</code> and not <code>&lt;=</code> is the test of half-open intervals. And the list <code>week</code> is unchanged: <code>sorted()</code> returns a new list and leaves the one it was given alone, while <code>list.sort()</code> would reorder it in place.</p>
+
+<div class="callout note"><span class="label">Python you need</span>
+<p><code>sorted(items, key=f)</code> sorts by <code>f(item)</code> instead of by the items themselves. <code>lambda booking: booking[1]</code> is a function with no name that takes one booking and returns its start. A key can also return a tuple, and tuples compare item by item: <code>(2, "b") &lt; (2, "c") &lt; (3, "a")</code>.</p>
+</div>
+
+<p>Neighbours are enough to answer <em>whether</em> there is a clash. They are not enough to list <em>every</em> clash:</p>
+<pre class="code" data-lang="python" data-file="neighbours_only.py" data-check="run"><code>day = [("Long meeting", 9, 17), ("Ed", 10, 11), ("Flo", 12, 13)]
+in_order = sorted(day, key=lambda booking: booking[1])
+
+for earlier, later in zip(in_order, in_order[1:]):
+    print(earlier[0], "and", later[0], "clash:", later[1] &lt; earlier[2])
+</code></pre>
+<pre class="output" data-for="neighbours_only.py"><code>Long meeting and Ed clash: True
+Ed and Flo clash: False
+</code></pre>
+<p>The long meeting also clashes with Flo, and no neighbouring pair says so: Ed ended before Flo started, but the long meeting had not. When a question needs more than "is there any overlap?", ask yourself what an interval should really be compared with.</p>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>Convince yourself that neighbours are enough for <em>whether</em>. Suppose two bookings A and C clash, and A starts first, and B starts between them in the sorted order. Why must A and B clash too?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>B starts no earlier than A, so it starts at or after A's start. B starts no later than C, and C starts before A ends (that is what "A and C clash" means). So B starts before A ends, and A and B clash. Repeat the argument for each booking between A and C, and you reach a neighbouring pair that clashes. If any two bookings clash, some two neighbours do.</p>
+</details>
+
+<h2>A sliding window</h2>
+<p>A <strong>window</strong> is a run of consecutive items of a fixed width: three days of rain, the last hundred requests. As it slides one step along the sequence, one item comes in at the front and one goes out at the back, and everything in the middle stays. So a sum over the window never needs to be added up from scratch: add the one that comes in, subtract the one that goes out. That turns "width steps per position" into "two steps per position".</p>
+<p>The largest rainfall over any three consecutive days:</p>
+<pre class="code" data-lang="python" data-file="rainfall_window.py" data-check="run"><code>rain_mm = [0, 4, 12, 3, 0, 0, 9, 15, 2, 1]
+width = 3
+
+total = sum(rain_mm[:width])  # the first window, added up once
+best, best_start = total, 0
+for end in range(width, len(rain_mm)):
+    total += rain_mm[end]  # the day that comes in
+    total -= rain_mm[end - width]  # the day that goes out
+    if total &gt; best:
+        best, best_start = total, end - width + 1
+
+print(f"wettest {width} days: day {best_start} to day {best_start + width - 1}, {best} mm")
+print("checked the slow way:", max(sum(rain_mm[i : i + width]) for i in range(len(rain_mm) - width + 1)))
+</code></pre>
+<pre class="output" data-for="rainfall_window.py"><code>wettest 3 days: day 6 to day 8, 26 mm
+checked the slow way: 26
+</code></pre>
+<p>The first window is added up once. After that, the window that ends at day <code>end</code> is the previous one plus <code>rain_mm[end]</code> minus the day that fell off the back, <code>rain_mm[end - width]</code>. The last line checks the answer the slow way, adding up every window from scratch. A slow, obviously correct version to check a fast one against is called an <strong>oracle</strong>, and it is how the tests of this module treat numpy.</p>
+
+<div class="callout trap"><span class="label">Trap</span>
+<p>A running total of floats can drift. Adding a number and later subtracting the same number does not always bring you back exactly where you were, because each step rounds to the nearest float:</p>
+<pre class="code" data-lang="python" data-file="running_float.py" data-check="run"><code>total = 0.0
+total += 0.1
+total += 0.2
+total -= 0.1
+print(total)
+print(total == 0.2)
+print(abs(total - 0.2) &lt; 1e-9)
+</code></pre>
+<pre class="output" data-for="running_float.py"><code>0.20000000000000004
+False
+True
+</code></pre>
+<p>That is why tests compare floats with a tolerance (<code>pytest.approx</code>) and not with <code>==</code>. Chapter 2 has more of these surprises.</p>
+</div>
+
+<div class="callout note"><span class="label">Python you need</span>
+<p>When items arrive one at a time and leave from the other end, you need a <strong>queue</strong>: first in, first out. A list is a poor queue, because <code>pop(0)</code> moves every remaining item one place to the left. <code>collections.deque</code> (say "deck", a double-ended queue) adds and removes at both ends in constant time.</p>
+<pre class="code" data-lang="python" data-file="cafe_queue.py" data-check="run"><code>from collections import deque
+
+queue = deque(["Ana", "Ben"])
+queue.append("Cy")  # joins at the back
+print(queue)
+served = queue.popleft()  # leaves from the front
+print(served, "is served;", len(queue), "waiting:", list(queue))
+print(queue[0], "is next")
+</code></pre>
+<pre class="output" data-for="cafe_queue.py"><code>deque(['Ana', 'Ben', 'Cy'])
+Ana is served; 2 waiting: ['Ben', 'Cy']
+Ben is next
+</code></pre>
+</div>
+
+<h2>The three piles of a partition</h2>
+<p>The last pattern of this module has its own chapter, <a href="03-partition-and-select.html">Partition and select</a>, so here is only the picture. Take a hand of cards and choose one of them, the <strong>pivot</strong>. Now deal every card onto one of three piles: smaller than the pivot, equal to it, larger than it.</p>
+<table>
+<thead><tr><th>The hand</th><th>Pivot</th><th>Smaller</th><th>Equal</th><th>Larger</th></tr></thead>
+<tbody>
+<tr><td>9, 4, 7, 2, 7, 10, 5</td><td>7</td><td>4, 2, 5</td><td>7, 7</td><td>9, 10</td></tr>
+</tbody>
+</table>
+<p>Nothing inside a pile is in order, and yet you already know a lot: every card in the first pile comes before every card in the others in sorted order, and the 7s sit at positions 3 and 4 of the sorted hand, because exactly three cards are smaller. That one deal, which looks at each card once, is the step that quickselect repeats, and the step that the drill <code>sort_colours</code> asks you to do with a list of 0s, 1s and 2s: the pivot is 1, and the three piles must be made <em>inside the list itself</em>, by swapping, in one pass. How to keep three piles inside one list without a second list is the drill; chapter 3 draws the piles, and the rungs below say where to look.</p>
+
+<h2>Set 00: the diagnostic</h2>
+<p>Six problems, cold, on day 1, in this order. Their stubs and tests are in <a href="../../../drills/00-diagnostic/README.md">drills/00-diagnostic/</a>.</p>
+
+<h3>run_length</h3>
+<p><strong>Pattern:</strong> runs in a sequence: walk the text once and compare each letter with the one before it (<a href="#runs-in-a-sequence">Runs in a sequence</a>).</p>
+<p><strong>Stub:</strong> <a href="../../../drills/00-diagnostic/run_length.py">drills/00-diagnostic/run_length.py</a> · <strong>Time box:</strong> 15 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_the_last_run_is_not_forgotten</code> and <code>test_the_same_letter_can_start_a_new_run_later</code> in <a href="../../../drills/00-diagnostic/test_run_length.py">test_run_length.py</a>, and the docstring's line "Upper and lower case are different letters". A first attempt usually fails one of these three. Which, and what does yours print for <code>"abbb"</code>?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Walk the text once, keeping two things: the letter of the run you are in, and how long that run is so far. When the next letter is the same, the run grows by one. When it is different, the run you were in is over: write down its letter and its length, and start a new run of length one with the new letter. When the text ends, the run you are in is over too, and nothing inside the walk tells you so. An empty text has no runs at all.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>Handle the empty text first, before anything else. Then two variables, the current letter and its count, started from the first letter. One loop over the remaining letters with a single if and else inside: same letter or a new one. Collect the finished pieces in a list of strings and join them once at the end, rather than adding strings together in the loop. After the loop, one more write for the last run. Test in this order: <code>""</code>, <code>"x"</code>, <code>"abbb"</code>, then <code>"z" * 12</code> (a count of two digits).</p>
+</details>
+
+<h3>top_endpoints</h3>
+<p><strong>Pattern:</strong> remembering what you have seen: count with a dict, then order the counts (<a href="#remembering-what-you-have-seen">Remembering what you have seen</a>).</p>
+<p><strong>Stub:</strong> <a href="../../../drills/00-diagnostic/top_endpoints.py">drills/00-diagnostic/top_endpoints.py</a> · <strong>Time box:</strong> 20 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's description of a line (five fields separated by single spaces: which one is the path?), then <code>test_equal_counts_come_in_alphabetical_order</code>, <code>test_a_higher_count_beats_the_alphabet</code> and <code>test_blank_lines_are_skipped</code> in <a href="../../../drills/00-diagnostic/test_top_endpoints.py">test_top_endpoints.py</a>. What does a line of three spaces split into?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Two jobs, one after the other. First count: for every line that is not blank, take the path out of it and add one to that path's count in a table from path to count; the method plays no part. Then order: the busiest path first, and among paths with the same count, alphabetical order. Then keep the first k of that ordering, which is all of them when there are fewer than k, and none when k is zero.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A dict from path to count (or a <code>Counter</code>), filled in one loop over the lines; a line is blank when it is empty after stripping its spaces. Then one call to <code>sorted</code> over the (path, count) pairs with a key that returns a tuple: two parts, the first making higher counts come first (a number and its negative sort in opposite orders), the second the path. Then a slice. Do not lean on <code>Counter.most_common</code> for the order: it breaks ties by first appearance, not alphabetically. Test the blank lines and <code>k == 0</code> first, then the ties.</p>
+</details>
+
+<h3>pair_with_sum</h3>
+<p><strong>Pattern:</strong> remembering what you have seen: a dict from a value to where you saw it (<a href="#remembering-what-you-have-seen">Remembering what you have seen</a>).</p>
+<p><strong>Stub:</strong> <a href="../../../drills/00-diagnostic/pair_with_sum.py">drills/00-diagnostic/pair_with_sum.py</a> · <strong>Time box:</strong> 20 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_a_long_list_is_still_fast</code> and its message in <a href="../../../drills/00-diagnostic/test_pair_with_sum.py">test_pair_with_sum.py</a>, then <code>test_a_position_cannot_be_used_twice</code> and <code>test_two_equal_numbers_at_different_positions</code>. How many pairs does a loop inside a loop look at for 15,000 numbers, and how long would that take at a few tens of nanoseconds each?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Walk the list once. For each number, you know exactly which partner it needs: the target minus itself. If that partner is somewhere you have already been, you have found the pair, so you need to remember not only that you saw each number but where. If not, remember this number and its position, and step on. Because you only ever look backwards, at numbers you met before, a position is never paired with itself, and the earlier position of the pair is always the remembered one.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A dict from number to position, empty at the start. One loop with <code>enumerate</code>, so that you have the position and the number together. Inside, two steps in this order: look up the partner first, then store the current number. That order is what makes <code>[3, 5]</code> with target 6 return <code>None</code> while <code>[3, 3]</code> returns <code>(0, 1)</code>. After the loop, <code>None</code>. Test those two lists first, then the long one.</p>
+</details>
+
+<h3>balanced</h3>
+<p><strong>Pattern:</strong> a stack: the most recently opened bracket must be the first one closed (<a href="#a-stack">A stack</a>).</p>
+<p><strong>Stub:</strong> <a href="../../../drills/00-diagnostic/balanced.py">drills/00-diagnostic/balanced.py</a> · <strong>Time box:</strong> 15 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_closed_in_the_wrong_order</code>, <code>test_closed_before_it_was_opened</code> and <code>test_never_closed</code> in <a href="../../../drills/00-diagnostic/test_balanced.py">test_balanced.py</a>. They are three different ways to fail. Counting the openers and the closers of each kind catches some of them: which one does it miss?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Read the text from left to right and ignore everything that is not a bracket. Every opening bracket is a promise to close it later, and the most recent promise has to be kept first. So keep the opening brackets you have not closed yet, newest on top. A closing bracket must be the partner of the one on top: if it is, that promise is kept and leaves the pile; if it is not, or the pile is empty, the text is not balanced, and you can stop. At the end of the text, every promise must have been kept.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A list used as a stack, with <code>append</code> and <code>pop</code>. A small dict from each closing bracket to its opening partner, so that one lookup answers "which opener should be on top?". One loop over the characters with three cases: an opener, a closer, and anything else (skip it). The closer case has two ways to return <code>False</code> early. After the loop, the answer is whether the stack is empty. Test <code>"]"</code>, <code>"(("</code> and <code>"([)]"</code> first.</p>
+</details>
+
+<h3>merge_intervals</h3>
+<p><strong>Pattern:</strong> intervals: sort by start, then one pass that compares each interval with what you have built so far (<a href="#intervals">Intervals</a>).</p>
+<p><strong>Stub:</strong> <a href="../../../drills/00-diagnostic/merge_intervals.py">drills/00-diagnostic/merge_intervals.py</a> · <strong>Time box:</strong> 25 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's first line again: these intervals include both ends. Then <code>test_touching_intervals_are_merged</code>, <code>test_an_interval_inside_another</code> and <code>test_the_list_you_were_given_is_not_changed</code> in <a href="../../../drills/00-diagnostic/test_merge_intervals.py">test_merge_intervals.py</a>. What does yours return for <code>[(1, 10), (2, 3), (4, 5)]</code>?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Put the intervals in order of their start, in a new list. Now walk them in that order, building the result as you go. Each interval either overlaps or touches the last interval of your result, and then it stretches that one, or it starts after that one ends, and then it becomes the new last one. Stretching means the end becomes the larger of the two ends, not simply the new interval's end: an interval can sit entirely inside the one before it.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p><code>sorted</code> with a key on the start (a new list, so the input stays as it was). A result list. One loop over the sorted intervals, and one comparison inside it: the current start against the end of the result's last interval, with "touching" included (<code>&lt;=</code>, because both ends belong to the interval). A tuple cannot be changed, so stretching means replacing the result's last item with a new tuple. An empty result has no last item: decide how the first interval gets in. Test <code>[]</code>, <code>[(1, 2), (2, 3)]</code> and <code>[(1, 10), (2, 3), (4, 5)]</code> first.</p>
+</details>
+
+<h3>moving_average</h3>
+<p><strong>Pattern:</strong> a sliding window with a running total, kept inside a small class (<a href="#a-sliding-window">A sliding window</a>).</p>
+<p><strong>Stub:</strong> <a href="../../../drills/00-diagnostic/moving_average.py">drills/00-diagnostic/moving_average.py</a> · <strong>Time box:</strong> 20 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_the_oldest_number_drops_out_once_the_window_is_full</code>, <code>test_two_windows_do_not_share_their_numbers</code> and <code>test_a_size_below_one_is_refused</code> in <a href="../../../drills/00-diagnostic/test_moving_average.py">test_moving_average.py</a>, and the docstring's "remembers the most recent <code>size</code> numbers".</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Each window remembers its own numbers in the order they arrived, oldest at one end. A new number joins at the newest end; if that makes more than <code>size</code>, the oldest leaves from the other end. Keep the total as you go: add what arrives, subtract what leaves, so you never add the whole window up again. The mean is that total divided by how many numbers the window holds right now, which is fewer than <code>size</code> until it has filled.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>All the state is set in <code>__init__</code>, on <code>self</code>: the size, a <code>deque</code> (or a list) of the numbers, and the running total. A list written in the class body instead would be shared by every window, which is what <code>test_two_windows_do_not_share_their_numbers</code> catches. <code>__init__</code> checks the size before anything else and raises <code>ValueError</code>. <code>add</code> appends, removes the oldest when there are too many, updates the total for both, and returns a division, which is already a float in Python 3. Test a size of 0 and a window of 1 first.</p>
+</details>
+
+<h2>Set 01: arrays and hashing</h2>
+<p>The module's own pattern, one problem a day from day 2, after the redos that the ledger says are due. Stubs and tests in <a href="../../../drills/01-arrays-hashing/README.md">drills/01-arrays-hashing/</a>. Two of the test files read your code and fail if <code>longest_streak</code> or <code>sort_colours</code> calls <code>sorted()</code> or <code>.sort()</code>.</p>
+
+<h3>group_anagrams</h3>
+<p><strong>Pattern:</strong> grouping by a key into a dict of lists; the key is the whole problem (<a href="#grouping-by-a-key-into-a-dict-of-lists">Grouping by a key into a dict of lists</a>). Day 2.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/01-arrays-hashing/group_anagrams.py">drills/01-arrays-hashing/group_anagrams.py</a> · <strong>Time box:</strong> 25 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_the_same_letters_in_different_amounts_are_not_anagrams</code> and <code>test_groups_come_in_the_order_of_their_first_word</code> in <a href="../../../drills/01-arrays-hashing/test_group_anagrams.py">test_group_anagrams.py</a>, and the docstring's "Aim for one pass over the words". Then re-read the paragraph under the first grouping example in this chapter: what decides the order of the groups there?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Give every word a label that all of its anagrams share and no other word has. Then grouping is the dict-of-lists pattern: the label is the key, and each word joins the list of its label, in one pass. The label has to capture which letters a word has and how many of each, and forget their order. Because a dict remembers the order in which its keys first appeared, the groups come out in the order of their first words without any extra work.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A dict (or a <code>defaultdict(list)</code>) from label to list of words, one loop over the words, and the dict's values turned into a list at the end. Two well-known labels: the word's letters put into a fixed order and joined back into a string, or a tuple of 26 letter counts. Either works; say out loud which costs more per word and why. Whatever the label is, it must be a string or a tuple, never a list. Test <code>["aab", "abb", "bba", "baa"]</code> and <code>["", "a", ""]</code> first.</p>
+</details>
+
+<h3>longest_streak</h3>
+<p><strong>Pattern:</strong> a set for constant-time membership, and a rule for where to start counting (<a href="#a-set-for-constant-time-membership">A set for constant-time membership</a>). Day 4.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/01-arrays-hashing/longest_streak.py">drills/01-arrays-hashing/longest_streak.py</a> · <strong>Time box:</strong> 30 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's last paragraph ("in time proportional to n"), then <code>test_it_does_not_sort</code>, <code>test_a_streak_with_a_repeat_inside_it</code> and the property test <code>test_streaks_built_with_gaps_between_them</code> in <a href="../../../drills/01-arrays-hashing/test_longest_streak.py">test_longest_streak.py</a>. Without sorting, how do you find out whether the number after 4 is there?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Put the numbers into a set: the repeats vanish, and "is this number here?" costs the same however many numbers there are. Every streak has exactly one first number, the one whose predecessor is missing. Only from such a first number, count upwards for as long as the next number is present. Each number is then visited a small, fixed number of times in total, so the work is proportional to n, even though one loop sits inside another.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A set built once from the list. An outer loop over the set, not over the list, so that a repeated number does not repeat any work. One check at the top of the loop that skips every number whose predecessor is in the set. An inner <code>while</code> loop that walks upwards and counts. A best-so-far variable that starts at 0, which is also the answer for an empty list. Test <code>[]</code>, <code>[5, 5, 5]</code> and <code>[100, 4, 200, 1, 3, 2]</code> first, and say out loud why the inner loop does not make it n squared.</p>
+</details>
+
+<h3>sort_colours</h3>
+<p><strong>Pattern:</strong> the three piles of a partition, made inside the list by swapping, in one pass (<a href="#the-three-piles-of-a-partition">The three piles of a partition</a>). Day 3, before milestone M3.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/01-arrays-hashing/sort_colours.py">drills/01-arrays-hashing/sort_colours.py</a> · <strong>Time box:</strong> 25 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's rules ("one pass over the list, swapping elements, with a few variables and no second list"), then <code>test_it_changes_the_list_it_was_given</code> and <code>test_it_does_not_sort</code> in <a href="../../../drills/01-arrays-hashing/test_sort_colours.py">test_sort_colours.py</a>, and the drawing of the three piles in chapter 3, <a href="03-partition-and-select.html">Partition and select</a>.</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>At every moment, think of the list as four regions, left to right: the 0s already placed, the 1s already placed, a middle stretch you have not looked at yet, and the 2s already placed at the far end. Each step looks at the first element of the unknown stretch and moves it into its region: a 0 is swapped to just after the 0s, a 1 is already where it belongs, a 2 is swapped to just before the 2s. Every step makes the unknown stretch one shorter, and when it is empty, the list is in order.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>Three positions are enough to mark the four regions: where the next 0 goes, the element you are looking at, and where the next 2 goes. They start at the front, the front and the back. One <code>while</code> loop that runs until the position you are looking at passes the one where the next 2 goes; inside, three branches, one per colour, each with a swap (tuple assignment swaps two elements in one line). Work out on paper which positions move in each branch. The 2 branch is the odd one: think about what you know, and do not know, about the element that a swap brings back from the far end. Test <code>[2, 0]</code>, <code>[1, 0]</code> and <code>[2, 2, 2]</code> first, with the positions written under the list.</p>
+</details>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Why can a tuple be the key of a dict, and a list not?</p><details class="answer"><summary>Answer</summary><p>A dict files each key under its hash. A list can change after it is stored, and its hash would change with it, so the dict would look in the wrong slot. A tuple cannot change, so its hash is fixed. Python refuses lists as keys with <code>TypeError: unhashable type: 'list'</code>.</p></details></div>
+<div class="q"><p>In <code>last_seen.py</code>, what would every gap be if the line <code>last_seen[word] = position</code> moved to the top of the loop body, and why?</p><details class="answer"><summary>Answer</summary><p>0. The dict would already hold the current position when it was asked for the previous one, and <code>position - position</code> is 0. Every "seen before?" question must be asked before the memory is updated.</p></details></div>
+<div class="q"><p>You need to answer "is x in my collection?" 50,000 times against 50,000 numbers. Roughly how many steps does a list take, and a set?</p><details class="answer"><summary>Answer</summary><p>A list looks at up to 50,000 items per question (about half of them on average for numbers that are there, all of them for numbers that are not): up to 2.5 billion steps. A set does about one hash and one jump per question: about 50,000 steps, plus 50,000 to build it.</p></details></div>
+<div class="q"><p>Evaluate <code>6 2 / 1 -</code> in reverse Polish notation, writing the stack after each token.</p><details class="answer"><summary>Answer</summary><p><code>[6]</code>, <code>[6, 2]</code>, <code>[3.0]</code> (the first pop is the right-hand number, so 6 / 2), <code>[3.0, 1]</code>, <code>[2.0]</code>. The answer is 2.</p></details></div>
+<div class="q"><p>Two closed intervals (both ends included) are (1, 4) and (4, 6). Do they overlap? And as half-open intervals?</p><details class="answer"><summary>Answer</summary><p>Closed: yes, both contain 4. Half-open: no, the first stops just before 4. The test changes from <code>&lt;=</code> to <code>&lt;</code>; decide which one a problem means before you write it.</p></details></div>
+<div class="q"><p>A window of width 100 slides along 1,000,000 readings. How many additions does adding each window up from scratch take, and the running sum?</p><details class="answer"><summary>Answer</summary><p>From scratch: about 100 per position, so about 100 million. Running sum: one addition and one subtraction per position, so about 2 million, 50 times fewer, and the gap grows with the width.</p></details></div>
+<div class="q"><p>A hand of cards is 8, 3, 8, 1, 9, 5 and the pivot is 5. Deal the three piles. At which position (from 0) does the 5 sit in the sorted hand, and how do you know without sorting?</p><details class="answer"><summary>Answer</summary><p>Smaller: 3, 1. Equal: 5. Larger: 8, 8, 9. Two cards are smaller than 5, so in sorted order it sits at position 2.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Run a drill by the rules: hands only, timed, out loud, a ledger row, two redos and no reveal.</li>
+<li>Say in what order this module's nine drills come, and why the diagnostic is done cold.</li>
+<li>Remember what you have seen with a set or a dict, and say why the lookup comes before the store.</li>
+<li>Group items into a dict of lists by a key that you choose, and pick a key that can be hashed.</li>
+<li>Choose a set over a list for membership, and estimate the difference in steps.</li>
+<li>Walk a sequence comparing neighbours, evaluate an expression with a stack, test intervals for overlap after sorting them, and slide a window with a running sum.</li>
+<li>Draw the three piles of a partition, and name the pattern each of the nine drills needs.</li>
+</ul>
+</main>
+</body>
+</html>

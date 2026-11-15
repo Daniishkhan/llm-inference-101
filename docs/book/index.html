@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM inference in Python</title>
+<link rel="stylesheet" href="assets/book.css?v=1">
+<script src="assets/theme.js?v=1"></script>
+</head>
+<body class="course">
+<main>
+<p class="chapter-kicker">The course · one book per module</p>
+<h1>LLM inference in Python, typed by hand</h1>
+<p class="lede">A self-paced course in 18 modules and a capstone. You learn data structures and algorithms by building the parts of an inference engine in Python, then you read vLLM, then you serve open models. Every solution is typed by you; the books teach each mechanism on a different problem and never show your code.</p>
+
+<h2>Phase 1: one model, one request</h2>
+<div class="toc-cards">
+<a href="01-measure/index.html"><span class="n">Module 1</span><h3>Measure first</h3><p>Two clocks, percentiles, quickselect, a histogram and a line timer: the harness every later module uses.</p></a>
+<div class="soon"><span class="n">Module 2 · not written yet</span><h3>Tokenizer</h3><p>Bytes and UTF-8, byte-pair encoding, and what tokens cost.</p></div>
+<div class="soon"><span class="n">Module 3 · not written yet</span><h3>Forward pass</h3><p>Embeddings, attention, MLP, layer norm, logits, and a stable softmax.</p></div>
+<div class="soon"><span class="n">Module 4 · not written yet</span><h3>Sampling</h3><p>Greedy, temperature, top-k, top-p, repetition penalty, seeds and stop strings.</p></div>
+<div class="soon"><span class="n">Module 5 · not written yet</span><h3>KV cache</h3><p>What gets recomputed without a cache, and memory per token.</p></div>
+</div>
+
+<h2>Phase 2: many requests, a mini engine</h2>
+<div class="toc-cards">
+<div class="soon"><span class="n">Module 6 · not written yet</span><h3>Serving loop</h3><p>asyncio, the request lifecycle, streaming, the OpenAI-compatible API.</p></div>
+<div class="soon"><span class="n">Module 7 · not written yet</span><h3>Continuous batching</h3><p>Adding and removing requests at every step, with a token budget.</p></div>
+<div class="soon"><span class="n">Module 8 · not written yet</span><h3>Paged KV cache</h3><p>Fixed-size blocks, block tables, reference counts and copy-on-write.</p></div>
+<div class="soon"><span class="n">Module 9 · not written yet</span><h3>Prefix caching</h3><p>Reusing the KV cache for shared prefixes such as system prompts.</p></div>
+<div class="soon"><span class="n">Module 10 · not written yet</span><h3>Scheduling and chunked prefill</h3><p>Prefill against decode, TTFT against ITL, chunking long prompts.</p></div>
+<div class="soon"><span class="n">Module 11 · not written yet</span><h3>Speculative decoding and structured output</h3><p>Draft, then verify; output held to a regex or a JSON schema.</p></div>
+</div>
+
+<h2>Phase 3: real vLLM</h2>
+<div class="toc-cards">
+<div class="soon"><span class="n">Module 12 · not written yet</span><h3>Read nano-vLLM, then vLLM</h3><p>One request traced end to end, matched to your own engine.</p></div>
+<div class="soon"><span class="n">Module 13 · not written yet</span><h3>Performance and tuning</h3><p>vLLM's benchmark tools and the settings that matter.</p></div>
+<div class="soon"><span class="n">Module 14 · not written yet</span><h3>Quantization</h3><p>From fp32 to int4, weights and activations, and checking quality.</p></div>
+<div class="soon"><span class="n">Module 15 · not written yet</span><h3>Fine-tuning and multi-LoRA serving</h3><p>LoRA, one small model tuned for one task, several adapters on one base.</p></div>
+</div>
+
+<h2>Phase 4: serving open models for real</h2>
+<div class="toc-cards">
+<div class="soon"><span class="n">Module 16 · not written yet</span><h3>The front door</h3><p>Routing across replicas, rate limits, health checks, metrics.</p></div>
+<div class="soon"><span class="n">Module 17 · not written yet</span><h3>RAG serving</h3><p>Embeddings, vector search, reranking, and a latency budget.</p></div>
+<div class="soon"><span class="n">Module 18 · not written yet</span><h3>Other hardware</h3><p>What changes across NVIDIA, AMD, TPU, Apple Silicon and CPU.</p></div>
+</div>
+
+<h2>Capstone</h2>
+<div class="toc-cards">
+<div class="soon"><span class="n">Capstone · not written yet</span><h3>One repository, in your own words</h3><p>The Phase 2 engine, the router, the RAG pipeline and the hardware report, with a write-up.</p></div>
+</div>
+
+<h2>Around the books</h2>
+<ul>
+<li><a href="../../goal.md">goal.md</a>: the goal, the ground rules, the 18 modules and the patterns table.</li>
+<li><a href="../methodology.md">docs/methodology.md</a>: how a day and a module run.</li>
+<li><a href="../setup.md">docs/setup.md</a>: this Mac, the first-time steps, and what arrives with which module.</li>
+<li><a href="../../CLAUDE.md">CLAUDE.md</a>: the rules Claude follows in this repository.</li>
+<li><a href="../../CONCEPTS.md">CONCEPTS.md</a>: every pattern and inference concept, where it is introduced and reused.</li>
+<li><a href="../../README.md">README.md</a>: the repository at a glance.</li>
+</ul>
+<p>Serve every book on this Mac with <code>uv run python tools/serve-book.py</code>, at <code>http://localhost:8767/</code>.</p>
+</main>
+</body>
+</html>

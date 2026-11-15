@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 · Two clocks — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 01</p>
+<h1>Two clocks</h1>
+<p class="lede">At the end of this chapter you will be able to time a piece of Python with the right clock, tell waiting apart from computing, explain why the same code takes a different time on every run, and pass a function around as a value, which is what milestone M1 needs.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: the same code, five runs, five different times.</li>
+<li>What a clock is to the computer, and the three clocks of Python's <code>time</code> module.</li>
+<li>A kettle and a sum: waiting against computing, measured with two clocks at once.</li>
+<li>Where the picture breaks: more CPU time than wall time.</li>
+<li>Why one run is not enough: noise, cores, caches, the garbage collector, and warm-up.</li>
+<li>What it costs to read a clock.</li>
+<li>Functions as values, <code>lambda</code> and closures.</li>
+</ul>
+</div>
+
+<h2>The problem: one timing lies</h2>
+<p>Here is the simplest way to time something in Python: read a clock, do the work, read the clock again, and subtract.</p>
+<pre class="code" data-lang="python" data-file="one_sum.py" data-check="run"><code>import time
+
+start = time.perf_counter_ns()
+total = sum(range(2_000_000))
+stop = time.perf_counter_ns()
+
+print(f"total {total:,}, wall time {(stop - start) / 1_000_000:.2f} ms")
+</code></pre>
+<p>Run it five times in a row. The shell's <code>for</code> loop saves you typing the command five times:</p>
+<pre class="shell"><code>$ for i in 1 2 3 4 5; do uv run python scratch/one_sum.py; done
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>total 1,999,999,000,000, wall time 11.44 ms
+total 1,999,999,000,000, wall time 14.30 ms
+total 1,999,999,000,000, wall time 11.78 ms
+total 1,999,999,000,000, wall time 11.49 ms
+total 1,999,999,000,000, wall time 11.70 ms
+</code></pre>
+<p>The total is the same every time, as it must be. The time is not: the second run took a quarter longer than the first. Had you run it once and written "summing two million numbers takes 14.3 ms", you would have told the truth about one run and misled about all the others. To answer "how long does this take?" you need the right clock, read the right way, and the habit of never trusting a single reading. This chapter gives you both; the next one shows how to summarise many readings honestly.</p>
+
+<h2>What a clock is to the computer</h2>
+<div class="callout principle"><span class="label">First principle</span><p>A computer clock is a counter. A crystal on the board vibrates at a fixed rate, and a piece of hardware counts the vibrations. On Apple silicon the counter that Python reads goes up 24 million times a second, so one tick is 1 / 24,000,000 of a second: about 41.7 nanoseconds. "Reading the clock" means asking for the current count. A duration is the difference between two counts, multiplied by the length of a tick. The operating system keeps a second, different kind of clock as well: an account, for each process, of how long it has actually been running on a core. Each time the scheduler takes your process off a core, it adds the time it just ran to that account.</p></div>
+<p>A <strong>nanosecond</strong> (ns) is a billionth of a second. A <strong>microsecond</strong> (µs) is a thousand nanoseconds, and a <strong>millisecond</strong> (ms) a thousand microseconds. Python's <code>_ns</code> functions return whole numbers of nanoseconds, as an <code>int</code>, which is why <code>one_sum.py</code> divides by 1,000,000 to print milliseconds. Whole numbers are exact; the older functions without <code>_ns</code> return seconds as a <code>float</code>, which loses the last digits once the count is large.</p>
+
+<h2>Three clocks in the time module</h2>
+<p>Python's <code>time</code> module offers several clocks. Three matter here.</p>
+<ul>
+<li><code>time.perf_counter_ns()</code>: the <strong>wall clock</strong> for measuring, so called because it is the time a clock on the wall would show passing. It never goes backwards, it ticks finely, and it keeps running whatever your program is doing, computing or waiting. Its starting point means nothing; only differences between two readings do.</li>
+<li><code>time.process_time_ns()</code>: the <strong>CPU clock</strong>. It counts only the time this process spent running on a core, added up over every core it used. While your program sleeps or waits for a file, it stands still.</li>
+<li><code>time.time()</code>: the <strong>calendar clock</strong>: seconds since 1 January 1970, the time of day your Mac shows in its menu bar. It is the right clock for "when did this happen?" and the wrong one for "how long did it take?".</li>
+</ul>
+<div class="callout analogy"><span class="label">Analogy</span><p><code>perf_counter_ns</code> is a <strong>stopwatch</strong>: you press start, and it runs until you press stop, whether you were working or staring out of the window. <code>process_time_ns</code> is a <strong>timesheet</strong>: it records only the hours you actually worked. <code>time.time</code> is the <strong>clock on the town hall</strong>: everyone agrees on it, but now and then someone climbs up and sets it right, and if you timed your run by it you could find you finished before you started. <em>Where it breaks:</em> a person can only work one job at a time, so a timesheet never shows more hours than the stopwatch. A process can run on several cores at once, and then its "timesheet" adds up all of them. A section below shows it.</p></div>
+<p><code>time.get_clock_info</code> tells you what each clock promises on the machine you are on:</p>
+<pre class="code" data-lang="python" data-file="clock_info.py" data-check="run"><code>import time
+
+for name in ["perf_counter", "process_time", "time"]:
+    info = time.get_clock_info(name)
+    print(f"{name:13} monotonic={info.monotonic!s:5}  adjustable={info.adjustable!s:5}  "
+          f"resolution={info.resolution:.2e} s  ({info.implementation})")
+</code></pre>
+<p>On the M5 (another machine prints other implementations and resolutions):</p>
+<pre class="output"><code>perf_counter  monotonic=True   adjustable=False  resolution=4.17e-08 s  (mach_absolute_time())
+process_time  monotonic=True   adjustable=False  resolution=1.00e-06 s  (clock_gettime(CLOCK_PROCESS_CPUTIME_ID))
+time          monotonic=False  adjustable=True   resolution=1.00e-06 s  (clock_gettime(CLOCK_REALTIME))
+</code></pre>
+<p>Read the three columns:</p>
+<ul>
+<li><strong>monotonic</strong>: the clock never goes backwards. Two readings in a row can be equal, but the second is never smaller.</li>
+<li><strong>adjustable</strong>: something outside your program may change the clock while it runs. The calendar clock is adjustable: your Mac corrects it against a time server on the internet, and you can set it by hand.</li>
+<li><strong>resolution</strong>: the smallest step the clock can show. For <code>perf_counter</code> it is 4.17 × 10<sup>-8</sup> s, the 41.7 ns tick of the hardware counter. The CPU clock moves in steps of a whole microsecond, 24 times coarser.</li>
+</ul>
+<p>The last column names the call that does the work: <code>mach_absolute_time()</code> reads the hardware counter; <code>CLOCK_PROCESS_CPUTIME_ID</code> asks the kernel for the process's account.</p>
+<div class="callout trap"><span class="label">Trap</span><p>Never time a duration with <code>time.time()</code>. It is <em>adjustable</em> and not <em>monotonic</em>: if the Mac corrects its clock between your two readings, the difference includes the correction, and it can even be negative. That correction happens rarely, which makes the bug worse: your benchmark works for weeks and then reports a call that took minus 300 milliseconds. Durations come from <code>perf_counter_ns</code>.</p></div>
+
+<h2>A kettle and a sum</h2>
+<p>Now use both measuring clocks at once, on two jobs that are as different as possible. Waiting for a kettle is all waiting: you stand there, and nothing you do makes it faster. Doing a sum in your head is all work: nothing is waiting, and the time is the time you spend thinking. In Python, <code>time.sleep(0.2)</code> is the kettle: it asks the operating system to take the process off its core for 200 ms. A loop that adds up numbers is the sum.</p>
+<pre class="code" data-lang="python" data-file="kettle_and_sums.py" data-check="run"><code>import time
+
+# The kettle: wait 200 ms and do nothing.
+wall_start = time.perf_counter_ns()
+cpu_start = time.process_time_ns()
+time.sleep(0.2)
+cpu_stop = time.process_time_ns()
+wall_stop = time.perf_counter_ns()
+
+wall_ms = (wall_stop - wall_start) / 1_000_000
+cpu_ms = (cpu_stop - cpu_start) / 1_000_000
+print(f"kettle: wall {wall_ms:7.2f} ms   cpu {cpu_ms:6.2f} ms   cpu share {cpu_ms / wall_ms:.2f}")
+
+# The sums: add up numbers, and never wait.
+wall_start = time.perf_counter_ns()
+cpu_start = time.process_time_ns()
+total = 0
+for i in range(3_000_000):
+    total += i
+cpu_stop = time.process_time_ns()
+wall_stop = time.perf_counter_ns()
+
+wall_ms = (wall_stop - wall_start) / 1_000_000
+cpu_ms = (cpu_stop - cpu_start) / 1_000_000
+print(f"sums:   wall {wall_ms:7.2f} ms   cpu {cpu_ms:6.2f} ms   cpu share {cpu_ms / wall_ms:.2f}")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>kettle: wall  205.06 ms   cpu   0.04 ms   cpu share 0.00
+sums:   wall  116.42 ms   cpu 116.36 ms   cpu share 1.00
+</code></pre>
+<p>Look at the order of the reads: the wall clock is started first and stopped last, so the CPU readings sit inside it, and nothing but the work happens between them.</p>
+<p>The kettle took 205 ms on the stopwatch and 0.04 ms on the timesheet: 40 microseconds of work, for the call into <code>sleep</code> and back, and 200 ms of standing still. The sums took 116 ms on both clocks: every moment of wall time was spent computing. Divide CPU time by wall time and you get the <strong>CPU share</strong>, one number that says what kind of job it was: about 0 for waiting, about 1 for computing. Most real work is somewhere between, and the share tells you where.</p>
+<p>Notice that the kettle took 205 ms, not 200. <code>sleep</code> promises to wait <em>at least</em> as long as you asked; then the operating system has to give your process a core again, and macOS groups timers together to save power, so it wakes you a little late.</p>
+<div class="callout try"><span class="label">Try it</span><p>Change the kettle to <code>time.sleep(0.01)</code>, then to <code>time.sleep(0.05)</code>. Before each run, write down the wall time you expect. Then run it a few times.</p></div>
+<details class="answer"><summary>What the M5 showed</summary><p>About 15 ms for a 10 ms sleep and about 60 ms for a 50 ms sleep, with the CPU time still near zero. The overshoot is not a fixed amount and not a fixed fraction: it depends on how the operating system groups its timers at that moment. That is one reason a benchmark of anything that sleeps or waits is noisy.</p></details>
+
+<h2>Where the analogy breaks: more than one pair of hands</h2>
+<p>The timesheet picture says CPU time can never exceed wall time. That holds for a process that computes on one core. It does not hold when a process uses several cores at once, because the CPU clock adds up the time on every core. numpy's matrix product is a good example: numpy hands it to a library that comes with macOS (Accelerate), and that library splits the work across cores.</p>
+<pre class="code" data-lang="python" data-file="many_hands.py" data-check="run"><code>import time
+
+import numpy as np
+
+rng = np.random.default_rng(0)
+a = rng.random((2_000, 2_000))
+b = rng.random((2_000, 2_000))
+
+wall_start = time.perf_counter_ns()
+cpu_start = time.process_time_ns()
+c = a @ b  # a matrix product: numpy hands it to a library that uses several cores
+cpu_stop = time.process_time_ns()
+wall_stop = time.perf_counter_ns()
+
+wall_ms = (wall_stop - wall_start) / 1_000_000
+cpu_ms = (cpu_stop - cpu_start) / 1_000_000
+print(f"wall {wall_ms:.1f} ms   cpu {cpu_ms:.1f} ms   cpu share {cpu_ms / wall_ms:.2f}")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>wall 32.9 ms   cpu 64.0 ms   cpu share 1.94
+</code></pre>
+<p>A CPU share of almost 2: on average two cores were busy for the whole 33 ms (another run gave 1.18; even this moves). The matrix product is the operation a language model spends most of its time in, so you will meet it again. For your harness, a CPU share above 1 is not a bug: the work ran in parallel.</p>
+
+<h2>Why one run is not enough</h2>
+<p>Back to the five runs of <code>one_sum.py</code>. Why did the same code take between 11.4 and 14.3 ms? Nothing in the program changed. Everything around it did.</p>
+<ul>
+<li><strong>Other processes.</strong> Your Mac is running a hundred other programs: the browser, the editor, Spotlight indexing a file. When one of them wants a core at the wrong moment, your program waits, and the wall clock keeps running.</li>
+<li><strong>Frequency changes.</strong> A core does not run at one fixed speed. It speeds up when there is work and slows down to save power and stay cool. The first few milliseconds of a burst of work can run on a core that has not yet sped up.</li>
+<li><strong>Two kinds of core.</strong> The M5 has 4 performance cores and 6 efficiency cores. The efficiency cores are slower and use much less power. macOS decides which kind your process runs on, and can move it in the middle of a run. The same loop on an efficiency core can take twice as long.</li>
+<li><strong>Caches.</strong> The processor keeps recently used memory in small, fast <strong>caches</strong> close to the core. The first time code touches some data, it comes from main memory, which is slow; the second time it is probably in a cache. Your program's own instructions are cached the same way.</li>
+<li><strong>The garbage collector.</strong> Python frees most objects as soon as nothing refers to them. Objects that refer to each other in a circle need a separate tidy-up, the <strong>cyclic garbage collector</strong>, which runs every so often (by default once about 2,000 more container objects, such as lists, dicts and instances, have been created than freed). When it runs in the middle of your timing, that call is slower. Python's own <code>timeit</code> module switches it off while it times, for this reason.</li>
+</ul>
+<p>You cannot remove all of this, and your users' machines have the same noise. You can time many calls and look at how they spread (chapter 2), and keep the conditions steady and written down: power cable in, heavy programs closed (<code>docs/setup.md</code>, "Measuring on this Mac").</p>
+
+<h2>Warm-up</h2>
+<p>One source of difference is not noise at all, because it is the same every time: the first call. Many functions do extra work the first time they run, and then reuse it. Here is a function that builds a table of all primes below two million on its first call, keeps it in a dictionary, and only looks things up after that:</p>
+<pre class="code" data-lang="python" data-file="warm_up.py" data-check="run"><code>import time
+
+cache = {}
+
+
+def nth_prime(i):
+    """The i-th prime, from 0. The first call builds a table of primes; later calls reuse it."""
+    if "primes" not in cache:
+        limit = 2_000_000
+        is_prime = [True] * limit
+        is_prime[0] = is_prime[1] = False
+        for n in range(2, int(limit**0.5) + 1):
+            if is_prime[n]:
+                for multiple in range(n * n, limit, n):
+                    is_prime[multiple] = False
+        cache["primes"] = [n for n in range(limit) if is_prime[n]]
+    return cache["primes"][i]
+
+
+for attempt in range(1, 4):
+    start = time.perf_counter_ns()
+    p = nth_prime(10_000)
+    stop = time.perf_counter_ns()
+    print(f"call {attempt}: nth_prime(10_000) = {p}, {(stop - start) / 1_000:,.1f} µs")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>call 1: nth_prime(10_000) = 104743, 64,268.3 µs
+call 2: nth_prime(10_000) = 104743, 1.6 µs
+call 3: nth_prime(10_000) = 104743, 0.2 µs
+</code></pre>
+<p>The first call took 64 ms, because it built the table (the sieve of Eratosthenes: cross out every multiple of every prime, and what is left is prime). The third took 0.2 µs: three hundred thousand times less. A benchmark that includes the first call reports something that is true once and never again.</p>
+<p>The second call is still eight times slower than the third, although the table already existed. The dictionary is the visible warm-up; there are invisible ones. The processor's caches had just been filled with the sieve, not the lookup. And Python 3.13 rewrites a function's bytecode as it runs, specialising each instruction for the types it sees, so a function gets a little faster over its first few calls. You cannot list every warm-up effect of a given function, so the rule is simple: make some calls before you start recording, and throw their times away. Your harness takes a <code>warmup</code> count for exactly this.</p>
+<div class="callout try"><span class="label">Try it</span><p>Add the line <code>nth_prime(0)</code> just before the <code>for</code> loop, and predict the three times before you run it.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>All three are now small, around a microsecond or less, because the table is built by the call before the loop and none of the timed calls has to build it. The first timed call may still be a little slower than the others: the invisible warm-ups (processor caches, specialised bytecode) are not finished after one call.</p></details>
+
+<h2>The cost of reading a clock</h2>
+<p>Reading a clock is itself a function call, and it takes time. To see how much, read a clock a million times in a loop, and subtract what the empty loop costs:</p>
+<pre class="code" data-lang="python" data-file="clock_cost.py" data-check="run"><code>import time
+
+reads = 1_000_000
+
+start = time.perf_counter_ns()
+for _ in range(reads):
+    pass
+stop = time.perf_counter_ns()
+empty_loop_ns = stop - start
+
+start = time.perf_counter_ns()
+for _ in range(reads):
+    time.perf_counter_ns()
+stop = time.perf_counter_ns()
+perf_loop_ns = stop - start
+
+start = time.perf_counter_ns()
+for _ in range(reads):
+    time.process_time_ns()
+stop = time.perf_counter_ns()
+process_loop_ns = stop - start
+
+print(f"empty loop:         {empty_loop_ns / reads:6.1f} ns per turn")
+print(f"perf_counter_ns():  {(perf_loop_ns - empty_loop_ns) / reads:6.1f} ns per read")
+print(f"process_time_ns():  {(process_loop_ns - empty_loop_ns) / reads:6.1f} ns per read")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>empty loop:           10.5 ns per turn
+perf_counter_ns():    25.0 ns per read
+process_time_ns():   267.1 ns per read
+</code></pre>
+<p>The stopwatch costs about 25 ns to read, because it reads the hardware counter without asking the kernel. The CPU clock costs ten times as much: the process's account lives in the kernel, and asking the kernel anything is a <strong>system call</strong>, a switch from your program into the operating system and back. Three consequences for timing a single call:</p>
+<ul>
+<li>Every timing includes some of the clock's own cost: nothing for a 10 ms call, a third of the answer for a 1 µs call. <code>BENCH.md</code> asks you to measure this floor with your own harness.</li>
+<li>Steps matter for short calls. On the M5, a sum of 300 numbers timed on its own read 1,250 to 1,458 ns on the stopwatch (multiples of the 41.7 ns tick) and exactly 1,000 or 2,000 ns on the CPU clock. One CPU reading of a short call says almost nothing; the total over many calls is what means something.</li>
+<li>Put the cheaper, finer clock on the outside, as in <code>kettle_and_sums.py</code>: the wall time then includes the CPU clock's 267 ns, and the CPU time includes none of the stopwatch's.</li>
+</ul>
+<div class="callout trap"><span class="label">Trap</span><p>Do not put anything between the clock reads but the work. A <code>print</code>, an <code>append</code> to a list or a format string inside the timed stretch is timed too, and for a short call it can cost more than the call itself. Read the clock, call, read the clock; everything else goes outside.</p></div>
+
+<h2>Functions are values</h2>
+<p>Your harness has to call a function it is given, many times, without knowing in advance which function that is. That needs one idea from Python that you may have used without naming it: a function is an ordinary value, like a number or a list. You can pass it to another function, keep it in a variable, and call it later.</p>
+<div class="callout note"><span class="label">Python you need</span><p><strong>Functions as values.</strong> <code>shout</code> is the function; <code>shout("tea")</code> calls it. Leave off the brackets and you are passing the function itself, to be called later. <strong><code>lambda</code></strong> makes a small function without a name, in place: <code>lambda w: w[::-1]</code> takes <code>w</code> and returns it reversed. A <code>lambda</code> with no parameters, <code>lambda: shout("ready")</code>, packs up a call <em>with</em> its arguments into a function that takes none. <strong>A closure</strong> is a function defined inside another one that remembers the variables of the call that made it, even after that call has returned. <code>nonlocal</code> lets the inner function assign to such a variable.</p></div>
+<pre class="code" data-lang="python" data-file="functions_as_values.py" data-check="run"><code>def shout(word):
+    return word.upper() + "!"
+
+
+def apply_to_each(action, items):
+    return [action(item) for item in items]
+
+
+words = ["kettle", "clock", "tea"]
+
+print(type(shout), shout.__name__)         # a function is a value, with a type and a name
+print(apply_to_each(shout, words))         # pass it without brackets: no call happens here
+print(apply_to_each(len, words))           # built-in functions are values too
+print(apply_to_each(lambda w: w[::-1], words))  # a function with no name, written in place
+
+later = lambda: shout("ready")             # no arguments: it remembers what to call, and with what
+print(later.__name__)
+print(later())
+</code></pre>
+<pre class="output" data-for="functions_as_values.py"><code>&lt;class 'function'&gt; shout
+['KETTLE!', 'CLOCK!', 'TEA!']
+[6, 5, 3]
+['elttek', 'kcolc', 'aet']
+&lt;lambda&gt;
+READY!
+</code></pre>
+<p><code>apply_to_each</code> does not know what <code>action</code> is, only that it can be called with one item. And <code>later</code> is a function of no arguments that calls <code>shout("ready")</code>: the argument travels inside it. This is how a call that needs arguments is handed to code that will only ever call <code>fn()</code>.</p>
+<p>A closure is the same trick with a <code>def</code> inside a <code>def</code>:</p>
+<pre class="code" data-lang="python" data-file="closures.py" data-check="run"><code>def make_greeter(greeting):
+    def greet(name):
+        return f"{greeting}, {name}"  # greeting comes from the enclosing call
+
+    return greet
+
+
+morning = make_greeter("Good morning")
+evening = make_greeter("Good evening")
+print(morning("Danish"))
+print(evening("Danish"))
+
+
+def make_counter():
+    count = 0
+
+    def tick():
+        nonlocal count  # assign to the enclosing call's count, not to a new local
+        count += 1
+        return count
+
+    return tick
+
+
+tick = make_counter()
+tick()
+tick()
+print("ticks:", tick())
+</code></pre>
+<pre class="output" data-for="closures.py"><code>Good morning, Danish
+Good evening, Danish
+ticks: 3
+</code></pre>
+<p>Each call of <code>make_greeter</code> creates a new <code>greet</code> that remembers its own <code>greeting</code>. Without <code>nonlocal</code>, the line <code>count += 1</code> would make <code>count</code> a new local variable of <code>tick</code>, and Python would stop with <code>UnboundLocalError</code>, because the local has no value yet when <code>+= 1</code> reads it. The tests of M1 use closures like these to count how many times your harness called them.</p>
+<p>One thing about closures surprises everybody once. Predict the two lines before you run this:</p>
+<pre class="code" data-lang="python" data-file="late_binding.py" data-check="run"><code>jobs = [lambda: n * 10 for n in range(3)]
+print([job() for job in jobs])
+
+jobs = [lambda n=n: n * 10 for n in range(3)]
+print([job() for job in jobs])
+</code></pre>
+<pre class="output" data-for="late_binding.py"><code>[20, 20, 20]
+[0, 10, 20]
+</code></pre>
+<div class="callout trap"><span class="label">Trap</span><p>A closure remembers the <em>variable</em>, not the value it had when the function was made. All three lambdas in the first list look up <code>n</code> when they are called, and by then the loop has finished and <code>n</code> is 2. The second list fixes it with a default argument, <code>n=n</code>, which is evaluated once, when each lambda is made, and so freezes the value. If you build a list of zero-argument lambdas in a loop to time later, this is the bug that makes every one of them do the same thing.</p></div>
+
+<h2>A worked example: breakfast</h2>
+<p>Put the pieces together on a job that both waits and works: wait 100 ms for the kettle, then do some arithmetic. Before running it, predict. The sums in <code>kettle_and_sums.py</code> did three million additions in about 116 ms; this loop does two million turns, each a remainder and an addition, so call it 70 to 80 ms of work. The sleep adds at least 100 ms of waiting. So the prediction is: wall about 180 ms, CPU about 75 ms, CPU share about 75 / 180, a little over 0.4.</p>
+<pre class="code" data-lang="python" data-file="breakfast.py" data-check="run"><code>import time
+
+wall_start = time.perf_counter_ns()
+cpu_start = time.process_time_ns()
+
+time.sleep(0.1)  # wait for the kettle
+toast = 0
+for slice_number in range(2_000_000):  # then do some work
+    toast += slice_number % 7
+
+cpu_stop = time.process_time_ns()
+wall_stop = time.perf_counter_ns()
+
+wall_ms = (wall_stop - wall_start) / 1_000_000
+cpu_ms = (cpu_stop - cpu_start) / 1_000_000
+print(f"wall {wall_ms:.1f} ms, cpu {cpu_ms:.1f} ms, waiting {wall_ms - cpu_ms:.1f} ms, "
+      f"cpu share {cpu_ms / wall_ms:.2f}")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>wall 177.4 ms, cpu 76.3 ms, waiting 101.1 ms, cpu share 0.43
+</code></pre>
+<p>The prediction held, and wall time minus CPU time recovers the 100 ms of waiting. That subtraction is a tool on its own: when a real program is slow, it tells you how much of the slowness is waiting (for a disk, a network, a lock), which no faster arithmetic will fix.</p>
+<div class="callout try"><span class="label">Try it</span><p>Change the sleep to <code>time.sleep(0.3)</code> and keep the loop. Work out the new CPU share on paper first, then run it.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>CPU time stays about 75 ms, because the work did not change. Wall time grows to about 75 + 300 plus a little overshoot, say 380 ms. The share falls to about 75 / 380, roughly 0.2. Waiting dilutes the share; it never changes the CPU time.</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>A serving engine is timed with exactly these two subtractions. The client of vLLM's serving benchmark (<code>vllm bench serve</code>) reads <code>time.perf_counter()</code> when it sends a request and again each time a piece of the streamed answer arrives. <strong>Time to first token</strong> (TTFT) is the first arrival minus the send; each <strong>inter-token latency</strong> (ITL) is one arrival minus the one before. Inside the engine, each request carries stamps of the same kind (when it arrived, was scheduled, produced its first and its latest token), and the engine's metrics are differences of them. One warning for Phase 3: work on a GPU runs <em>asynchronously</em>. Python asks the GPU to start, and the call returns at once, while the GPU is still computing. A CPU clock read around that call measures only the asking, unless you first wait for the GPU to finish (in PyTorch, <code>torch.cuda.synchronize()</code>).</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Why is <code>time.time()</code> the wrong clock for measuring how long something took, even though it shows the right time of day?</p><details class="answer"><summary>Answer</summary><p>It is adjustable and not monotonic: the Mac may correct it against a time server between your two readings, so the difference includes the correction and can even be negative. <code>perf_counter_ns</code> never goes backwards and nothing outside your program changes it.</p></details></div>
+<div class="q"><p>A function waits 50 ms for a file to arrive over the network and then computes for 10 ms. Predict its wall time, CPU time and CPU share.</p><details class="answer"><summary>Answer</summary><p>Wall time about 60 ms, CPU time about 10 ms, CPU share about 10 / 60 ≈ 0.17. The waiting shows only on the stopwatch.</p></details></div>
+<div class="q"><p>A benchmark reports a CPU share of 3.2. Is the benchmark broken?</p><details class="answer"><summary>Answer</summary><p>Not necessarily. The CPU clock adds up the time on every core the process used. A share of 3.2 means that, on average, a little over three cores were busy during the call, as when numpy hands a matrix product to a multi-core library.</p></details></div>
+<div class="q"><p><code>get_clock_info("process_time").resolution</code> is 1e-06 on the M5. You time a call that takes about 300 ns with the CPU clock. What readings do you expect?</p><details class="answer"><summary>Answer</summary><p>Mostly 0, sometimes 1,000 ns. The CPU clock moves in whole microseconds, so a call far shorter than a microsecond usually starts and ends within the same step. Only the total over many calls is meaningful.</p></details></div>
+<div class="q"><p>Name three reasons why the same code runs in a different time on two runs, and say for each whether warm-up calls would remove it.</p><details class="answer"><summary>Answer</summary><p>Any three of: other processes taking a core (no), frequency changes (partly: a short burst of work before recording lets the core speed up), being placed on an efficiency core instead of a performance core (no), cold caches (yes, mostly), the garbage collector running mid-call (no), a cache the function itself builds on its first call (yes).</p></details></div>
+<div class="q"><p>What does this print, and why? <code>fs = [lambda: s.upper() for s in ["a", "b"]]</code>, then <code>print(fs[0]())</code>.</p><details class="answer"><summary>Answer</summary><p><code>B</code>. Both lambdas look up <code>s</code> when they are called, after the loop has finished with <code>s</code> equal to <code>"b"</code>. <code>lambda s=s: s.upper()</code> would freeze each value and print <code>A</code>.</p></details></div>
+<div class="q"><p>You want to hand <code>shout("tea")</code> to code that will only ever call <code>fn()</code>, with no arguments. What do you pass?</p><details class="answer"><summary>Answer</summary><p><code>lambda: shout("tea")</code>: a function of no arguments that, when called, calls <code>shout</code> with <code>"tea"</code>. Passing <code>shout("tea")</code> would call it right away and pass its result, a string, which cannot be called.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Show, with five runs, why a single timing cannot be trusted.</li>
+<li>Choose between <code>perf_counter_ns</code>, <code>process_time_ns</code> and <code>time.time</code>, and read <code>get_clock_info</code>.</li>
+<li>Time a piece of code with both clocks at once, in the right order, and read its CPU share.</li>
+<li>Explain a CPU share above 1.</li>
+<li>Name the sources of noise on the M5, and show warm-up on a function that builds a cache.</li>
+<li>Say what reading each clock costs, and what that means for short calls.</li>
+<li>Pass functions as values, wrap a call in a <code>lambda</code>, and avoid the late-binding trap.</li>
+</ul>
+</main>
+</body>
+</html>

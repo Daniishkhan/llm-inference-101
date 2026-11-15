@@ -1,0 +1,54 @@
+# ci.yml: on every push, the checks that must stay green, and a report on every module's tests.
+#
+# checks   ruff (lint and format), the tooling's own tests, and the book check. Must be green.
+# modules  tools/ci-modules.py: each module's tests, in a table on the run's summary page. Red tests
+#          are expected in an open module, so this job fails only when a module listed in
+#          [tool.llm101] done in pyproject.toml has a failing test. Never "fix CI" by touching src/.
+#
+# Drills never run here: a redo empties a function, and that is meant to be red.
+# Locally:  uv run ruff check . && uv run ruff format --check . && uv run pytest tools
+#           uv run python tools/book-check.py && uv run python tools/ci-modules.py
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks (ruff, tooling tests, book)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest tools -q
+      - run: uv run python tools/book-check.py
+
+  modules:
+    name: Modules (red is expected while a module is open)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HYPOTHESIS_PROFILE: ci
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run python tools/ci-modules.py

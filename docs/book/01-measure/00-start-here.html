@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>00 · Start here — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 00</p>
+<h1>Start here</h1>
+<p class="lede">By the end of this chapter you will know what Module 1 builds and why it comes first, what "done" means, how the six days are laid out, how to set up the repository and read its red tests, and what to do when you are stuck. No new Python yet: only shell commands.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>What you build this module, and why every later module depends on it.</li>
+<li>The rule: you type every line.</li>
+<li>"Done when": the checklist that ends the module.</li>
+<li>The six days, and the five blocks of each day.</li>
+<li>First-time setup, and how to read 72 red tests.</li>
+<li>A tour of the repository, and how to read this book.</li>
+<li>How to get unstuck, and a contract with yourself.</li>
+</ul>
+</div>
+
+<h2>What you will build: a benchmark harness</h2>
+<p>Every module after this one asks a question about speed. Is the tokenizer you write in Module 2 fast enough? How much does a KV cache save per token? What does batching do to the slowest request? Each of those questions ends in a number, and every number in this course comes from the program you build this week: a <strong>benchmark harness</strong>, a small tool that calls a function many times, times every call, and summarises what it saw.</p>
+<p>You run it as <code>uv run python -m llm101.bench</code>. When it is finished it does four things:</p>
+<ul>
+<li>It calls a given function, <code>demo()</code>, a thousand times after fifty warm-up calls, and times each call with two clocks: one that keeps running while the program waits, and one that runs only while it computes (<a href="01-two-clocks.html">chapter 1</a>).</li>
+<li>It prints a table: the number of calls, the fastest, the mean, the <strong>p50</strong> (the typical call), the <strong>p95</strong> and <strong>p99</strong> (the slow calls a user notices), the slowest, the calls per second, and the share of the time spent computing (<a href="02-tails-and-percentiles.html">chapter 2</a>).</li>
+<li>Under the table it draws a <strong>histogram</strong>: one line per range of times, with a bar for how many calls fell into it.</li>
+<li>With <code>--profile</code>, it adds the five slowest lines inside <code>demo()</code>: where the time goes, not only how much there is (<a href="05-where-the-time-goes.html">chapter 5</a>).</li>
+</ul>
+<p>You write all of it, including the parts a library would normally do. The percentiles come from your own selection algorithm; numpy is only the tests' oracle, used to check your answers.</p>
+
+<h3>Why measure first</h3>
+<p>A claim about speed without a measurement is a guess. A measurement taken once is an anecdote, because a computer never runs the same code in exactly the same time twice. And "12 ms" means nothing until you know on which machine, on which day, plugged in or not, after how many warm-up calls: <em>a number without its machine and date is not evidence</em> (<code>docs/setup.md</code>). Every later module has a <strong>Measure</strong> step that runs this harness, and every <code>BENCH.md</code> has a row for the machine and the date. So the harness comes first, before any part of an inference engine exists.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A computer is not a stopwatch-perfect machine. Other programs share its cores, its chips speed up and slow down to save power, its memory caches warm up and go cold, and Python itself pauses now and then to tidy memory. Each of those changes how long the same line takes. The only honest answer to "how fast is it?" is a distribution of many timings, summarised, with the conditions written next to it.</p></div>
+
+<h2>The rule: you type every line</h2>
+<p>This course rebuilds one skill above all: writing code with your own hands. So the rule of <code>CLAUDE.md</code> holds everywhere: <strong>you type every solution</strong>. The tutor writes the problems, the tests and the explanations, never the code that solves them.</p>
+<p>For this book, that means three things.</p>
+<ul>
+<li><strong>The book teaches on different problems.</strong> Timing is taught on a kettle and a sum, interpolation on temperatures. Each mechanism is shown complete, one step away from your task, with its own names; the last step is yours.</li>
+<li><strong>Hints come one rung at a time.</strong> <a href="08-build-the-harness.html">Chapter 8</a> has a <strong>hint ladder</strong> per milestone, folded away: four rungs, from "where to look" to "the same mechanism on a different problem". Open one, close the book, try again. There is no fifth rung.</li>
+<li><strong>There is no live tutor.</strong> The tutor panel on each page composes a prompt, with the chapter and milestone filled in, for you to paste into Claude Code, which answers under the same rules: an explanation, a question back, or one rung.</li>
+</ul>
+
+<h2>Done when</h2>
+<p>The module is not done at the end of the week. It is done when every box of the "Done when" list in <a href="../../../modules/01-measure/README.md">the module README</a> is ticked. goal.md puts it in one sentence: <em>its percentiles match numpy's on random data, and its profile points to the right slow line in a test function.</em> In full:</p>
+<ul>
+<li><code>test_done_when_percentiles_match_numpy_on_random_data</code> and the rest of <code>test_percentile.py</code> are green.</li>
+<li><code>test_done_when_it_names_the_slow_line_of_a_test_function</code> and the rest of <code>test_slowest_lines.py</code> are green.</li>
+<li><code>uv run pytest tests/m01</code> is green from end to end.</li>
+<li><code>uv run python -m llm101.bench --profile</code> prints the table, the histogram and the slowest lines.</li>
+<li><code>modules/01-measure/BENCH.md</code> has its Experiment: a prediction written before the run, the measurement, and two sentences on why.</li>
+<li>One commit per milestone, M1 to M7, each through the pre-commit hook.</li>
+<li>A review of the whole module has been run, and its three questions are answered in <code>log.md</code>.</li>
+<li>Five lines in <code>log.md</code>, and <code>"m01"</code> added to <code>done</code> under <code>[tool.llm101]</code> in <code>pyproject.toml</code>.</li>
+</ul>
+
+<h2>The six days</h2>
+<p>The module is planned for six days, Monday to Saturday. Starting on Monday 16 November 2026, day 6 is Saturday 21 November. The days are a guide, not a deadline: if a milestone takes a day longer, it takes a day longer, and <code>docs/methodology.md</code> ("When a module runs long") says what to do about it on Wednesday evening rather than on Saturday night.</p>
+<table>
+<thead><tr><th>Day</th><th>Drill (block 1)</th><th>Read (block 3)</th><th>Build (block 4)</th></tr></thead>
+<tbody>
+<tr><td>1, Mon 16 Nov</td><td>The 20-minute spec ritual, then set 00, the diagnostic: six problems, cold, 2 hours this once</td><td>This chapter, and <a href="01-two-clocks.html">01 Two clocks</a></td><td><strong>M1</strong> <code>time_calls</code> (2 hours today, because the drill block took 2)</td></tr>
+<tr><td>2, Tue 17 Nov</td><td><code>group_anagrams</code></td><td><a href="02-tails-and-percentiles.html">02 Tails and percentiles</a></td><td><strong>M2</strong> <code>histogram</code></td></tr>
+<tr><td>3, Wed 18 Nov</td><td><code>sort_colours</code>, and the redos of set 00 that fall due (+2 days)</td><td><a href="03-partition-and-select.html">03 Partition and select</a></td><td><strong>M3</strong> <code>quickselect</code>, and start <strong>M4</strong> <code>percentile</code></td></tr>
+<tr><td>4, Thu 19 Nov</td><td><code>longest_streak</code>, and the <code>group_anagrams</code> redo</td><td><a href="04-pictures-in-the-terminal.html">04 Pictures in the terminal</a></td><td>Finish <strong>M4</strong>, then <strong>M5</strong>: <code>summarise</code>, <code>render_report</code> and <code>main</code></td></tr>
+<tr><td>5, Fri 20 Nov</td><td>The <code>sort_colours</code> redo</td><td><a href="05-where-the-time-goes.html">05 Where the time goes</a></td><td><strong>M6</strong> <code>slowest_lines</code>, and <code>--profile</code></td></tr>
+<tr><td>6, Sat 21 Nov</td><td>The mock round: say "mock" to Claude Code</td><td><a href="06-boxes-and-arrays.html">06 Boxes and arrays</a></td><td><strong>M7</strong> the Experiment in <code>BENCH.md</code>, and the module review</td></tr>
+</tbody>
+</table>
+<p>The <strong>spec ritual</strong> is twenty minutes with the README: read it, settle each item of its last section, "Decisions for the spec ritual", and freeze it with a commit (<code>Module 1: spec frozen</code>). After that a requirement can only move to "Stretch", in writing, with the date. The <strong>redos</strong> come from <code>ledger.md</code>: two and seven days after a first attempt, you empty the function and type it again, cold. Set 01 is on the module's pattern, <strong>arrays and hashing</strong>, plus the partition step behind quickselect, which is why <code>sort_colours</code> comes on day 3, just before M3. <a href="07-drills.html">Chapter 7</a> teaches each pattern on a different problem first.</p>
+
+<h3>The five blocks of a day</h3>
+<p>A day is eight hours, Monday to Saturday, in five blocks, always in this order (<code>docs/methodology.md</code>, "The day"). Sunday is off, every week.</p>
+<table>
+<thead><tr><th>Block</th><th>Length</th><th>What</th></tr></thead>
+<tbody>
+<tr><td>1. Drill</td><td>1 h</td><td>Redos due in the ledger first, then the day's new problem. Typed by hand, timed, said out loud.</td></tr>
+<tr><td>2. Private</td><td>1 h</td><td>Kept in <code>../interview-prep</code>, outside this repository. It comes second so that it is never the block that gets skipped.</td></tr>
+<tr><td>3. Read</td><td>1 h 30</td><td>The day's chapter of this book, every example typed into <code>scratch/</code> and run.</td></tr>
+<tr><td>4. Build</td><td>3 h</td><td>The day's milestone, red to green. No Claude in this block except to decode an error message.</td></tr>
+<tr><td>5. Measure, review, log</td><td>1 h 30</td><td>Commit, ask for the review, five lines in <code>log.md</code>, five rows of <code>CONCEPTS.md</code> explained out loud.</td></tr>
+</tbody>
+</table>
+<p>Stop the build block on time, even mid-bug: write the bug down in the log and come back tomorrow.</p>
+
+<h2>First-time setup</h2>
+<p>From the repository root, once:</p>
+<pre class="shell"><code>$ cd ~/Desktop/projects/llm-inference-101
+$ uv sync
+$ tools/install-hooks.sh
+</code></pre>
+<p><code>uv sync</code> reads <code>pyproject.toml</code> and <code>uv.lock</code> and creates <code>.venv/</code>: Python 3.13 with exactly this module's packages (numpy and rich; pytest, hypothesis and ruff for development). <code>uv run</code> runs a command inside it, so there is nothing to activate. <code>tools/install-hooks.sh</code> installs a <strong>pre-commit hook</strong>: a script git runs before every commit, which refuses the commit if a file is not formatted or fails the lint check, and says which file and why.</p>
+
+<h3>Read the red</h3>
+<p>Now run the module's tests:</p>
+<pre class="shell"><code>$ uv run pytest tests/m01
+...
+tests/m01/test_histogram.py FFFFFFFFFFF.FF                               [ 18%]
+tests/m01/test_percentile.py FFFFFFFFFFFFFF                              [ 37%]
+tests/m01/test_quickselect.py FFFFFFFFFFF.FFF                            [ 58%]
+tests/m01/test_report.py FFFFF                                           [ 64%]
+tests/m01/test_slowest_lines.py FFFFFFFFF                                [ 77%]
+tests/m01/test_timing.py FFFFFFFFFFFFFFFFF                               [100%]
+...
+========================= 72 failed, 2 passed in 1.75s =========================
+</code></pre>
+<p>Seventy-four tests, and almost all of them red. That is the starting line, not a problem. Each <code>F</code> is a failed test and each <code>.</code> a passing one, file by file. Narrow it down to the first milestone and read one failure properly:</p>
+<pre class="shell"><code>$ uv run pytest tests/m01 -k time_calls -x
+...
+_______________________ test_time_calls_records_n_calls ________________________
+tests/m01/test_timing.py:19: in test_time_calls_records_n_calls
+    timings = time_calls(lambda: None, n=7)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/llm101/bench/timing.py:49: in time_calls
+    raise NotImplementedError("TODO(you)")
+E   NotImplementedError: TODO(you)
+</code></pre>
+<p><code>-k time_calls</code> keeps the tests whose name contains <code>time_calls</code>; <code>-x</code> stops at the first failure. Read from the top: the test <code>test_time_calls_records_n_calls</code>, line 19 of <code>tests/m01/test_timing.py</code>, called <code>time_calls</code> with a function that does nothing and <code>n=7</code>; that went into <code>src/llm101/bench/timing.py</code>, line 49, where the stub raised. The line starting with <code>E</code> is the error itself. It reports no bug: the function has not been written. Almost every red test today fails this way.</p>
+<p>Four fail differently. Two read your source instead of calling it, checking that <code>summarise</code> calls your <code>percentile</code> and that <code>percentile</code> calls your <code>quickselect</code>; they fail with their own message, such as <code>AssertionError: summarise computes p50, p95 and p99 with your percentile()</code>. Two run the whole program, <code>python -m llm101.bench</code>, and fail because it stops with the <code>NotImplementedError</code> traceback.</p>
+
+<h3>Four tests that pass on day one</h3>
+<p>Before you have typed anything, four tests are green. Two are in <code>tests/m01</code> (the <code>.</code> in the histogram and quickselect lines above), and two are in the drills, which you see when you run everything with <code>uv run pytest</code>, which ends <code>4 passed</code>:</p>
+<ul>
+<li><code>test_stats_does_not_import_numpy</code>: <code>stats.py</code> must not import numpy.</li>
+<li><code>test_stats_does_not_sort</code>: <code>stats.py</code> must not call <code>sorted()</code> or <code>.sort()</code>.</li>
+<li><code>test_it_does_not_sort</code>, twice: the drills <code>longest_streak</code> and <code>sort_colours</code> must not sort either.</li>
+</ul>
+<p>Each reads the code and checks for something a correct solution must <em>not</em> do. A stub does nothing, so it never does the forbidden thing. These tests are there to stay green, and they start to mean something the moment you start typing.</p>
+
+<h2>A tour of the repository</h2>
+<table>
+<thead><tr><th>Where</th><th>What it is</th><th>Who writes it</th></tr></thead>
+<tbody>
+<tr><td><code>modules/01-measure/README.md</code></td><td>The spec: program, contract, milestones, "Done when", decisions</td><td>given; you freeze it</td></tr>
+<tr><td><code>src/llm101/bench/</code></td><td>The contract, in five files. Signatures, docstrings and two dataclasses are given; every body says <code>TODO(you)</code></td><td>you</td></tr>
+<tr><td><code>tests/m01/</code></td><td>The tests: the spec, in code</td><td>given</td></tr>
+<tr><td><code>drills/</code></td><td>Sets 00 and 01, each problem a stub beside its test file</td><td>you</td></tr>
+<tr><td><code>modules/01-measure/BENCH.md</code></td><td>The Experiment of M7: prediction, measurement, explanation</td><td>you fill it in</td></tr>
+<tr><td><code>ledger.md</code>, <code>log.md</code></td><td>A row per drill attempt with its redo dates; five lines per session</td><td>you</td></tr>
+<tr><td><code>CONCEPTS.md</code></td><td>Every concept of the course, with a status you keep up to date</td><td>given; you set the status</td></tr>
+<tr><td><code>scratch/</code></td><td>Your folder for the book's examples. Nothing in it is tested or reviewed</td><td>you</td></tr>
+<tr><td><code>docs/book/01-measure/</code></td><td>This book</td><td>given</td></tr>
+</tbody>
+</table>
+<p>Open <code>src/llm101/bench/stats.py</code> now and read its three docstrings. They are long on purpose: <strong>every docstring is part of the spec</strong>, saying what to return, what to raise and what the tests check. When a test fails, the docstring is the second place to look, after the test itself.</p>
+
+<h2>How to read this book</h2>
+<ul>
+<li><strong>Type the examples.</strong> Each program is complete and was run before it was printed. Type it into <code>scratch/</code> under the name shown with it and run it with <code>uv run python scratch/NAME.py</code>. Typing, not pasting: the typos are part of the lesson.</li>
+<li><strong>Compare the output.</strong> Most programs show their exact output. Where a program prints a time, it is one run on the M5: your numbers will differ, the shape should not.</li>
+<li><strong>Answer before you open.</strong> Say or write your answer to a "Try it" or "Check yourself" before you unfold it. A wrong guess you correct is worth more than a right answer you read.</li>
+<li><strong>The callouts</strong> have one job each. <em>First principle</em>: what the machine does. <em>Analogy</em>: a picture, and where it stops being true. <em>Trap</em>: a mistake, where you would make it. <em>Python you need</em>: a construct refreshed. <em>In a real engine</em>: where vLLM or a similar engine does the same.</li>
+</ul>
+
+<h2>How to get unstuck</h2>
+<p>In the build block, in this order (<code>docs/methodology.md</code>, "When you are stuck in the build"):</p>
+<ol>
+<li>Re-read the test that fails and the docstring of the function in the stub. Most of the time the answer is in one of them.</li>
+<li>Reproduce the smallest version of the problem in <code>scratch/</code>: three values instead of a thousand, one call instead of a loop.</li>
+<li>Ask for <strong>one rung</strong> of the hint ladder, in chapter 8 or from Claude Code, and say which rung you are on.</li>
+<li>Only once the tests are green, ask for a review.</li>
+</ol>
+<p>In a drill, the rule is stricter: at the bell, ask for one rung or log a timeout. A timeout has no reveal. The problem stays open and comes back at its +2 day redo.</p>
+
+<h2>A contract with yourself</h2>
+<ul>
+<li><strong>One commit per milestone</strong>, named: <code>M1: time_calls green</code>. Seven such commits are the record a reviewer wants to see.</li>
+<li><strong>The log, every day</strong>: five lines in <code>log.md</code> on what surprised you, in block 5, on the day.</li>
+<li><strong>The prediction before the measurement</strong>, written in <code>BENCH.md</code> before anything runs. Only a written guess can surprise you.</li>
+</ul>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Why is the benchmark harness the first thing you build, before any part of an inference engine?</p><details class="answer"><summary>Answer</summary><p>Because every later module has a Measure step, and every number in it comes from this harness. A tokenizer, a KV cache or a batching scheduler is only "faster" once it has been measured, many calls at a time, with the machine and the date written next to the result.</p></details></div>
+<div class="q"><p>A friend says "my function takes 12 ms". What three things would you ask before you believe it?</p><details class="answer"><summary>Answer</summary><p>How many times it was run (one timing is an anecdote), what was reported (the mean, the median, the slowest?), and on which machine, on which day, under which conditions (power, other programs, warm-up). A number without its machine and date is not evidence.</p></details></div>
+<div class="q"><p>Four tests pass before you have written anything. What do they check, and why do they pass?</p><details class="answer"><summary>Answer</summary><p>They read the source and check what it must not do: <code>stats.py</code> must not import numpy or sort, and <code>longest_streak</code> and <code>sort_colours</code> must not sort. A stub does nothing, so it never breaks those rules. They begin to matter once you start typing.</p></details></div>
+<div class="q"><p>A test fails with <code>E   NotImplementedError: TODO(you)</code>. Is there a bug in your code?</p><details class="answer"><summary>Answer</summary><p>No. The function has not been written yet: its body is still the stub's <code>raise</code>. The traceback above that line shows which test called which function, and on which line.</p></details></div>
+<div class="q"><p>It is day 3 of the module. Which drills belong in block 1, and in which order?</p><details class="answer"><summary>Answer</summary><p>The redos first: the set 00 problems you first solved on day 1, which fall due at +2 days, with your ledger as the list. Then the day's new problem, <code>sort_colours</code>, which also prepares the partition step of M3.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say what the harness does, and why it comes before everything else in the course.</li>
+<li>State the rule, and where hints and the tutor fit around it.</li>
+<li>Read the "Done when" list and know which tests and files close the module.</li>
+<li>Plan the six days and the five blocks of each.</li>
+<li>Set up the repository, read a red test, and explain the four that pass on day one.</li>
+<li>Find your way around the repository, and follow the four steps when you are stuck.</li>
+</ul>
+</main>
+</body>
+</html>

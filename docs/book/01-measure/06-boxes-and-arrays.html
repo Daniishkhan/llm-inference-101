@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>06 · Boxes and arrays — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 06</p>
+<h1>Boxes and arrays</h1>
+<p class="lede">At the end of this chapter you will be able to say how many bytes a Python number really takes, why a list of floats is several times bigger than the numbers in it, and why numpy adds up a million of them dozens of times faster than a Python loop, and when it does not.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: the same mean, two speeds.</li>
+<li>Everything is an object: the box, its header, and <code>sys.getsizeof</code> of numbers, lists and tuples.</li>
+<li>A list holds pointers to boxes; <code>array.array</code> and numpy hold raw numbers in one block.</li>
+<li>What the interpreter does for each element: <code>dis</code>.</li>
+<li>What numpy does instead, and the sum of a million numbers measured three ways.</li>
+<li>A trap: when numpy is slower.</li>
+<li>A worked example: the memory of a list of floats, counted by hand.</li>
+</ul>
+</div>
+
+<h2>The problem: the same mean, two speeds</h2>
+<p>Here are a million temperature readings, and their mean computed twice: once with a Python loop, once with numpy. One run on the M5; yours will differ:</p>
+<pre class="code" data-lang="python" data-file="mean_two_ways.py" data-check="run"><code>import random
+import time
+
+import numpy as np
+
+
+def mean_by_loop(readings):
+    total = 0.0
+    for reading in readings:
+        total = total + reading
+    return total / len(readings)
+
+
+rng = random.Random(7)
+readings = [rng.uniform(15.0, 25.0) for _ in range(1_000_000)]  # a million temperatures
+block = np.array(readings)
+
+start = time.perf_counter_ns()
+loop_mean = mean_by_loop(readings)
+loop_ns = time.perf_counter_ns() - start
+
+start = time.perf_counter_ns()
+numpy_mean = block.mean()
+numpy_ns = time.perf_counter_ns() - start
+
+print(f"Python loop: {loop_mean:.6f} in {loop_ns / 1e6:6.2f} ms")
+print(f"numpy:       {numpy_mean:.6f} in {numpy_ns / 1e6:6.2f} ms")
+print(f"numpy was {loop_ns / numpy_ns:.0f} times faster")
+</code></pre>
+<pre class="output"><code>Python loop: 19.999841 in   6.81 ms
+numpy:       19.999841 in   0.24 ms
+numpy was 29 times faster
+</code></pre>
+<p>The same answer, and numpy got there about 30 times sooner. The processor adds two numbers in well under a nanosecond, but the loop takes almost 7 nanoseconds per reading, so most of its time is not spent adding. This chapter finds out what it is spent on, starting with what a Python number is.</p>
+
+<div class="callout note"><span class="label">Python you need</span><p>numpy is imported as <code>np</code> by convention. <code>np.array(a_list)</code> makes an array from a list, and an array's <code>.sum()</code> and <code>.mean()</code> do what they say. In f-strings, <code>{x:,}</code> puts in thousands separators, <code>{x:.2f}</code> shows two decimals, and <code>{x:&gt;6}</code> right-aligns in six characters.</p></div>
+
+<h2>Everything is an object</h2>
+<p>When you write <code>price = 2.5</code>, Python does not put 2.5 into <code>price</code>. It makes an <strong>object</strong> somewhere in memory, a small box holding the number, and makes <code>price</code> refer to that box. Every value in Python is such a box: an int, a float, <code>None</code>, a function, a list.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>Every Python object starts with a <strong>header</strong> of two parts, 8 bytes each on the M5: a <strong>reference count</strong>, the number of names and containers that currently refer to it (when it falls to zero, the box is freed), and a <strong>pointer to its type</strong>, which tells the interpreter what kind of thing is inside and therefore what <code>+</code> means for it. The value comes after the header. A variable, or a slot in a list, holds only a <strong>pointer</strong>: the 8-byte memory address of a box.</p></div>
+
+<p>You can see both parts of the header from Python:</p>
+<pre class="code" data-lang="python" data-file="header.py" data-check="run"><code>import sys
+
+price = float("2.5")  # a float made while the program runs
+print("type:", type(price))
+print("references:", sys.getrefcount(price))
+
+basket = [price, price, price]
+print("references now:", sys.getrefcount(price))
+print("the same box three times:", basket[0] is basket[1] is basket[2])
+print("size of the box:", sys.getsizeof(price), "bytes")
+print("size of the list:", sys.getsizeof(basket), "bytes")
+</code></pre>
+<pre class="output" data-for="header.py"><code>type: &lt;class 'float'&gt;
+references: 2
+references now: 5
+the same box three times: True
+size of the box: 24 bytes
+size of the list: 80 bytes
+</code></pre>
+<p><code>sys.getrefcount</code> counts its own argument too: the name <code>price</code> plus the argument gives 2. The list adds three references, one per slot, all pointing at the same box. (<code>float("2.5")</code> makes a fresh box at run time; a literal <code>2.5</code> is also held by the compiled code, which adds references of its own.)</p>
+
+<h2>How big is a box?</h2>
+<p><code>sys.getsizeof(x)</code> returns the size of the box <code>x</code> refers to, in bytes:</p>
+<pre class="code" data-lang="python" data-file="sizes.py" data-check="run"><code>import sys
+
+print("ints")
+for number in [0, 1, 255, 2**30, 2**60, 2**100]:
+    print(f"  {number!s:&gt;31}  {sys.getsizeof(number)} bytes")
+
+print("floats")
+for number in [0.0, 1.0, 3.14159, 1e300]:
+    print(f"  {number!s:&gt;31}  {sys.getsizeof(number)} bytes")
+
+print("other boxes")
+print(f"  {'True':&gt;31}  {sys.getsizeof(True)} bytes")
+print(f"  {'None':&gt;31}  {sys.getsizeof(None)} bytes")
+print(f"  {repr('a'):&gt;31}  {sys.getsizeof('a')} bytes")
+</code></pre>
+<pre class="output" data-for="sizes.py"><code>ints
+                                0  28 bytes
+                                1  28 bytes
+                              255  28 bytes
+                       1073741824  32 bytes
+              1152921504606846976  36 bytes
+  1267650600228229401496703205376  40 bytes
+floats
+                              0.0  24 bytes
+                              1.0  24 bytes
+                          3.14159  24 bytes
+                           1e+300  24 bytes
+other boxes
+                             True  28 bytes
+                             None  16 bytes
+                              'a'  42 bytes
+</code></pre>
+<p>Every float is 24 bytes, whatever its value: 8 for the reference count, 8 for the type pointer, and 8 for the number itself, a 64-bit floating-point value (a <strong>double</strong>). So the number is a third of its box. <code>None</code> is 16: a header and nothing else.</p>
+<p>Ints grow. A Python int has no largest value, so it stores its number in 30-bit pieces called <strong>digits</strong>, 4 bytes each, after the header and an 8-byte field holding the digit count and the sign. One digit: 16 + 8 + 4 = 28 bytes. 2<sup>30</sup> needs a second digit, 32 bytes; 2<sup>60</sup> a third. <code>True</code> is 28 because <code>bool</code> is a kind of int, and a string's box also carries its length, a cached hash and flags, so one character costs 42 bytes.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Predict <code>sys.getsizeof(2**90)</code> and <code>sys.getsizeof(-1)</code>, then check them in a Python prompt.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>40 and 28. 2<sup>90</sup> needs 91 bits, which is four 30-bit digits: 28 + 3 × 4 = 40. −1 needs one digit; the sign lives in the size field, not in a digit of its own.</p></details>
+
+<h2>Lists and tuples</h2>
+<p>A list is a box too, and so is a tuple. What does a container of floats cost as it grows?</p>
+<pre class="code" data-lang="python" data-file="containers.py" data-check="run"><code>import sys
+
+print("length   list   tuple")
+for length in [0, 1, 2, 3, 10, 100, 1000]:
+    as_list = [0.5] * length
+    as_tuple = tuple(as_list)
+    print(f"{length:&gt;6} {sys.getsizeof(as_list):&gt;6} {sys.getsizeof(as_tuple):&gt;7}")
+</code></pre>
+<pre class="output" data-for="containers.py"><code>length   list   tuple
+     0     56      40
+     1     64      48
+     2     72      56
+     3     80      64
+    10    136     120
+   100    856     840
+  1000   8056    8040
+</code></pre>
+<p>Each element adds exactly 8 bytes to either: one pointer, not a float. A list of 1,000 floats is 8,056 bytes whatever the floats are, because they are not inside it. The empty list's 56 bytes are its header, its length, a pointer to the separate block where its pointers live, that block's room, and 16 bytes of bookkeeping for the garbage collector. A tuple never grows, so it keeps its pointers inside its own box and needs neither the room field nor the separate block: 40 bytes empty.</p>
+<p>A list that grows one <code>append</code> at a time is different, because a list keeps spare room so that most appends do not have to move the block:</p>
+<pre class="code" data-lang="python" data-file="growing.py" data-check="run"><code>import sys
+
+prices = []
+last = sys.getsizeof(prices)
+print(f"length  0: {last} bytes")
+for length in range(1, 21):
+    prices.append(0.5)
+    size = sys.getsizeof(prices)
+    if size != last:
+        print(f"length {length:&gt;2}: {size} bytes")
+        last = size
+</code></pre>
+<pre class="output" data-for="growing.py"><code>length  0: 56 bytes
+length  1: 88 bytes
+length  5: 120 bytes
+length  9: 184 bytes
+length 17: 248 bytes
+</code></pre>
+<p>The first append makes room for 4 pointers (88 − 56 = 32 bytes), the fifth for 8, the ninth for 16, the seventeenth for 24. Between those lengths, appends are free. A list made by a comprehension grows this way too, so it usually has some unused room at the end; you will see that in a moment. (How a growing array chooses its room, and why it stays cheap on average, is Module 5's subject.)</p>
+
+<h2>A list holds pointers to boxes</h2>
+<p>Put those facts together. A list of a million floats is two things: the list, a block of a million pointers, about 8 MB, and a million separate float boxes of 24 bytes each, another 24 MB, wherever in memory Python found room for them. To read element <code>i</code>, the processor reads the pointer in slot <code>i</code>, then goes to that address, then checks the type in the header, and only then reads the 8 bytes of the number.</p>
+<p>That is the price of flexibility: because every slot is a pointer, a list can hold a float, a string and <code>None</code> side by side. A million floats pay for flexibility they do not use.</p>
+
+<h2>One block of raw numbers: array and numpy</h2>
+<p>The standard library has a container that stores the numbers themselves: <code>array.array</code>. You give it a <strong>type code</strong>, <code>"d"</code> for double, and it keeps each value as 8 raw bytes in one block, with no box and no pointer. numpy's arrays do the same, with a <strong>dtype</strong> (data type) instead of a type code; a numpy array made from Python floats has dtype <code>float64</code>, numpy's name for the same 8-byte double.</p>
+<pre class="code" data-lang="python" data-file="three_shelves.py" data-check="run"><code>import array
+import sys
+
+import numpy as np
+
+prices = [float(i) + 0.25 for i in range(1_000)]
+packed = array.array("d", prices)
+block = np.array(prices)
+
+print("list")
+print("  the list itself:", sys.getsizeof(prices), "bytes")
+print("  one float box:  ", sys.getsizeof(prices[0]), "bytes")
+
+print("array.array('d')")
+print("  itemsize:", packed.itemsize, "bytes")
+print("  getsizeof:", sys.getsizeof(packed), "bytes")
+
+print("numpy")
+print("  dtype:", block.dtype)
+print("  itemsize:", block.itemsize, "bytes")
+print("  nbytes:", block.nbytes, "bytes")
+print("  getsizeof:", sys.getsizeof(block), "bytes")
+print("  first value:", block[0], "of type", type(block[0]).__name__)
+</code></pre>
+<pre class="output" data-for="three_shelves.py"><code>list
+  the list itself: 8856 bytes
+  one float box:   24 bytes
+array.array('d')
+  itemsize: 8 bytes
+  getsizeof: 8080 bytes
+numpy
+  dtype: float64
+  itemsize: 8 bytes
+  nbytes: 8000 bytes
+  getsizeof: 8112 bytes
+  first value: 0.25 of type float64
+</code></pre>
+<p><code>itemsize</code> is the bytes per element, and <code>nbytes</code> the size of numpy's data block: 1,000 × 8 = 8,000. <code>sys.getsizeof</code> of either array includes its data, plus a header of 80 bytes for <code>array.array</code> and 112 for numpy (which records the dtype, the shape and the step between elements). The list reports 8,856 bytes, more than either array, and that is only its pointers and spare room: the thousand float boxes are not counted.</p>
+<p>Notice the last line. <code>block[0]</code> gives a <code>float64</code>, which is a box: numpy has to make one each time you take a single element out into Python, because Python can only work with boxes. Keep that in mind for the trap below.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A list of floats is a warehouse where every number is packed in its own cardboard box, labelled with what it is, and stored wherever there was space; the list is a clipboard of shelf locations. To add them up, a worker walks to each location, opens the box, reads the label, and reads the number. A numpy array is a pallet of identical bricks, packed tight in one place, with one label for the whole pallet; a forklift takes it in one go. <em>Where it breaks:</em> a forklift moves the whole pallet at once, but the processor still adds the numbers in turn, a few at a time. What it gains is that each step is tiny and the next number is always right beside the last, so nothing is spent walking and opening. And a pallet holds one kind of brick only: a numpy array of <code>float64</code> cannot hold a string.</p></div>
+
+<h2>What runs for each element</h2>
+<p>Python does not run your source code directly. It first compiles each function to <strong>bytecode</strong>, a list of simple instructions for the interpreter, and the interpreter is a loop in C that reads one instruction, does it, and moves to the next. The <code>dis</code> module (short for "disassemble") prints a function's bytecode:</p>
+<pre class="code" data-lang="python" data-file="bytecode.py" data-check="run"><code>import dis
+
+
+def add_up(prices):
+    total = 0.0
+    for price in prices:
+        total = total + price
+    return total
+
+
+dis.dis(add_up)
+</code></pre>
+<pre class="output" data-for="bytecode.py"><code>  4           RESUME                   0
+
+  5           LOAD_CONST               1 (0.0)
+              STORE_FAST               1 (total)
+
+  6           LOAD_FAST                0 (prices)
+              GET_ITER
+      L1:     FOR_ITER                 7 (to L2)
+              STORE_FAST               2 (price)
+
+  7           LOAD_FAST_LOAD_FAST     18 (total, price)
+              BINARY_OP                0 (+)
+              STORE_FAST               1 (total)
+              JUMP_BACKWARD            9 (to L1)
+
+  6   L2:     END_FOR
+              POP_TOP
+
+  8           LOAD_FAST                1 (total)
+              RETURN_VALUE
+</code></pre>
+<p>The numbers on the left are source lines. The loop is the five instructions from <code>L1</code> to <code>JUMP_BACKWARD</code>, and they run once for every element:</p>
+<ul>
+<li><code>FOR_ITER</code> asks the list's iterator for the next pointer, and adds one to that box's reference count; when there is none left, it jumps to <code>L2</code>.</li>
+<li><code>STORE_FAST</code> puts it in the local variable <code>price</code>.</li>
+<li><code>LOAD_FAST_LOAD_FAST</code> pushes <code>total</code> and <code>price</code> onto the interpreter's stack, two pointers.</li>
+<li><code>BINARY_OP (+)</code> looks at the type of each box, finds the addition for floats, reads both doubles, adds them, and puts the result in a new float box, then drops its references to the two operands.</li>
+<li><code>STORE_FAST</code> makes <code>total</code> refer to the new box; the old total's count falls to zero and it is freed.</li>
+<li><code>JUMP_BACKWARD</code> goes round again.</li>
+</ul>
+<p>One floating-point addition, wrapped in five instructions, each one a trip round the interpreter's loop, plus reference counts going up and down and a box made and freed per element. Python keeps a small stock of spare float boxes so that making one is quick, but it is still work that the addition itself does not need.</p>
+<p>Since Python 3.11 the interpreter also rewrites instructions it has seen used with the same types into faster, specialised versions. Ask <code>dis</code> for the adaptive form after a few calls:</p>
+<pre class="code" data-lang="python" data-file="bytecode_warm.py" data-check="run"><code>import dis
+
+
+def add_up(prices):
+    total = 0.0
+    for price in prices:
+        total = total + price
+    return total
+
+
+for _ in range(5):
+    add_up([0.5] * 100)  # let the interpreter see the types first
+
+dis.dis(add_up, adaptive=True)
+</code></pre>
+<pre class="output" data-for="bytecode_warm.py"><code>  4           RESUME_CHECK             0
+
+  5           LOAD_CONST               1 (0.0)
+              STORE_FAST               1 (total)
+
+  6           LOAD_FAST                0 (prices)
+              GET_ITER
+      L1:     FOR_ITER_LIST            7 (to L2)
+              STORE_FAST               2 (price)
+
+  7           LOAD_FAST_LOAD_FAST     18 (total, price)
+              BINARY_OP_ADD_FLOAT      0 (+)
+              STORE_FAST               1 (total)
+              JUMP_BACKWARD            9 (to L1)
+
+  6   L2:     END_FOR
+              POP_TOP
+
+  8           LOAD_FAST                1 (total)
+              RETURN_VALUE
+</code></pre>
+<p><code>FOR_ITER_LIST</code> knows it is walking a list, and <code>BINARY_OP_ADD_FLOAT</code> knows both sides are floats, so they skip some checks. That is part of why this loop costs about 7 ns per number and not much more. But the shape is the same: five instructions and a new box per element.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Change the loop's body to <code>total += price</code> and run <code>dis.dis</code> again. Predict whether the loop gets shorter.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>It does not. The only change is that <code>BINARY_OP 0 (+)</code> becomes <code>BINARY_OP 13 (+=)</code>: the same five instructions per element. <code>+=</code> on a float still makes a new box, because a float cannot be changed in place.</p></details>
+
+<h2>What numpy does instead</h2>
+<p><code>block.sum()</code> is one call from Python into numpy's C code. From there, numpy knows three things the interpreter could not: every element is a <code>float64</code>, every element is 8 bytes after the previous one, and there are exactly <code>block.size</code> of them. So it runs one tight loop in C, over <strong>contiguous</strong> memory (one unbroken block), with no type check per element, no reference counts and no new boxes.</p>
+<p>Contiguous memory matters on its own. The processor does not fetch one number at a time from main memory; it fetches 64 or 128 bytes at a time into its <strong>cache</strong>, a small, fast memory next to the cores, and when it sees you walking forward through memory it starts fetching the next piece before you ask. Boxes reached through pointers, wherever they happen to be, get less of that help; one 8 MB block read front to back gets all of it. On top of that, many of numpy's inner loops use <strong>SIMD</strong> instructions (single instruction, multiple data), which do the same operation on several numbers at once; on the M5, the Arm NEON instructions handle two <code>float64</code> values per instruction.</p>
+
+<h2>The sum of a million numbers, three ways</h2>
+<p>Now measure it. The same million prices, summed by a Python <code>for</code> loop, by the built-in <code>sum</code>, and by numpy's <code>.sum()</code>, each timed once with <code>time.perf_counter_ns</code>, as in <a href="01-two-clocks.html">chapter 1</a>. The program also times how long it takes to make the numpy array from the list. One run on the M5; yours will differ:</p>
+<pre class="code" data-lang="python" data-file="sum_three_ways.py" data-check="run"><code>import random
+import time
+
+import numpy as np
+
+
+def add_up(prices):
+    total = 0.0
+    for price in prices:
+        total = total + price
+    return total
+
+
+rng = random.Random(7)
+prices = [rng.uniform(0.5, 20.0) for _ in range(1_000_000)]
+count = len(prices)
+
+start = time.perf_counter_ns()
+block = np.array(prices)
+convert_ns = time.perf_counter_ns() - start
+
+start = time.perf_counter_ns()
+by_loop = add_up(prices)
+loop_ns = time.perf_counter_ns() - start
+
+start = time.perf_counter_ns()
+by_builtin = sum(prices)
+builtin_ns = time.perf_counter_ns() - start
+
+start = time.perf_counter_ns()
+by_numpy = block.sum()
+numpy_ns = time.perf_counter_ns() - start
+
+print(f"for loop:      {by_loop:,.4f}  {loop_ns / 1e6:6.2f} ms  {loop_ns / count:5.2f} ns per number")
+print(f"built-in sum:  {by_builtin:,.4f}  {builtin_ns / 1e6:6.2f} ms  {builtin_ns / count:5.2f} ns per number")
+print(f"numpy .sum():  {by_numpy:,.4f}  {numpy_ns / 1e6:6.2f} ms  {numpy_ns / count:5.2f} ns per number")
+print(f"making the numpy array from the list: {convert_ns / 1e6:.2f} ms")
+</code></pre>
+<pre class="output"><code>for loop:      10,249,690.1828    6.69 ms   6.69 ns per number
+built-in sum:  10,249,690.1828    1.74 ms   1.74 ns per number
+numpy .sum():  10,249,690.1828    0.25 ms   0.25 ns per number
+making the numpy array from the list: 13.57 ms
+</code></pre>
+<p>Three speeds, and each step has a reason:</p>
+<ul>
+<li>The <code>for</code> loop, about 6.7 ns per number: the five bytecode instructions, a box made and freed, every time.</li>
+<li>The built-in <code>sum</code>, about four times faster: its loop is written in C, so there is no bytecode per element and no new box for each partial total. But it still follows every pointer to a box and checks every box's type, because a list could hold anything.</li>
+<li>numpy, about 0.25 ns per number, some 25 times faster than the loop: no pointers, no boxes, no checks, contiguous memory. It read 8 MB in a quarter of a millisecond, about 32 GB per second.</li>
+</ul>
+<p>The last line is the one people forget. Making the numpy array from the list took 13.6 ms, longer than all three sums together, because it has to visit every box once to copy its number out. numpy pays off when the numbers live in an array from the start, or are converted once and then used many times.</p>
+<p>The totals agree to four decimals here. They need not agree in the last digit: numpy adds in a different order (it splits the array into pieces and adds the pieces' totals), and floating-point addition gives slightly different results in different orders, the surprise from <a href="02-tails-and-percentiles.html">chapter 2</a>.</p>
+<p>One more thing to keep in mind when you time Python loops: keep them inside a function, as here. At the top level of a file, every variable is looked up by name in a dictionary instead of in a numbered slot (<code>LOAD_NAME</code> and <code>STORE_NAME</code> instead of <code>LOAD_FAST</code> and <code>STORE_FAST</code>). On the M5 the same loop at the top level of a file ran two to three times as slowly.</p>
+
+<h2>Trap: when numpy is slower</h2>
+<p>numpy is fast at one thing: a single call that does a lot of work in C. Take that away and it loses. Two ways to take it away, measured. The first sums ten numbers a hundred thousand times; the second runs the Python loop from above over the numpy array instead of over the list. One run on the M5; yours will differ:</p>
+<pre class="code" data-lang="python" data-file="numpy_traps.py" data-check="run"><code>import random
+import time
+
+import numpy as np
+
+
+def add_up(prices):
+    total = 0.0
+    for price in prices:
+        total = total + price
+    return total
+
+
+# 1. A tiny array: ten numbers, summed 100,000 times each way.
+small_list = [0.5 * i for i in range(10)]
+small_block = np.array(small_list)
+repeats = 100_000
+
+start = time.perf_counter_ns()
+for _ in range(repeats):
+    sum(small_list)
+list_ns = (time.perf_counter_ns() - start) / repeats
+
+start = time.perf_counter_ns()
+for _ in range(repeats):
+    small_block.sum()
+block_ns = (time.perf_counter_ns() - start) / repeats
+
+print(f"10 numbers, built-in sum on a list: {list_ns:6.0f} ns per sum")
+print(f"10 numbers, numpy .sum():           {block_ns:6.0f} ns per sum")
+
+# 2. A Python loop over a numpy array: one loop over a million numbers each way.
+rng = random.Random(7)
+prices = [rng.uniform(0.5, 20.0) for _ in range(1_000_000)]
+block = np.array(prices)
+
+start = time.perf_counter_ns()
+add_up(prices)
+over_list_ms = (time.perf_counter_ns() - start) / 1e6
+
+start = time.perf_counter_ns()
+add_up(block)
+over_block_ms = (time.perf_counter_ns() - start) / 1e6
+
+print(f"Python loop over the list:          {over_list_ms:6.1f} ms")
+print(f"Python loop over the numpy array:   {over_block_ms:6.1f} ms")
+print("one element of the array is a", type(block[0]).__name__)
+</code></pre>
+<pre class="output"><code>10 numbers, built-in sum on a list:     60 ns per sum
+10 numbers, numpy .sum():              218 ns per sum
+Python loop over the list:             6.8 ms
+Python loop over the numpy array:     26.9 ms
+one element of the array is a float64
+</code></pre>
+<p>For ten numbers, numpy was more than three times slower than the built-in <code>sum</code> (both figures include the cost of the timing loop itself, which is the same for both). A call into numpy has a fixed cost, a couple of hundred nanoseconds to check its arguments, choose its C loop and make a result box, and ten additions are not enough work to pay it back.</p>
+<p>The Python loop over the numpy array was about four times slower than the same loop over the list. Every step of the loop takes one element out of the array into Python, and as you saw above, that makes a new <code>float64</code> box each time. You get the slowness of a Python loop and the cost of making a million boxes, and none of numpy's speed.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>numpy is fast only when the loop runs inside numpy. For a handful of numbers, plain Python is often faster. And a Python <code>for</code> loop over a numpy array, element by element, is slower than the same loop over a list. If you find yourself writing <code>for x in array</code>, look for the numpy operation that does the whole job in one call.</p></div>
+
+<h2>Worked example: counting the bytes by hand</h2>
+<p><code>sys.getsizeof</code> of a list does not include the boxes its slots point to, so to know what a list of floats really costs you add them up yourself: the list, plus each float. Here it is for a thousand prices, against a numpy array of the same numbers:</p>
+<pre class="code" data-lang="python" data-file="by_hand.py" data-check="run"><code>import sys
+
+import numpy as np
+
+prices = [float(i) + 0.25 for i in range(1_000)]
+
+list_bytes = sys.getsizeof(prices)
+box_bytes = 0
+for price in prices:
+    box_bytes += sys.getsizeof(price)
+total = list_bytes + box_bytes
+
+block = np.array(prices)
+
+print(f"list:        {list_bytes:&gt;6,} bytes")
+print(f"float boxes: {box_bytes:&gt;6,} bytes")
+print(f"together:    {total:&gt;6,} bytes, {total / len(prices):.1f} per number")
+print(f"numpy data:  {block.nbytes:&gt;6,} bytes, {block.nbytes / block.size:.1f} per number")
+print(f"ratio:       {total / block.nbytes:.1f} times")
+</code></pre>
+<pre class="output" data-for="by_hand.py"><code>list:         8,856 bytes
+float boxes: 24,000 bytes
+together:    32,856 bytes, 32.9 per number
+numpy data:   8,000 bytes, 8.0 per number
+ratio:       4.1 times
+</code></pre>
+<p>Almost 33 bytes per number as a list, against 8 in the array: about four times as much memory to hold the same thousand numbers. Of each 33, 8 is the number itself, 8 the pointer in the list, 16 the box's header, and about 1 the list's spare room. The ratio does not depend on the length, so it carries over to a million numbers.</p>
+<p>This count is only right because every float in the list is a different box. A list can hold the same box many times, and then counting "each element's box" counts one box again and again.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Change <code>prices</code> in <code>by_hand.py</code> to <code>[0.5] * 1_000</code>. What does the program report for the float boxes, and how much memory do they really take?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>It reports 24,000 bytes of float boxes, but <code>[0.5] * 1_000</code> makes a thousand pointers to one box: the real cost is 24 bytes. (And the list is 8,056 bytes, not 8,856, because <code>*</code> makes a list of exactly the right size, with no spare room.) To count a list's boxes truthfully you must count each distinct box once, which is the module's first stretch goal.</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>The biggest thing an inference engine keeps in memory, after the model's weights, is the <strong>KV cache</strong>: for every token of every request, the keys and values that each layer's attention computed. vLLM does not keep it as Python numbers. It allocates it up front as a few large tensors on the GPU, carved into fixed-size blocks (the subject of Module 8). Module 5 counts its size per token with the formula 2 × layers × KV heads × head size × bytes per value, and that formula counts exactly the raw bytes you met here, with no header and no pointer. For a model shaped like Llama 3.1 8B (32 layers, 8 KV heads, head size 128) in bf16 (2 bytes per value), that is 2 × 32 × 8 × 128 × 2 = 131,072 bytes, 128 KiB per token. Held as Python floats in lists, the same 65,536 values would take about 32 bytes each, 2 MiB per token, sixteen times as much. Module 14's quantisation goes the other way: it makes each value smaller still, one byte or half a byte.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Why is <code>sys.getsizeof(1.0)</code> 24 and not 8?</p><details class="answer"><summary>Answer</summary><p>The 8 bytes of the double come after a 16-byte header: an 8-byte reference count and an 8-byte pointer to the type <code>float</code>.</p></details></div>
+<div class="q"><p>Estimate the memory of a list of a million different floats, list and boxes together.</p><details class="answer"><summary>Answer</summary><p>About 32 MB: 8 MB of pointers in the list (a little more if it was built by appending) and 24 MB of float boxes. A numpy <code>float64</code> array of the same numbers holds 8 MB of data.</p></details></div>
+<div class="q"><p>The built-in <code>sum</code> was about four times faster than the <code>for</code> loop and about seven times slower than numpy. Give one reason for each gap.</p><details class="answer"><summary>Answer</summary><p>Against the loop: <code>sum</code>'s loop is in C, so there is no bytecode per element and no new box for each partial total. Against numpy: <code>sum</code> still follows a pointer to a separate box and checks its type for every element, while numpy reads raw doubles from one contiguous block.</p></details></div>
+<div class="q"><p>A colleague converts each incoming batch of 10 latencies to a numpy array to sum it. Why might that be slower than <code>sum()</code>?</p><details class="answer"><summary>Answer</summary><p>Each numpy call has a fixed cost of a couple of hundred nanoseconds, and converting a list to an array has to visit every box. For ten numbers that is more than the additions themselves; the built-in <code>sum</code> was about three times faster here.</p></details></div>
+<div class="q"><p>Why is <code>for x in block: total = total + x</code> slower when <code>block</code> is a numpy array than when it is a list?</p><details class="answer"><summary>Answer</summary><p>Taking each element out of the array into Python makes a new <code>numpy.float64</code> box, so the loop pays for a million new boxes on top of its bytecode. A list already has its boxes.</p></details></div>
+<div class="q"><p>Work out the KV cache per token for a model with 28 layers, 4 KV heads, head size 128, in bf16.</p><details class="answer"><summary>Answer</summary><p>2 × 28 × 4 × 128 × 2 = 57,344 bytes, 56 KiB per token. A thousand-token conversation takes about 57 MB.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Explain why the same sum runs at very different speeds in a Python loop and in numpy.</li>
+<li>Describe a Python object's header, and predict <code>sys.getsizeof</code> for ints, floats, lists and tuples.</li>
+<li>Say why a list of floats is a list of pointers plus separate boxes, and measure an <code>array.array</code> or numpy array with <code>itemsize</code> and <code>nbytes</code>.</li>
+<li>Read the bytecode of a small loop with <code>dis</code> and name what runs for each element.</li>
+<li>Explain what numpy does instead (one loop in C, contiguous memory, often SIMD), and time it against a loop and <code>sum</code>.</li>
+<li>Spot the cases where numpy is slower: tiny arrays and element-by-element loops.</li>
+<li>Count the memory of a list of floats by hand and compare it with an array.</li>
+</ul>
+</main>
+</body>
+</html>

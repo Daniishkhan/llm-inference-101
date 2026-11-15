@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02 · Tails and percentiles — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 02</p>
+<h1>Tails and percentiles</h1>
+<p class="lede">At the end of this chapter you will be able to say why the mean is the wrong summary of a set of timings, read a percentile off a list by hand, interpolate between two values, explain why two libraries give two different p90s, read a histogram and the rule for its edges, and let hypothesis hunt for the input that breaks a claim.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: the mean hides the slow calls.</li>
+<li>Why the tail matters: one page, a hundred calls.</li>
+<li>Percentiles by rank, and reading between two values.</li>
+<li>Two libraries, two answers: why a percentile needs a written definition.</li>
+<li>Histograms: bins, edges, the right-edge rule, and floating-point surprises.</li>
+<li>Property tests with hypothesis: <code>@given</code>, shrinking, and how to read a failure.</li>
+</ul>
+</div>
+
+<h2>The problem: the mean hides the slow calls</h2>
+<p>Suppose you timed a hundred calls of some function. Ninety-eight took 2 ms each. Two took half a second, because something else on the machine got in the way. Summarise them the way most people would, with the mean, and see what it says:</p>
+<pre class="code" data-lang="python" data-file="mean_hides.py" data-check="run"><code>import statistics
+
+import numpy as np
+
+times_ms = [2.0] * 98 + [500.0] * 2  # 98 quick calls and two slow ones
+
+print(f"calls:  {len(times_ms)}")
+print(f"mean:   {statistics.mean(times_ms):.2f} ms")
+print(f"median: {statistics.median(times_ms):.2f} ms")
+print(f"p99:    {float(np.percentile(times_ms, 99)):.2f} ms")
+print(f"max:    {max(times_ms):.2f} ms")
+</code></pre>
+<pre class="output" data-for="mean_hides.py"><code>calls:  100
+mean:   11.96 ms
+median: 2.00 ms
+p99:    500.00 ms
+max:    500.00 ms
+</code></pre>
+<p>The <strong>mean</strong> (add everything up, divide by how many) says 11.96 ms, and not one call took anything like it: six times too slow for the typical call, forty times too fast for the slow ones. The <strong>median</strong>, the middle value when the times are in order, says 2 ms: the truth about a typical call, and blind to the slow ones (they could take a minute each and it would still say 2 ms). The <strong>p99</strong>, the 99th percentile, the time that 99% of calls stay under, says 500 ms: it looks straight at the slow end. The median and the p99 together describe these timings honestly; the mean described nothing that happened.</p>
+<p>The slow end of a distribution is its <strong>tail</strong>: draw how many calls took each time, and the rare slow ones trail off to the right. Your harness reports p50 (the median), p95 and p99.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A queue at a café. Most mornings you wait a minute or two. Now and then a person in front of you orders six different drinks for the office, and you wait ten. If someone asked you "how long is the wait?", the honest answer is not the average (which might be three minutes, a wait you almost never have), but "usually a minute or two, and about one morning in twenty it is ten". That is a median and a p95. <em>Where it breaks:</em> at the café you can see why the wait was long. A program's slow calls often have no visible cause (another process took the core, the garbage collector ran), and with several cores they can come in bursts or not at all.</p></div>
+
+<h2>Why the tail matters</h2>
+<p>One slow call in a hundred sounds rare. It is not, once calls come in groups. A web page, or one answer from a chatbot, is often made of many calls: to load parts of the page, or to produce token after token. The user waits for the <em>slowest</em> of them. If each call is fast 99 times in 100, independently, then all of them are fast with probability 0.99 multiplied by itself once per call:</p>
+<pre class="code" data-lang="python" data-file="page_of_calls.py" data-check="run"><code>for calls in [1, 10, 50, 100, 300]:
+    all_fast = 0.99**calls  # each call is fast 99 times in 100
+    print(f"{calls:4} calls: all fast {all_fast:6.1%}   at least one slow {1 - all_fast:6.1%}")
+</code></pre>
+<pre class="output" data-for="page_of_calls.py"><code>   1 calls: all fast  99.0%   at least one slow   1.0%
+  10 calls: all fast  90.4%   at least one slow   9.6%
+  50 calls: all fast  60.5%   at least one slow  39.5%
+ 100 calls: all fast  36.6%   at least one slow  63.4%
+ 300 calls: all fast   4.9%   at least one slow  95.1%
+</code></pre>
+<p>With a hundred calls, 1 − 0.99<sup>100</sup> is about 63%: most page loads hit at least one call from the slowest 1%. The tail of one call is the typical experience of a request made of many, which is why services set targets on the p95 or p99, not the mean. (<code>:6.1%</code> multiplies by 100 and prints one decimal and a percent sign, in six characters.)</p>
+
+<h2>Percentiles by rank</h2>
+<p>To define a percentile, line things up. Here are the heights of eleven children in a class, in centimetres, as they were written down, and then in order from shortest to tallest, with each child's <strong>position</strong> in the line, counting from 0:</p>
+<table>
+<thead><tr><th>Position</th><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td></tr></thead>
+<tbody><tr><th>Height (cm)</th><td>128</td><td>131</td><td>133</td><td>134</td><td>136</td><td>137</td><td>139</td><td>140</td><td>142</td><td>145</td><td>151</td></tr></tbody>
+</table>
+<p>(As written down: 137, 151, 128, 140, 134, 145, 131, 139, 136, 142, 133.)</p>
+<div class="callout principle"><span class="label">First principle</span><p>A percentile is a <em>position</em> in the line, turned into a value. The shortest child stands at position 0 and the tallest at position n − 1, which is 10 here. The q-th percentile stands q percent of the way along the line, at position h = (n − 1) × q / 100. Then you read the height of whoever stands there. Nothing is averaged over the whole class; one or two children, at one place in the line, give the answer.</p></div>
+<p>Work some out:</p>
+<ul>
+<li><strong>p50</strong>: h = 10 × 50 / 100 = 5. The child at position 5 is 137 cm. That is the median: five children shorter, five taller.</li>
+<li><strong>p90</strong>: h = 10 × 0.90 = 9. Position 9: 145 cm.</li>
+<li><strong>p0</strong> is position 0, the shortest, 128 cm; <strong>p100</strong> is position 10, the tallest, 151 cm.</li>
+<li><strong>p25</strong>: h = 10 × 0.25 = 2.5. There is no child at position two and a half. It lies between the child at position 2 (133 cm) and the one at position 3 (134 cm), halfway.</li>
+</ul>
+<p>The last case is the interesting one, and it needs one more idea.</p>
+
+<h2>Reading between two readings</h2>
+<p>A weather station writes down the temperature once an hour. At 14:00 it read 18.0 °C and at 15:00 it read 21.0 °C. What was it at 14:40?</p>
+<p>Nobody measured it. But if the temperature rose steadily through the hour, which is the simplest guess, then at 14:40 it had gone 40 minutes out of 60 of the way, two thirds, from 18 to 21. The rise over the hour is 3 degrees, two thirds of 3 is 2, so the estimate is 18 + 2 = 20.0 °C. That is <strong>linear interpolation</strong>: draw a straight line between two known values and read a point off it. In words: start at the first value, and add the fraction of the way you have gone, times the gap between the two values.</p>
+<pre class="code" data-lang="python" data-file="temperature_between.py" data-check="run"><code>two_pm = 18.0  # °C, read at 14:00
+three_pm = 21.0  # °C, read at 15:00
+
+for minutes_past in [0, 15, 30, 40, 60]:
+    fraction = minutes_past / 60  # how far along the hour, from 0 to 1
+    estimate = two_pm + fraction * (three_pm - two_pm)
+    clock = f"{14 + minutes_past // 60}:{minutes_past % 60:02d}"
+    print(f"{clock}  {fraction:.3f} of the way  ->  {estimate:.2f} °C")
+</code></pre>
+<pre class="output" data-for="temperature_between.py"><code>14:00  0.000 of the way  -&gt;  18.00 °C
+14:15  0.250 of the way  -&gt;  18.75 °C
+14:30  0.500 of the way  -&gt;  19.50 °C
+14:40  0.667 of the way  -&gt;  20.00 °C
+15:00  1.000 of the way  -&gt;  21.00 °C
+</code></pre>
+<p>A fraction of 0 gives exactly the first reading, 1 exactly the second. And the formula does not care which value is bigger: had the temperature fallen from 21 to 18, the gap would be −3, and 14:40 would be 19.0 °C.</p>
+<p>Back to the class. p25 sat at position 2.5, between 133 cm at position 2 and 134 cm at position 3. The fraction of the way is the part of h after the whole number: 0.5. So p25 is 133 + 0.5 × (134 − 133) = 133.5 cm. And p95: h = 10 × 0.95 = 9.5, halfway from 145 cm to 151 cm, so 145 + 0.5 × 6 = 148 cm. This is the definition that numpy uses by default, called <strong>"linear"</strong>, and it is the one written out in the docstring of <code>percentile</code> in <code>src/llm101/bench/stats.py</code>.</p>
+<p>numpy is a fine tool for <em>looking</em> at data, and for checking work done by hand:</p>
+<pre class="code" data-lang="python" data-file="heights.py" data-check="run"><code>import numpy as np
+
+heights_cm = [137, 151, 128, 140, 134, 145, 131, 139, 136, 142, 133]
+
+for q in [0, 25, 50, 90, 95, 100]:
+    print(f"p{q:&lt;3} {float(np.percentile(heights_cm, q)):6.1f} cm")
+</code></pre>
+<pre class="output" data-for="heights.py"><code>p0    128.0 cm
+p25   133.5 cm
+p50   137.0 cm
+p90   145.0 cm
+p95   148.0 cm
+p100  151.0 cm
+</code></pre>
+<p>numpy agrees with every number above, from the heights as written down. (<code>float(...)</code> turns numpy's number type into a plain Python float; <code>{q:&lt;3}</code> left-aligns <code>q</code> in three characters.)</p>
+<div class="callout try"><span class="label">Try it</span><p>Go back to the timings of the first section, but with <em>one</em> slow call: <code>[2.0] * 99 + [500.0]</code>. Work out the p99 by hand, with positions and interpolation, before you change <code>mean_hides.py</code> and run it. Then compare it with the mean.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>n = 100, so h = 99 × 0.99 = 98.01. Position 98 holds 2.0 and position 99 holds 500.0, and h is 0.01 of the way from one to the other: 2 + 0.01 × 498 = 6.98 ms. The mean is also 6.98 ms: with exactly one slow call in a hundred, the two formulas happen to do the same arithmetic. numpy prints <code>6.980000000002548</code>, a floating-point rounding you will meet below. The lesson: with a hundred calls, the p99 barely sees a single slow one. To measure a tail, you need many more calls than the tail is rare.</p></details>
+
+<h2>A worked example: twenty commutes, two libraries</h2>
+<p>You wrote down your commute in minutes for twenty working days. Python's standard library has <code>statistics.quantiles</code>, which cuts a set of values into <code>n</code> groups of equal size and returns the <code>n − 1</code> cut points. With <code>n=10</code>, those are p10, p20, up to p90. Ask numpy for the same nine percentiles and compare:</p>
+<pre class="code" data-lang="python" data-file="commute.py" data-check="run"><code>import statistics
+
+import numpy as np
+
+commute_min = [22, 25, 24, 31, 23, 26, 24, 58, 25, 27, 23, 29, 24, 26, 41, 25, 24, 28, 23, 26]
+
+by_numpy = np.percentile(commute_min, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+exclusive = statistics.quantiles(commute_min, n=10)
+inclusive = statistics.quantiles(commute_min, n=10, method="inclusive")
+
+print("numpy, linear:          ", [round(float(v), 1) for v in by_numpy])
+print("quantiles, exclusive:   ", [round(v, 1) for v in exclusive])
+print("quantiles, inclusive:   ", [round(v, 1) for v in inclusive])
+</code></pre>
+<pre class="output" data-for="commute.py"><code>numpy, linear:           [23.0, 23.8, 24.0, 24.6, 25.0, 26.0, 26.3, 28.2, 32.0]
+quantiles, exclusive:    [23.0, 23.2, 24.0, 24.4, 25.0, 26.0, 26.7, 28.8, 40.0]
+quantiles, inclusive:    [23.0, 23.8, 24.0, 24.6, 25.0, 26.0, 26.3, 28.2, 32.0]
+</code></pre>
+<p>Look at the last numbers: numpy says your p90 commute is 32 minutes, <code>statistics.quantiles</code> by default says 40. Same data, same question, 25% apart, and neither is wrong: they use different definitions, both in common use.</p>
+<p>In order, the twenty commutes are 22, 23, 23, 23, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 29, 31, 41, 58. numpy's "linear" method puts p90 at position h = 19 × 0.9 = 17.1, counting from 0: one tenth of the way from 31 (position 17) to 41 (position 18), so 32.0. The <strong>"exclusive"</strong> method, the default of <code>statistics.quantiles</code>, imagines n + 1 = 21 gaps instead of n − 1 = 19, and puts p90 at 0.9 × 21 = 18.9, counting from 1: nine tenths of the way from the 18th value (31) to the 19th (41), so 40.0. It treats the data as a sample and assumes the true tail reaches beyond the largest value seen. The "inclusive" method is numpy's linear one, so the third line matches the first. The methods agree in the middle and part ways in the tails, exactly where you care; the gap shrinks with thousands of timings but never quite goes away.</p>
+<div class="callout trap"><span class="label">Trap</span><p>"p99" is not one number until you say which definition. When you compare your p99 with someone else's, or with a library's, check the method first. Your harness uses numpy's linear method, written down in the docstring of <code>percentile</code>, because the tests compare your answers with numpy's. If you check your work with <code>statistics.quantiles</code>, pass <code>method="inclusive"</code>.</p></div>
+
+<h2>Histograms: the shape of a distribution</h2>
+<p>A percentile answers one question: how slow is the slowest x%? A <strong>histogram</strong> answers a different one: what does the whole spread look like? It cuts the range of values into <strong>bins</strong>, side by side, and counts how many values fall into each. The boundaries between bins are the <strong>edges</strong>: three bins have four edges.</p>
+<p>The simplest histogram has one bin per whole number. Count the words of a sentence by their length:</p>
+<pre class="code" data-lang="python" data-file="word_lengths.py" data-check="run"><code>text = "the kettle boiled while the toast burned and nobody noticed the smoke"
+
+counts = {}
+for word in text.split():
+    counts[len(word)] = counts.get(len(word), 0) + 1
+
+for length in range(min(counts), max(counts) + 1):  # every length, the empty ones too
+    n = counts.get(length, 0)
+    print(f"{length} letters  {n}  {'#' * n}")
+</code></pre>
+<pre class="output" data-for="word_lengths.py"><code>3 letters  4  ####
+4 letters  0
+5 letters  3  ###
+6 letters  4  ####
+7 letters  1  #
+</code></pre>
+<p><code>counts.get(len(word), 0)</code> reads the count so far, or 0. The second loop visits every length, including 4, which no word has: an empty bin is a gap in the shape, and leaving it out would make the picture lie. The shape says what the mean would not: the mean length is 4.83 letters, yet no word has 4 letters. There are two groups, as there often are in timings: normal calls, and a smaller group that were interrupted.</p>
+
+<h3>Which hour a timestamp falls in</h3>
+<p>Now bins that are ranges, not single values. A log has timestamps, and you want to know how many entries fall into each hour of the day. Hour 9 is the range from 09:00:00 up to, but not including, 10:00:00. Each bin <em>includes</em> its left edge and <em>excludes</em> its right edge, so that a timestamp on an edge, such as 10:00:00 exactly, belongs to one bin only: the one to its right.</p>
+<pre class="code" data-lang="python" data-file="hour_of_day.py" data-check="run"><code>stamps = ["08:59:59", "09:00:00", "09:30:12", "09:59:59", "10:00:00", "13:05:44", "13:59:00"]
+
+per_hour = [0] * 24  # 24 bins: hour 0 is [00:00, 01:00), hour 23 is [23:00, 24:00)
+for stamp in stamps:
+    h, m, s = (int(part) for part in stamp.split(":"))
+    seconds = h * 3600 + m * 60 + s  # seconds since midnight: a whole number
+    hour = seconds // 3600  # whole-number division: no rounding can go wrong
+    per_hour[hour] += 1
+
+for hour, n in enumerate(per_hour):
+    if n:
+        print(f"{hour:02d}:00 to {hour + 1:02d}:00  {n}")
+</code></pre>
+<pre class="output" data-for="hour_of_day.py"><code>08:00 to 09:00  1
+09:00 to 10:00  3
+10:00 to 11:00  1
+13:00 to 14:00  2
+</code></pre>
+<p>In <code>[09:00, 10:00)</code>, a square bracket marks an included edge and a round one an excluded edge. 08:59:59 counts for hour 8, 09:00:00 (on the edge) and 09:59:59 for hour 9. The bin numbers are exact because <code>//</code> divides whole numbers: there is nothing to round.</p>
+
+<h3>Looking with numpy.histogram</h3>
+<p>For floats and bins of any width, <code>numpy.histogram</code> is the tool for looking. Give it values and a number of bins; it makes bins of equal width from the smallest value to the largest, and returns two arrays: the counts, and the edges.</p>
+<pre class="code" data-lang="python" data-file="look_with_numpy.py" data-check="run"><code>import numpy as np
+
+commute_min = [22, 25, 24, 31, 23, 26, 24, 58, 25, 27, 23, 29, 24, 26, 41, 25, 24, 28, 23, 26]
+
+counts, edges = np.histogram(commute_min, bins=6)
+print("edges: ", edges.tolist())
+print("counts:", counts.tolist())
+
+counts, edges = np.histogram([0, 1, 2, 3], bins=3)
+print("edges: ", edges.tolist())
+print("counts:", counts.tolist())
+</code></pre>
+<pre class="output" data-for="look_with_numpy.py"><code>edges:  [22.0, 28.0, 34.0, 40.0, 46.0, 52.0, 58.0]
+counts: [15, 3, 0, 1, 0, 1]
+edges:  [0.0, 1.0, 2.0, 3.0]
+counts: [1, 1, 2]
+</code></pre>
+<p>The commutes run from 22 to 58 minutes, so six equal bins are 6 minutes wide, with seven edges. Fifteen days fall in the first bin, then a thin tail: a tall block on the left and a long sparse tail to the right, the shape of most latency histograms.</p>
+<p>The second call shows the edge rule, and its one exception. The values 0, 1, 2, 3 in three bins make edges at 0, 1, 2 and 3. The value 1 sits on an inner edge and goes to the right, into the bin <code>[1, 2)</code>, like 09:00:00 did. But 3 is the right edge of the last bin, and by the rule it would belong to no bin at all, although it is the largest value. So numpy makes an exception for the last bin only: it includes its right edge, <code>[2, 3]</code>. That is why the last count is 2.</p>
+<div class="callout try"><span class="label">Try it</span><p>Predict the counts and edges of <code>np.histogram([5, 5, 5], bins=2)</code>, where the smallest and largest value are the same and there is no width to divide. Then run it, and read the docstring of <code>histogram</code> in <code>src/llm101/bench/stats.py</code>.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>(array([0, 3]), array([4.5, 5. , 5.5]))</code>. When every value is the same, numpy widens the range to half a unit either side, 4.5 to 5.5. The middle edge is then exactly 5, and the three fives sit on an inner edge, so they go to the right-hand bin. The docstring describes the same rule, because your function has to match numpy.</p></details>
+
+<h3>Floating-point surprises</h3>
+<p>Whole numbers made the hour bins exact. Floats are another matter, and you should see why before you meet it in a failing test:</p>
+<pre class="code" data-lang="python" data-file="float_surprises.py" data-check="run"><code>print(0.1 + 0.2)
+print(0.1 + 0.2 == 0.3)
+print(3 * 0.1)
+print(0.3 / 0.1)
+print(int(0.3 / 0.1))
+print(f"{0.1:.20f}")
+</code></pre>
+<pre class="output" data-for="float_surprises.py"><code>0.30000000000000004
+False
+0.30000000000000004
+2.9999999999999996
+2
+0.10000000000000000555
+</code></pre>
+<p>A float stores a number in binary, as a sum of halves, quarters, eighths and so on, with 53 binary digits. Most decimal fractions cannot be written that way exactly, just as 1/3 cannot be written exactly in decimal. So <code>0.1</code> is stored as the nearest binary fraction, slightly more than one tenth (the last line), and two such near-misses added can show in the digits: <code>0.1 + 0.2</code> is not the same float as <code>0.3</code>.</p>
+<p>The dangerous line is <code>int(0.3 / 0.1)</code>. On paper, 0.3 divided by 0.1 is exactly 3. In floats it is 2.9999999999999996, and <code>int</code> cuts off everything after the point, giving 2. Think about what that means for bins. If a bin number is worked out by a division and then cut to a whole number, a value that lies exactly on an edge can be put one bin too far to the left. The edges are the definition of the bins, and numpy decides by comparing each value with them; a test that compares your counts with numpy's will find any value that lands on the other side. The docstring of <code>histogram</code> says the same in one line: decide membership with the edges themselves.</p>
+<div class="callout trap"><span class="label">Trap</span><p>Never compare floats that came from arithmetic with <code>==</code> and expect the answer of paper maths. <code>0.1 + 0.2 == 0.3</code> is <code>False</code>. To check that two computed floats agree, allow a small tolerance: <code>math.isclose(a, b)</code> in code, <code>pytest.approx</code> in a test.</p></div>
+
+<h2>Property tests with hypothesis</h2>
+<p>A normal test checks one example: this input, that answer. The tests of M2 and M4 do something else as well. They state a <strong>property</strong>, a claim that should hold for <em>every</em> input ("your histogram's counts equal numpy's"), and let a library called <strong>hypothesis</strong> generate hundreds of inputs to try to break it. Here is a property of something else entirely: a list of whole numbers always adds up to less than 100. It is false, and hypothesis finds out:</p>
+<pre class="code" data-lang="python" data-file="small_sums.py" data-check="error"><code>from hypothesis import given
+from hypothesis import strategies as st
+
+
+@given(st.lists(st.integers()))
+def test_small_lists_have_small_sums(numbers):
+    assert sum(numbers) &lt; 100, f"the sum is {sum(numbers)}"
+
+
+if __name__ == "__main__":
+    test_small_lists_have_small_sums()
+</code></pre>
+<p>The end of what it prints (the traceback before it is cut here):</p>
+<pre class="output" data-for="small_sums.py"><code>Traceback (most recent call last):
+  ...
+    assert sum(numbers) &lt; 100, f"the sum is {sum(numbers)}"
+           ^^^^^^^^^^^^^^^^^^
+AssertionError: the sum is 100
+Failing test case: test_small_lists_have_small_sums(
+    numbers=[100],
+)
+</code></pre>
+<p>Three things happened.</p>
+<ul>
+<li><strong><code>@given</code></strong> wraps the test so that calling it once runs it many times (100 by default), each with a new value for <code>numbers</code>, drawn from the <strong>strategy</strong>: <code>st.lists(st.integers())</code>, lists of any length of any whole numbers. Hypothesis leans towards awkward values: empty lists, zero, huge and negative numbers, repeats.</li>
+<li>The first failing list it found was probably long and full of large numbers. It then <strong>shrank</strong> it, trying shorter lists and smaller numbers and keeping each change that still failed, until nothing smaller failed. <code>[100]</code> is the simplest list whose sum is not less than 100.</li>
+<li>It reported that input as the <strong>"Failing test case"</strong>. Older versions, and much of the documentation, call it the <strong>"Falsifying example"</strong>: the same thing. Read it as "call the test with this, and it fails", and try that one input by hand.</li>
+</ul>
+<p>Now a property that sounds true. Turning a string into capitals and then into small letters should give the same as turning it into small letters straight away:</p>
+<pre class="code" data-lang="python" data-file="case_folding.py" data-check="error"><code>from hypothesis import given, settings
+from hypothesis import strategies as st
+
+
+@settings(derandomize=True)  # the same inputs on every run, so that this page can show the result
+@given(st.text())
+def test_upper_then_lower_is_just_lower(s):
+    assert s.upper().lower() == s.lower(), f"{s.upper().lower()!r} is not {s.lower()!r}"
+
+
+if __name__ == "__main__":
+    test_upper_then_lower_is_just_lower()
+</code></pre>
+<p>The end of what it prints. Hypothesis chooses its inputs at random; <code>derandomize=True</code> makes it choose the same ones on every run, so that this page can show you what it finds. Leave that line out of your own tests, where a fresh search on every run is the point:</p>
+<pre class="output"><code>AssertionError: 'ss' is not 'ß'
+Failing test case: test_upper_then_lower_is_just_lower(
+    s='ß',
+)
+</code></pre>
+<p>The German letter ß has no single capital form in the Unicode rules that Python follows: <code>"ß".upper()</code> is <code>"SS"</code>, two letters, and <code>"SS".lower()</code> is <code>"ss"</code>, not <code>"ß"</code>. Without <code>derandomize=True</code>, other runs report <code>'µ'</code>, the micro sign, whose capital is the Greek capital mu, whose small letter is the Greek small mu, not the micro sign. Both are one character long, because shrinking made them as small as it could, and a hundred English words would never have found either. That is what the module's hypothesis tests are for: <code>test_done_when_percentiles_match_numpy_on_random_data</code> tries one element, all equal, huge and tiny floats, q of exactly 0 or 100, and a failure hands you the smallest reproduction for <code>scratch/</code>.</p>
+<div class="callout note"><span class="label">Python you need</span><p>A <strong>decorator</strong>, the line <code>@given(...)</code> above a <code>def</code>, is shorthand: <code>@given(strategy)</code> over <code>def f(...)</code> means <code>f = given(strategy)(f)</code>. The function is defined, passed to <code>given(strategy)</code>, and the name <code>f</code> now refers to what comes back, a wrapper that calls the original many times. Functions are values (chapter 1), so this is just a function that takes a function and returns another. Under pytest the same test needs no <code>if __name__ == "__main__"</code> line: pytest finds functions whose names start with <code>test_</code> in files whose names start with <code>test_</code>, and calls them.</p></div>
+<div class="callout try"><span class="label">Try it</span><p>Before running it, predict whether hypothesis can break the property <code>x + 1 &gt; x</code> for <code>@given(st.integers())</code>. Then write it, in the shape of <code>small_sums.py</code>, and run it.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>It cannot: the program runs a hundred examples and exits quietly. Python's whole numbers have no largest value; they grow as needed, so adding 1 always gives a bigger number. In a language or a numpy array with fixed-size integers the same property is false: the largest 64-bit integer plus 1 wraps round to the most negative one. Hypothesis is good at finding exactly that kind of edge, when it exists.</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>Language model services set their targets on the tail. A service level objective (SLO) is typically "p95 time to first token under so many milliseconds", or a p99 of inter-token latency: with hundreds of tokens per answer, most answers contain some of the slow 1% (the 63% above). vLLM's serving benchmark, <code>vllm bench serve</code>, reports for time to first token, time per output token and inter-token latency the mean, the median and the p99 by default, and takes an option to ask for other percentiles. Module 10's "Done when" is a p95, measured with the harness you are building now.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>A thousand calls: 990 take 1 ms and 10 take 1 s. Roughly what are the mean and the median? Which of the two would you report, and with what else?</p><details class="answer"><summary>Answer</summary><p>Mean (990 × 1 + 10 × 1000) / 1000 = 10.99 ms; median 1 ms. Neither alone is honest: report the median for the typical call together with a high percentile (p99 or the max) for the slow ones. The mean describes a call that never happened.</p></details></div>
+<div class="q"><p>Seven values in order: 10, 12, 15, 20, 21, 30, 50. Work out p50 and p90 by numpy's linear method.</p><details class="answer"><summary>Answer</summary><p>n − 1 = 6. p50: h = 3, the value at position 3, 20. p90: h = 6 × 0.9 = 5.4, so 0.4 of the way from 30 (position 5) to 50 (position 6): 30 + 0.4 × 20 = 38.</p></details></div>
+<div class="q"><p>At 06:00 a thermometer read 4 °C and at 07:00 it read 1 °C. Estimate 06:20 by linear interpolation.</p><details class="answer"><summary>Answer</summary><p>A third of the way through the hour; the gap is 1 − 4 = −3. So 4 + (1/3) × (−3) = 3 °C.</p></details></div>
+<div class="q"><p>A page makes 20 calls, each fast with probability 0.99, independently. What is the chance that at least one is slow?</p><details class="answer"><summary>Answer</summary><p>1 − 0.99<sup>20</sup>, about 1 − 0.818 = 0.18: almost one page in five.</p></details></div>
+<div class="q"><p>A colleague's p90 for a set of twenty timings is 40 ms, yours is 32 ms, from the same data. Name a likely reason.</p><details class="answer"><summary>Answer</summary><p>Different definitions. <code>statistics.quantiles</code> uses the "exclusive" method by default, numpy the "linear" one; they agree in the middle and part ways in the tails, most with few values. Agree on the method before you compare.</p></details></div>
+<div class="q"><p>Hour bins: which bin does 14:00:00 go in, and which does 13:59:59? With numpy's rule, where does the largest value of a data set go?</p><details class="answer"><summary>Answer</summary><p>14:00:00 is on an edge and goes to the right, into [14:00, 15:00); 13:59:59 is in [13:00, 14:00). The largest value is the right edge of the last bin, and numpy's last bin includes its right edge, so it goes there.</p></details></div>
+<div class="q"><p>Why does <code>int(0.3 / 0.1)</code> print 2, and why does it matter for histograms?</p><details class="answer"><summary>Answer</summary><p>0.1 and 0.3 are stored as the nearest binary fractions, so the division gives 2.9999999999999996, and <code>int</code> cuts that to 2. A bin number computed by a division can therefore come out one bin to the left for a value on an edge; comparing the value with the edges themselves decides it the way numpy does.</p></details></div>
+<div class="q"><p>Hypothesis reports <code>numbers=[100]</code> as the failing case. Was that the first input it tried that failed?</p><details class="answer"><summary>Answer</summary><p>Almost certainly not. After finding a failing input, hypothesis shrinks it, trying smaller and simpler inputs and keeping each one that still fails. <code>[100]</code> is where shrinking stopped: the simplest failing input.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Show with numbers why the mean hides slow calls, and what the median and p99 say instead.</li>
+<li>Explain why the tail of one call becomes the typical experience of a request made of many.</li>
+<li>Find a percentile of a short list by hand: positions, h = (n − 1) × q / 100, and interpolation between two neighbours.</li>
+<li>Say why numpy and <code>statistics.quantiles</code> disagree, and which definition your harness uses.</li>
+<li>Read a histogram's counts and edges, apply the right-edge rule and its exception for the last bin, and explain why floats make edges tricky.</li>
+<li>Read a hypothesis failure: what <code>@given</code> did, what shrinking did, and what the failing case is for.</li>
+</ul>
+</main>
+</body>
+</html>

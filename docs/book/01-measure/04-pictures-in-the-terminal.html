@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>04 · Pictures in the terminal — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 4</p>
+<h1>Pictures in the terminal</h1>
+<p class="lede">At the end of this chapter you can draw tables and bar charts in the terminal with rich, return them from a function so that a test can read them, format numbers in a unit a person can take in at a glance, and give a program command-line arguments with argparse.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: a column of a thousand numbers says nothing; a picture does.</li>
+<li>rich from first principles: <code>Console</code>, <code>print</code>, markup, <code>Text</code>, <code>Table</code> and <code>Group</code>.</li>
+<li>Capturing what rich prints with <code>record=True</code> and <code>export_text</code>, the way the tests read your output.</li>
+<li>A bar chart whose bars are proportional, and a weather report built from functions that return what they draw.</li>
+<li>Numbers people can read: f-string formats and choosing a unit.</li>
+<li>The square-bracket trap.</li>
+<li>argparse on a unit converter, <code>__name__</code>, <code>python -m</code>, and a first look at <code>rich.live</code>.</li>
+</ul>
+</div>
+
+<h2>The problem: a column of numbers says nothing</h2>
+<p>By milestone M4 your harness has a thousand wall times and their percentiles. Print the list and a thousand lines of digits scroll past; the three calls that took twenty times as long as the rest are in there, and you will not see them. Even p50, p95 and p99 do not show a shape: one hump, two, or a hump with a long thin tail?</p>
+<p>People read pictures faster than columns. In a table with aligned columns the eye jumps to the number it wants; a bar chart turns "81.2, 54.0, 60.5, 0.4" into lengths, compared without reading. This chapter draws both with characters in the terminal, for a year of rainfall at a hill weather station. M5 asks you to draw your benchmark's report the same way; you design it.</p>
+<p>The library is <strong>rich</strong>, which is already a dependency of the project (<code>uv sync</code> installed it). It draws tables, colours, bars and live displays in a terminal.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A terminal shows only characters, in a grid of fixed-width cells, one row after another. Everything "graphical" in it is characters chosen carefully: a table's borders are the box-drawing characters ┏ ━ ┃ │, a bar is a run of ▇ or #, and colour and bold are invisible control sequences that the terminal interprets. rich's job is to turn your objects into the right characters for the width of the window, and to leave out the control sequences when the output is not going to a terminal at all.</p></div>
+
+<h2>Console and print</h2>
+<p>rich's centre is the <strong>Console</strong>: an object that knows where the output goes (the screen, unless you say otherwise), how wide it is, and whether it can show colour. Its <code>print</code> method looks like the built-in one, and does more:</p>
+
+<pre class="code" data-lang="python" data-file="first_print.py" data-check="run"><code>from rich.console import Console
+
+console = Console()
+print("Rain today: [bold]12 mm[/bold]")
+console.print("Rain today: [bold]12 mm[/bold]")
+console.print("Wind:", 24, "km/h")
+</code></pre>
+<pre class="output" data-for="first_print.py"><code>Rain today: [bold]12 mm[/bold]
+Rain today: 12 mm
+Wind: 24 km/h
+</code></pre>
+
+<p>The built-in <code>print</code> prints the string exactly as written, square brackets and all. <code>console.print</code> reads <code>[bold]</code> and <code>[/bold]</code> as instructions: in your terminal, "12 mm" appears in bold, and the tags themselves are not printed. (The output above shows no bold, because this book shows plain text; when rich sees that it is writing to a file or a pipe rather than a terminal, it leaves out the styling.) Like the built-in, <code>console.print</code> takes several arguments and puts a space between them.</p>
+
+<h3>Markup</h3>
+<p>The square-bracket tags are rich's <strong>markup</strong>, a small language modelled on HTML. A tag opens a style, a tag with a slash closes it, and several styles can share one tag:</p>
+
+<pre class="code" data-lang="python" data-file="markup_tour.py" data-check="run"><code>from rich.console import Console
+
+console = Console()
+console.print("[bold]bold[/bold], [italic]italic[/italic], [underline]underlined[/underline]")
+console.print("[blue]blue[/blue] and [bold red]bold red[/bold red] and [dim]dim[/dim]")
+console.print("[green]a tag stays open until it is closed, [/green]then it ends")
+console.print("[bold]bold up to here[/], plain after a bare closing tag")
+</code></pre>
+<pre class="output" data-for="markup_tour.py"><code>bold, italic, underlined
+blue and bold red and dim
+a tag stays open until it is closed, then it ends
+bold up to here, plain after a bare closing tag
+</code></pre>
+
+<p>Run it in your own terminal to see the styles. A style name can be a weight (<code>bold</code>, <code>dim</code>), a slant (<code>italic</code>), <code>underline</code>, or a colour (<code>red</code>, <code>blue</code>, <code>green</code>...). A bare <code>[/]</code> closes the most recent tag. Markup is convenient for text you write yourself. It becomes a hazard for text you did not write, such as a line of source code, which is <a href="#the-square-bracket-trap">the trap later in this chapter</a>.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>Markup is a typesetter's pencil marks on a manuscript: "bold from here... to here". The typesetter follows the marks and does not print them. <em>Where it breaks:</em> a typesetter can tell a pencil mark from the author's own brackets by looking. rich cannot: anything in the text that looks like a tag is taken as one, which is exactly how it eats a Python list.</p></div>
+
+<h2>Text: styled text as an object</h2>
+<p>Markup lives inside a string. rich's <strong>Text</strong> class is the other way to style: an object that holds plain characters and, separately, which ranges have which style. You build it in pieces with <code>append</code>, each piece with its own style, and it never reads square brackets as tags:</p>
+
+<pre class="code" data-lang="python" data-file="text_pieces.py" data-check="run"><code>from rich.console import Console
+from rich.text import Text
+
+console = Console()
+line = Text("Rain: ")
+line.append("12.4 mm", style="bold blue")
+line.append(" (wettest day [so far])")
+console.print(line)
+print(len(line), "characters;", repr(line.plain))
+</code></pre>
+<pre class="output" data-for="text_pieces.py"><code>Rain: 12.4 mm (wettest day [so far])
+36 characters; 'Rain: 12.4 mm (wettest day [so far])'
+</code></pre>
+
+<p>The brackets in "[so far]" came through untouched, because a <code>Text</code> holds characters, not markup. <code>len</code> counts its characters, and <code>.plain</code> gives them back as an ordinary string, without styles. Use markup for quick labels you type, and <code>Text</code> when a program assembles the text from pieces, especially pieces from outside.</p>
+
+<h2>Table: rows and columns</h2>
+<p>A <strong>Table</strong> is built in two steps: declare the columns, then add rows. rich works out each column's width from the widest thing in it, draws the borders, and aligns the cells:</p>
+
+<pre class="code" data-lang="python" data-file="rain_table.py" data-check="run"><code>from rich.console import Console
+from rich.table import Table
+
+months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+rain_mm = [81.2, 54.0, 60.5, 0.4, 47.9, 0.0]
+rain_days = [16, 12, 13, 1, 10, 0]
+
+table = Table(title="Rainfall, first half of the year")
+table.add_column("Month")
+table.add_column("Rain (mm)", justify="right")
+table.add_column("Wet days", justify="right")
+for month, mm, days in zip(months, rain_mm, rain_days):
+    table.add_row(month, f"{mm:.1f}", str(days))
+
+Console(width=60).print(table)
+</code></pre>
+<pre class="output" data-for="rain_table.py"><code>Rainfall, first half of the year
+┏━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Month ┃ Rain (mm) ┃ Wet days ┃
+┡━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│ Jan   │      81.2 │       16 │
+│ Feb   │      54.0 │       12 │
+│ Mar   │      60.5 │       13 │
+│ Apr   │       0.4 │        1 │
+│ May   │      47.9 │       10 │
+│ Jun   │       0.0 │        0 │
+└───────┴───────────┴──────────┘
+</code></pre>
+
+<p>Every cell is a string (or a <code>Text</code>), so the numbers are formatted before they go in: <code>f"{mm:.1f}"</code> gives one decimal, and <code>str(days)</code> turns the count into text. <code>justify="right"</code> lines numbers up on their last digit, so that 81.2 and 0.4 can be compared by eye; text columns stay on the left, the default. The <code>title</code> is centred above the table. <code>Console(width=60)</code> fixes the width, so that this program prints the same thing in every terminal; a plain <code>Console()</code> takes the width of your window.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Type <code>rain_table.py</code> into <code>scratch/</code>. Change the "Rain (mm)" column to <code>justify="left"</code> and run it: how much harder is it to see which month was wettest? Then add a fourth column, "Rain (in)", with each value divided by 25.4 and shown to two decimals.</p></div>
+<details class="hint"><summary>A nudge</summary><p>Declare the column with <code>add_column</code> before the loop, then give <code>add_row</code> a fourth string: <code>f"{mm / 25.4:.2f}"</code>.</p></details>
+
+<h3>Group: several things printed as one</h3>
+<p>A report is usually more than one table: a heading, a table, a sentence. <strong>Group</strong>, from <code>rich.console</code>, holds several printable things and prints them one under the other, as if they were one:</p>
+
+<pre class="code" data-lang="python" data-file="group_demo.py" data-check="run"><code>from rich.console import Console, Group
+from rich.table import Table
+from rich.text import Text
+
+table = Table()
+table.add_column("Day")
+table.add_column("Rain (mm)", justify="right")
+table.add_row("Mon", "4.2")
+table.add_row("Tue", "0.0")
+
+forecast = Group(Text("Rain this week", style="bold"), table, Text("Dry from Tuesday."))
+Console(width=40).print(forecast)
+print(type(forecast).__name__, len(forecast.renderables), "pieces")
+</code></pre>
+<pre class="output" data-for="group_demo.py"><code>Rain this week
+┏━━━━━┳━━━━━━━━━━━┓
+┃ Day ┃ Rain (mm) ┃
+┡━━━━━╇━━━━━━━━━━━┩
+│ Mon │       4.2 │
+│ Tue │       0.0 │
+└─────┴───────────┘
+Dry from Tuesday.
+Group 3 pieces
+</code></pre>
+
+<p>Anything that rich can print is called a <strong>renderable</strong>: a string, a <code>Text</code>, a <code>Table</code>, a <code>Group</code> of any of those. The type that covers them all is <code>rich.console.RenderableType</code>, which you will meet in the signature of <code>render_report</code>.</p>
+
+<h2>Reading what rich printed</h2>
+<p>How does a test check a table? It cannot look at your screen. rich solves this with two options of the console. <code>file=io.StringIO()</code> sends the output into a string in memory instead of to the screen; <code>io.StringIO</code> is a "file" that lives in memory. <code>record=True</code> makes the console keep a copy of everything it printed, and <code>export_text()</code> hands that copy back as plain text, without styles:</p>
+
+<pre class="code" data-lang="python" data-file="capture.py" data-check="run"><code>import io
+
+from rich.console import Console
+from rich.table import Table
+
+table = Table()
+table.add_column("Month")
+table.add_column("Rain (mm)", justify="right")
+table.add_row("Jan", "81.2")
+table.add_row("Feb", "54.0")
+
+console = Console(file=io.StringIO(), record=True, width=40)
+console.print("[bold]Rainfall[/bold]")
+console.print(table)
+text = console.export_text()
+
+print("nothing reached the screen until this line")
+print(repr(text.splitlines()[0]))
+print(len(text.splitlines()), "lines")
+print("81.2" in text, "[bold]" in text)
+print(text, end="")
+</code></pre>
+<pre class="output" data-for="capture.py"><code>nothing reached the screen until this line
+'Rainfall'
+7 lines
+True False
+Rainfall
+┏━━━━━━━┳━━━━━━━━━━━┓
+┃ Month ┃ Rain (mm) ┃
+┡━━━━━━━╇━━━━━━━━━━━┩
+│ Jan   │      81.2 │
+│ Feb   │      54.0 │
+└───────┴───────────┘
+</code></pre>
+
+<p>Nothing reached the screen until the program's own <code>print</code> calls. The captured text is plain characters: "81.2" is in it, and the <code>[bold]</code> tag is not, because rich read it as markup. This is exactly how the M5 tests read your report: they make a console like this one, with <code>color_system=None</code> as well, print what <code>render_report</code> returned, take <code>export_text()</code>, and search the text for "p99" and for the bars. Read the helper at the top of <a href="../../../tests/m01/test_report.py">tests/m01/test_report.py</a>; it is six lines.</p>
+
+<h2>Bars that mean something</h2>
+<p>A bar chart turns each number into a length. The rule that makes it honest is <strong>proportion</strong>: a bar twice as long means a value twice as large. Choose a full width, say 30 characters, for the largest value; every other bar is then its value divided by the largest, times 30, rounded to a whole number of characters with <code>round()</code>. One exception: a value that is not zero but rounds to zero characters would vanish and look the same as a true zero, so give it one character. Here is the rule on six months of rain, with ▇ as the bar:</p>
+
+<pre class="code" data-lang="python" data-file="rain_bars.py" data-check="run"><code>from rich.console import Console
+from rich.text import Text
+
+
+def rain_bars(months: list[str], rain_mm: list[float], width: int) -&gt; Text:
+    """A bar per month, the wettest month `width` characters long. Returned, not printed."""
+    wettest = max(rain_mm)
+    chart = Text()
+    for month, mm in zip(months, rain_mm):
+        length = round(mm / wettest * width)
+        if mm &gt; 0 and length == 0:
+            length = 1  # a little rain still gets a mark
+        chart.append(f"{month} {mm:5.1f} ")
+        chart.append("▇" * length, style="blue")
+        chart.append("\n")
+    return chart
+
+
+months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+rain_mm = [81.2, 54.0, 60.5, 0.4, 47.9, 0.0]
+Console().print(rain_bars(months, rain_mm, width=30), end="")
+</code></pre>
+<pre class="output" data-for="rain_bars.py"><code>Jan  81.2 ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+Feb  54.0 ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+Mar  60.5 ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+Apr   0.4 ▇
+May  47.9 ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+Jun   0.0 
+</code></pre>
+
+<p>Check one bar: March is 60.5 / 81.2 &times; 30 = 22.35, which <code>round()</code> makes 22. April's 0.4 mm gives 0.15, which rounds to 0, and the rule lifts it to 1, so a little rain looks different from June's none.</p>
+
+<div class="callout note"><span class="label">Python you need</span><p><code>round(x)</code> rounds to the nearest whole number and returns an <code>int</code>. When <code>x</code> is exactly half way, it rounds to the even neighbour: <code>round(2.5)</code> is 2 and <code>round(3.5)</code> is 4 (this is called banker's rounding). <code>int(x)</code> is different: it chops off the fraction, so <code>int(22.9)</code> is 22. For bar lengths that should match someone else's rule, use the same function they did.</p></div>
+
+<p>Notice that <code>rain_bars</code> prints nothing. It <strong>returns</strong> a <code>Text</code>, and the caller decides where it goes: the screen, as here, or a recording console, as in a test. A function that prints can only be tested by capturing the screen; one that returns a renderable can be tested by calling it. <code>render_report</code>'s docstring says the same: "Return it; do not print it."</p>
+
+<h2>A worked example: the weather report</h2>
+<p>Now the whole year: a table with each month's rain, its share of the year and a total, then the bar chart, all returned from one function as a <code>Group</code>. The program prints it to the screen, then into a recording console, as a test would, to check the bars at another width:</p>
+
+<pre class="code" data-lang="python" data-file="weather_report.py" data-check="run"><code>import io
+import re
+
+from rich.console import Console, Group, RenderableType
+from rich.table import Table
+from rich.text import Text
+
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+RAIN_MM = [81.2, 54.0, 60.5, 0.4, 47.9, 0.0, 12.6, 33.1, 58.8, 92.7, 101.3, 88.4]
+
+
+def rain_table(rain_mm: list[float]) -&gt; Table:
+    table = Table(title="Hill station, 2025")
+    table.add_column("Month")
+    table.add_column("Rain (mm)", justify="right")
+    table.add_column("Share", justify="right")
+    year = sum(rain_mm)
+    for month, mm in zip(MONTHS, rain_mm):
+        table.add_row(month, f"{mm:.1f}", f"{mm / year:.1%}")
+    table.add_row("[bold]Year[/bold]", f"[bold]{year:,.1f}[/bold]", "100.0%")
+    return table
+
+
+def rain_chart(rain_mm: list[float], width: int) -&gt; Text:
+    wettest = max(rain_mm)
+    chart = Text()
+    for month, mm in zip(MONTHS, rain_mm):
+        length = max(1, round(mm / wettest * width)) if mm &gt; 0 else 0
+        chart.append(f"{month} ")
+        chart.append("#" * length, style="blue")
+        chart.append(f" {mm:.1f}\n" if mm &gt; 0 else "  dry\n")
+    return chart
+
+
+def weather_report(rain_mm: list[float], width: int = 30) -&gt; RenderableType:
+    """The table, then the chart, as one thing that rich can print."""
+    return Group(rain_table(rain_mm), Text(""), rain_chart(rain_mm, width))
+
+
+report = weather_report(RAIN_MM)
+
+# The caller decides where it goes: here, the screen.
+Console(width=60).print(report)
+
+# And here, a string, which is how a test reads it.
+console = Console(file=io.StringIO(), record=True, width=60)
+console.print(weather_report(RAIN_MM, width=10))
+text = console.export_text()
+bars = [len(run) for run in re.findall("#+", text)]
+print("bars at width 10:", bars)
+</code></pre>
+<pre class="output" data-for="weather_report.py"><code>      Hill station, 2025      
+┏━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┓
+┃ Month ┃ Rain (mm) ┃  Share ┃
+┡━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━┩
+│ Jan   │      81.2 │  12.9% │
+│ Feb   │      54.0 │   8.6% │
+│ Mar   │      60.5 │   9.6% │
+│ Apr   │       0.4 │   0.1% │
+│ May   │      47.9 │   7.6% │
+│ Jun   │       0.0 │   0.0% │
+│ Jul   │      12.6 │   2.0% │
+│ Aug   │      33.1 │   5.2% │
+│ Sep   │      58.8 │   9.3% │
+│ Oct   │      92.7 │  14.7% │
+│ Nov   │     101.3 │  16.1% │
+│ Dec   │      88.4 │  14.0% │
+│ Year  │     630.9 │ 100.0% │
+└───────┴───────────┴────────┘
+
+Jan ######################## 81.2
+Feb ################ 54.0
+Mar ################## 60.5
+Apr # 0.4
+May ############## 47.9
+Jun   dry
+Jul #### 12.6
+Aug ########## 33.1
+Sep ################# 58.8
+Oct ########################### 92.7
+Nov ############################## 101.3
+Dec ########################## 88.4
+
+bars at width 10: [8, 5, 6, 1, 5, 1, 3, 6, 9, 10, 9]
+</code></pre>
+
+<p>Read it from the bottom up. <code>weather_report</code> asks <code>rain_table</code> and <code>rain_chart</code> for their pieces and returns them in a <code>Group</code>, with an empty <code>Text</code> as a blank line between. Each function does one thing and returns it, so each can be checked alone. Details:</p>
+<ul>
+<li><code>f"{mm / year:.1%}"</code> multiplies by 100 and adds the % sign: 81.2 / 630.9 is 0.1287, shown as 12.9%.</li>
+<li>The total row uses markup, <code>[bold]Year[/bold]</code>: a table cell given as a string is read as markup, just like <code>console.print</code>.</li>
+<li>The chart's length line is the same rule as <code>rain_bars</code>, written as one expression: <code>max(1, round(...))</code> for a month with rain, 0 for a dry one, and the dry month says so in words.</li>
+<li>The last three lines are a test in miniature: at width 10, November gets the full 10 characters, April still gets 1, and dry June gets no bar, so the list holds 11 bars for 12 months.</li>
+</ul>
+
+<div class="callout try"><span class="label">Try it</span><p>Change the chart so that each line ends with the month's share of the year instead of its millimetres, and add a "wettest month" line under the table, in bold, built with <code>Text</code>. Then add a second station's figures and print both reports, one after the other, from one <code>Group</code>.</p></div>
+
+<h2>Numbers people can read</h2>
+<p>A table is only as readable as the numbers in it. 4965799096 is a number; 4,965,799,096 is a number you can read; 5.0 GB is one you can take in. Python's f-strings do the formatting through a small code after a colon inside the braces:</p>
+
+<pre class="code" data-lang="python" data-file="formats.py" data-check="run"><code>mm = 1234.5678
+print(f"[{mm}]")
+print(f"[{mm:.2f}]")       # two decimals
+print(f"[{mm:,.1f}]")      # a comma every three digits, one decimal
+print(f"[{mm:&gt;12,.2f}]")   # right-justified in 12 characters
+print(f"[{'Jan':&lt;6}]")     # left-justified in 6
+print(f"[{'Jan':&gt;6}]")     # right-justified in 6
+print(f"[{1_000_000:,}]")  # whole numbers too
+print(f"[{0.1612:.1%}]")   # a share as a percentage
+</code></pre>
+<pre class="output" data-for="formats.py"><code>[1234.5678]
+[1234.57]
+[1,234.6]
+[    1,234.57]
+[Jan   ]
+[   Jan]
+[1,000,000]
+[16.1%]
+</code></pre>
+
+<table>
+<thead><tr><th>Code</th><th>Means</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td><code>.2f</code></td><td>fixed point, 2 decimals</td><td><code>1234.57</code></td></tr>
+<tr><td><code>,</code></td><td>a comma between each group of three digits</td><td><code>1,000,000</code></td></tr>
+<tr><td><code>&gt;12</code>, <code>&lt;6</code></td><td>right- or left-justify in that many characters</td><td><code>[    1,234.57]</code></td></tr>
+<tr><td><code>.1%</code></td><td>times 100, 1 decimal, a % sign</td><td><code>16.1%</code></td></tr>
+</tbody>
+</table>
+<p>The parts combine in a fixed order: alignment and width first, then the comma, then the precision and the type, as in <code>&gt;12,.2f</code>. The square brackets in the output are plain characters in those strings, there to show where the padding ends; the built-in <code>print</code> does not read markup.</p>
+
+<h3>Choosing a unit</h3>
+<p>Commas help, but a column of byte counts from 812 to nearly five billion is still hard to compare. The fix is to choose, for each value, the largest unit in which it is still at least 1, and show one decimal:</p>
+
+<pre class="code" data-lang="python" data-file="byte_sizes.py" data-check="run"><code>def readable_bytes(size: int) -&gt; str:
+    """A byte count in the largest unit that keeps the number at 1 or more."""
+    for unit, scale in [("GB", 1_000_000_000), ("MB", 1_000_000), ("KB", 1_000)]:
+        if size &gt;= scale:
+            return f"{size / scale:.1f} {unit}"
+    return f"{size} B"
+
+
+files = {
+    "notes.txt": 812,
+    "photo.jpg": 2_431_877,
+    "song.mp3": 6_210_442,
+    "model.safetensors": 4_965_799_096,
+    "empty.log": 0,
+}
+for name, size in files.items():
+    print(f"{name:&lt;18} {size:&gt;15,} B {readable_bytes(size):&gt;9}")
+</code></pre>
+<pre class="output" data-for="byte_sizes.py"><code>notes.txt                      812 B     812 B
+photo.jpg                2,431,877 B    2.4 MB
+song.mp3                 6,210,442 B    6.2 MB
+model.safetensors    4,965,799,096 B    5.0 GB
+empty.log                        0 B       0 B
+</code></pre>
+
+<p>The list of units runs from the largest down, and the first one that fits wins; anything under a thousand stays in bytes. Here a kilobyte is 1,000 bytes, as disk makers count; operating systems often use 1,024 (and should call it a kibibyte, KiB). Whatever you choose, say it, and use the same rule in every row. Your M5 report has the same problem with times, from nanoseconds to seconds, and <code>render_report</code>'s docstring leaves the rule to you.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>A unit chosen per value can make a column harder to scan: "980.0 KB" sits above "1.1 MB", and the shorter-looking number is larger. When a column is for comparing, consider one unit for the whole column, chosen from its largest value.</p></div>
+
+<h2>The square-bracket trap</h2>
+<p>Here is the mistake that rich's markup sets up, and the one most likely to cost you an hour in M6. Print a line of Python source with <code>console.print</code>:</p>
+
+<pre class="code" data-lang="python" data-file="bracket_trap.py" data-check="run"><code>from rich.console import Console
+from rich.markup import escape
+from rich.text import Text
+
+console = Console()
+line = "squares = [i * i for i in range(3)]"
+console.print(line)
+console.print(escape(line))
+console.print(Text(line))
+console.print(line, markup=False)
+print(repr(escape(line)))
+console.print("[bold]x[/bold] and [1, 2, 3] and [red]y[/red]")
+</code></pre>
+<pre class="output" data-for="bracket_trap.py"><code>squares = 
+squares = [i * i for i in range(3)]
+squares = [i * i for i in range(3)]
+squares = [i * i for i in range(3)]
+'squares = \\[i * i for i in range(3)]'
+x and [1, 2, 3] and y
+</code></pre>
+
+<p>The first line lost everything after "squares =". rich took <code>[i * i for i in range(3)]</code> for a tag (it starts with a lower-case letter and ends with a bracket), found no such style, and dropped it without an error. The next three lines are the three ways out:</p>
+<ul>
+<li><code>rich.markup.escape(line)</code> puts a backslash before each opening bracket that could start a tag (the <code>repr</code> shows it), and rich prints the backslashed bracket as a plain bracket.</li>
+<li><code>Text(line)</code> holds characters, not markup, so nothing in it is read as a tag. This works in a table cell too: give <code>add_row</code> a <code>Text</code> instead of a string.</li>
+<li><code>markup=False</code> turns markup off for that one call.</li>
+</ul>
+<p>The last line shows rich's rule: <code>[1, 2, 3]</code> survived, because a tag must start with a lower-case letter, <code>#</code>, <code>/</code> or <code>@</code>. That is why the trap is easy to miss: a list of numbers prints fine, and the first index such as <code>[i]</code> or the first comprehension vanishes.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Any text you did not type yourself (a line of source code, a file name, a model's output, a user's input) can contain square brackets. Never pass it to rich as a markup string: wrap it in <code>Text</code> or <code>escape</code> it. The M6 test <code>test_the_program_prints_the_slowest_lines_with_profile</code> looks for the source line <code>squares = [i * i for i in range(20_000)]</code> in your program's output, and a plain <code>console.print</code> of that line prints "squares =" and nothing more.</p></div>
+
+<h2>Arguments on the command line: argparse</h2>
+<p>Your program will take options such as <code>--n 2000 --bins 30</code>. They arrive in <code>sys.argv</code> as a list of strings, and picking through it by hand means writing the error messages, defaults and help yourself. The standard library's <strong>argparse</strong> does all that. Here it is on a unit converter, where <code>--km 5</code> prints miles:</p>
+
+<pre class="code" data-lang="python" data-file="km_to_miles.py" data-check="run"><code>import argparse
+
+MILES_PER_KM = 0.621371
+
+
+def convert(argv: list[str] | None = None) -&gt; None:
+    """Read the arguments (argv, or the command line when argv is None) and print the miles."""
+    parser = argparse.ArgumentParser(description="Convert kilometres to miles.")
+    parser.add_argument("--km", type=float, default=1.0, help="distance in km (default 1)")
+    parser.add_argument("--places", type=int, default=2, help="decimal places (default 2)")
+    args = parser.parse_args(argv)
+    miles = args.km * MILES_PER_KM
+    print(f"{args.km:g} km is {miles:.{args.places}f} miles")
+
+
+if __name__ == "__main__":
+    convert()
+</code></pre>
+<pre class="output" data-for="km_to_miles.py"><code>1 km is 0.62 miles
+</code></pre>
+
+<p>With no arguments, both options take their defaults. Now run it the way a person would:</p>
+
+<pre class="shell"><code>$ uv run python scratch/km_to_miles.py --km 5
+5 km is 3.11 miles
+$ uv run python scratch/km_to_miles.py --km 42.195 --places 1
+42.195 km is 26.2 miles
+$ uv run python scratch/km_to_miles.py --km five
+usage: km_to_miles.py [-h] [--km KM] [--places PLACES]
+km_to_miles.py: error: argument --km: invalid float value: 'five'
+$ uv run python scratch/km_to_miles.py --help
+usage: km_to_miles.py [-h] [--km KM] [--places PLACES]
+
+Convert kilometres to miles.
+
+options:
+  -h, --help       show this help message and exit
+  --km KM          distance in km (default 1)
+  --places PLACES  decimal places (default 2)
+</code></pre>
+
+<p>Four things came free: <code>type=float</code> turned "5" into 5.0 and refused "five" with exit code 2 (the convention for "you called me wrongly"); <code>default</code> filled in what was missing; <code>--help</code> built a page from your <code>description</code> and <code>help</code> strings; and the order of options did not matter.</p>
+<p>The parameter <code>argv</code> makes it testable. <code>parse_args(None)</code> reads the real command line; <code>parse_args(["--km", "5"])</code> reads the list you give it. So a test can call <code>convert(["--km", "5"])</code> without starting a process, and the program, run normally, calls <code>convert()</code>:</p>
+
+<pre class="code" data-lang="python" data-file="km_by_hand.py" data-check="run"><code>import argparse
+
+parser = argparse.ArgumentParser(description="Convert kilometres to miles.")
+parser.add_argument("--km", type=float, default=1.0)
+parser.add_argument("--places", type=int, default=2)
+
+print(parser.parse_args([]))
+print(parser.parse_args(["--km", "5"]))
+print(parser.parse_args(["--places", "4", "--km", "42.195"]))
+args = parser.parse_args(["--km", "5"])
+print(type(args.km), args.km * 0.621371)
+</code></pre>
+<pre class="output" data-for="km_by_hand.py"><code>Namespace(km=1.0, places=2)
+Namespace(km=5.0, places=2)
+Namespace(km=42.195, places=4)
+&lt;class 'float'&gt; 3.106855
+</code></pre>
+
+<p><code>parse_args</code> returns a <strong>Namespace</strong>, a plain object with one attribute per option, named after the option without its dashes: <code>--km</code> becomes <code>args.km</code>, and an option such as <code>--max-speed</code> would become <code>args.max_speed</code>. The attributes already have the type you asked for.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Add an option <code>--reverse</code> to the converter that converts miles to kilometres instead. It takes no value: it is either there or not. Look up <code>action="store_true"</code> in the argparse documentation (or in <code>python -c "import argparse; help(argparse.ArgumentParser.add_argument)"</code>), and predict what <code>--help</code> will show for it before you run it.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>parser.add_argument("--reverse", action="store_true", help="convert miles to km")</code> makes <code>args.reverse</code> <code>False</code> when the option is absent and <code>True</code> when it is present. In the help it appears as <code>--reverse</code> with no metavariable after it, because it takes no value. In the body, divide by <code>MILES_PER_KM</code> when it is set.</p></details>
+
+<h2>Running a package as a program</h2>
+<div class="callout note"><span class="label">Python you need</span><p>Every module has a variable <code>__name__</code>. When Python runs a file as the program, it sets <code>__name__</code> to the string <code>"__main__"</code>; when the file is imported, <code>__name__</code> is the module's own name. So <code>if __name__ == "__main__":</code> means "only when this file is the program, not when someone imports it". That lets a test import <code>km_to_miles</code> and call <code>convert</code> without the converter running on import.</p></div>
+
+<pre class="code" data-lang="python" data-file="whoami.py" data-check="run"><code>print(f"__name__ is {__name__!r}")
+
+if __name__ == "__main__":
+    print("run as a program")
+else:
+    print("imported by someone else")
+</code></pre>
+<pre class="output" data-for="whoami.py"><code>__name__ is '__main__'
+run as a program
+</code></pre>
+
+<p>Imported instead (<code>python -c "import whoami"</code>, from the same folder), it prints <code>__name__ is 'whoami'</code> and <code>imported by someone else</code>.</p>
+<p>Your program is not a file, though: it is <code>python -m llm101.bench</code>. The <code>-m</code> flag says "find this module the way <code>import</code> would, and run it as the program". When the name is a <strong>package</strong> (a folder with an <code>__init__.py</code>), Python runs the file <code>__main__.py</code> inside it. Here is a tiny package to see it:</p>
+
+<pre class="grid-figure">weather/
+    __init__.py      the package: runs first, on any import of weather
+    __main__.py      what python -m weather runs as the program
+</pre>
+
+<pre class="code" data-lang="python" data-file="weather/__init__.py" data-check="fragment"><code>"""A tiny package: python -m weather runs weather/__main__.py."""
+
+RAIN_MM = {"Jan": 81.2, "Feb": 54.0, "Mar": 60.5}
+</code></pre>
+<pre class="code" data-lang="python" data-file="weather/__main__.py" data-check="fragment"><code>from weather import RAIN_MM
+
+print(f"__name__ is {__name__!r}")
+if __name__ == "__main__":
+    wettest = max(RAIN_MM, key=RAIN_MM.get)
+    print(f"wettest month so far: {wettest}, {RAIN_MM[wettest]} mm")
+</code></pre>
+
+<p>From the folder that contains <code>weather/</code>:</p>
+
+<pre class="shell"><code>$ python -m weather
+__name__ is '__main__'
+wettest month so far: Jan, 81.2 mm
+$ python weather/__main__.py
+Traceback (most recent call last):
+  File ".../weather/__main__.py", line 1, in &lt;module&gt;
+    from weather import RAIN_MM
+ModuleNotFoundError: No module named 'weather'
+</code></pre>
+
+<p>With <code>-m</code>, Python imports the package first (so <code>__init__.py</code> runs and the import works), then runs <code>__main__.py</code> with <code>__name__</code> set to <code>"__main__"</code>. Run as a plain file, Python looks for imports in the file's own folder, <code>weather/</code>, and among the installed packages, and finds no <code>weather</code> in either. That is why the course says <code>uv run python -m llm101.bench</code>: <code>uv sync</code> installed <code>llm101</code> as a package, so <code>-m</code> finds it anywhere in the repository. The given <code>src/llm101/bench/__main__.py</code> already ends with <code>if __name__ == "__main__":</code>; what <code>main</code> does is M5.</p>
+
+<h2>A first look at rich.live</h2>
+<p>Everything so far prints once. Later modules draw pictures that change while the program runs: Module 7's batch slots, Module 8's map of memory blocks. rich's <strong>Live</strong> redraws a renderable in place instead of printing new lines. A rain-water tank filling:</p>
+
+<pre class="code" data-lang="python" data-file="live_tank.py" data-check="run"><code>import time
+
+from rich.live import Live
+from rich.text import Text
+
+
+def tank(litres: int, capacity: int) -&gt; Text:
+    """A rain-water tank as one line: filled cells, empty cells and the level."""
+    filled = round(litres / capacity * 20)
+    line = Text("tank ")
+    line.append("▇" * filled, style="blue")
+    line.append("·" * (20 - filled), style="dim")
+    line.append(f" {litres:&gt;3} of {capacity} litres")
+    return line
+
+
+with Live(tank(0, 200), refresh_per_second=10) as live:
+    for litres in range(0, 201, 20):
+        live.update(tank(litres, 200))
+        time.sleep(0.1)
+</code></pre>
+<pre class="output" data-for="live_tank.py"><code>tank ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇ 200 of 200 litres</code></pre>
+
+<p>Inside <code>with Live(...) as live:</code>, each <code>live.update(...)</code> replaces what is shown, and in your terminal one line grows for a second. In this book, and in any output that is not a terminal, only the last picture is printed, because a file cannot be redrawn. Module 7 comes back to it.</p>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>A running vLLM server reports on itself as it works: every few seconds it logs a line with the average prompt and generation throughput in tokens per second, the number of requests running and waiting, and how full the KV cache is (the <code>LoggingStatLogger</code> in <code>vllm/v1/metrics/loggers.py</code>). Those are plain log lines, not rich, and they are the first thing to read when a server is slow. This course draws its own pictures with exactly the tools of this chapter: Module 7's animation of batch slots, Module 8's live block map of the KV cache, and Module 16's dashboard in front of several replicas are all a <code>Table</code>, some bars and a <code>Live</code>.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>What does <code>Console().print("[bold]Total[/bold]: 12")</code> show, and what does the built-in <code>print</code> show for the same string?</p><details class="answer"><summary>Answer</summary><p>rich shows <code>Total: 12</code>, with "Total" in bold in a terminal; the tags are read as markup and not printed. The built-in <code>print</code> shows the string exactly as written, tags included.</p></details></div>
+<div class="q"><p>The largest value in a chart is 40, the bar width is 20. How long are the bars for 30, 9, 1 and 0?</p><details class="answer"><summary>Answer</summary><p>30 / 40 &times; 20 = 15. 9 / 40 &times; 20 = 4.5, and <code>round(4.5)</code> is 4 (half way goes to the even number). 1 / 40 &times; 20 = 0.5, which rounds to 0, so the at-least-one rule makes it 1. 0 gets no bar.</p></details></div>
+<div class="q"><p>Why should a function that draws a table return it instead of printing it?</p><details class="answer"><summary>Answer</summary><p>So that the caller decides where it goes. A program prints it to the screen; a test prints it into <code>Console(file=io.StringIO(), record=True)</code> and reads <code>export_text()</code>, with no screen involved. A function that prints can only be tested by capturing the screen.</p></details></div>
+<div class="q"><p>Predict the output of <code>f"[{2_431_877:>12,}]"</code> and of <code>f"{0.0042:.1%}"</code>.</p><details class="answer"><summary>Answer</summary><p><code>[   2,431,877]</code>: the number with commas is 9 characters, right-justified in 12, so 3 spaces in front. And <code>0.4%</code>: 0.0042 times 100 is 0.42, shown to one decimal.</p></details></div>
+<div class="q"><p>A table cell is given the string <code>"values[i]"</code> and shows <code>values</code>. What happened, and give two ways to fix it.</p><details class="answer"><summary>Answer</summary><p>A string in a table cell is read as markup, and <code>[i]</code> looks like a tag (it starts with a lower-case letter), so rich dropped it. Pass <code>Text("values[i]")</code> instead, or <code>escape("values[i]")</code> from <code>rich.markup</code>.</p></details></div>
+<div class="q"><p>Why does <code>python -m weather</code> work where <code>python weather/__main__.py</code> fails on <code>from weather import RAIN_MM</code>?</p><details class="answer"><summary>Answer</summary><p><code>-m</code> finds <code>weather</code> as a package from the current folder, imports it, then runs its <code>__main__.py</code> as the program. Run as a plain file, Python looks for imports in the file's own folder, <code>weather/</code>, and among the installed packages, and neither holds a package called <code>weather</code>.</p></details></div>
+<div class="q"><p>With the converter's parser, what is <code>parser.parse_args(["--places", "0"])</code>, and what does the program print for it?</p><details class="answer"><summary>Answer</summary><p><code>Namespace(km=1.0, places=0)</code>: <code>--km</code> takes its default. It prints <code>1 km is 1 miles</code>, because <code>.0f</code> rounds 0.621371 to 1 with no decimals.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say why a table and a chart show what a column of numbers hides.</li>
+<li>Print with a rich <code>Console</code>, style text with markup and with <code>Text</code>, and build a <code>Table</code> with justified columns and a <code>Group</code>.</li>
+<li>Capture what rich prints with <code>record=True</code> and <code>export_text</code>, and check it as a test would.</li>
+<li>Draw proportional bars with <code>round()</code>, the largest at full width and every non-zero value visible, from a function that returns its renderable.</li>
+<li>Format numbers with <code>,</code>, <code>.2f</code>, widths and <code>%</code>, and choose a readable unit.</li>
+<li>Print text with square brackets safely, with <code>escape</code>, <code>Text</code> or <code>markup=False</code>.</li>
+<li>Give a program options with argparse, make it testable through <code>argv</code>, and run a package with <code>python -m</code>.</li>
+</ul>
+</main>
+</body>
+</html>

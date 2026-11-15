@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03 · Partition and select — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 3</p>
+<h1>Partition and select</h1>
+<p class="lede">At the end of this chapter you can explain, with a hand of cards, how to find the value at one position of a list without putting the whole list in order, why that costs about n steps on average where sorting costs about n log n, and why the choice of the card you split around decides whether it works at all.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: to know the median of a million timings, must you sort them all?</li>
+<li>Counting steps: what n log n means, drawn as levels of halving, against about n.</li>
+<li>Partition: a hand of cards split around a chosen card, then one split of a list of words in Python.</li>
+<li>Selection, done by hand on nine cards: split, count the piles, keep one, repeat.</li>
+<li>Why the pivot matters: the first card on an ordered hand, a random card, dice, and the sum that comes to 4n.</li>
+<li>Three piles for repeats; recursion, loops and the recursion limit.</li>
+<li>Binary search, the cousin on sorted data, and <code>numpy.partition</code>, the same idea written in C.</li>
+</ul>
+</div>
+
+<h2>The problem: one position, a million values</h2>
+<p>Your harness will record a thousand timings, and later in the course a million. <a href="02-tails-and-percentiles.html">Chapter 2</a> showed that a percentile is the value at a position of the list in order: the median of 1,001 timings is the one at position 500. The obvious way to find it is to sort the list and read position 500.</p>
+<p>That does far more than you asked. A sorted list answers every position at once, and you wanted one. A teacher with 1,001 marked exam scripts who wants the middle mark could put them all in order, but most of that afternoon's work (does script 12 come before script 13?) has nothing to do with the question. Can you find the value at one position without ordering everything? Yes: the method is called <strong>selection</strong>. Milestone M3 is <code>quickselect</code> in <code>src/llm101/bench/stats.py</code>, whose docstring forbids <code>sorted()</code> and <code>.sort()</code>. This chapter gives you the idea; you type the function.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>The interpreter does nothing for free. Every comparison of two values is real work: Python looks up the two objects, calls their comparison, and gets back <code>True</code> or <code>False</code>. To compare methods, count the comparisons each one makes as the list grows. A method whose count doubles when the list doubles will beat one whose count more than doubles, on every machine, once the list is big enough.</p></div>
+
+<h2>Counting steps</h2>
+<p>Take 16 cards and cut the pile in half, then each half in half, until every pile holds one card: 16, 8, 4, 2, 1, four rounds. Doubling to 32 adds one round. The number of times you can halve n before reaching 1 is the <strong>logarithm base 2</strong> of n, written log<sub>2</sub> n, and it grows very slowly:</p>
+
+<pre class="code" data-lang="python" data-file="halving.py" data-check="run"><code>import math
+
+# How many times can you halve n before one item is left? That is log2(n).
+for n in [8, 1_000, 1_000_000]:
+    halvings = 0
+    size = n
+    while size &gt; 1:
+        size = size // 2
+        halvings += 1
+    print(f"n = {n:&gt;9,}: halved {halvings:&gt;2} times; log2(n) = {math.log2(n):5.2f}")
+</code></pre>
+<pre class="output" data-for="halving.py"><code>n =         8: halved  3 times; log2(n) =  3.00
+n =     1,000: halved  9 times; log2(n) =  9.97
+n = 1,000,000: halved 19 times; log2(n) = 19.93
+</code></pre>
+
+<p>The loop counts 19 for a million because <code>//</code> rounds down; log<sub>2</sub> of a million is 19.93. In this chapter, "log" means exactly this: the number of halvings.</p>
+
+<h3>Why sorting costs about n log n</h3>
+<p>Good sorting methods work in levels: split the cards into halves, sort each half, combine. At each of the log<sub>2</sub> 16 = 4 levels, every card is handled about once:</p>
+
+<pre class="grid-figure">level 1   [ 16 cards                                      ]   16 cards handled
+level 2   [ 8                     ] [ 8                     ]   16
+level 3   [ 4        ] [ 4        ] [ 4        ] [ 4        ]   16
+level 4   [ 2  ] [ 2  ] [ 2  ] [ 2  ] [ 2  ] [ 2  ] [ 2  ] [ 2  ]   16
+                                                               --
+          4 levels, 16 cards each:  4 x 16 = 64 = 16 x log2(16)
+</pre>
+
+<p>n cards at each of log<sub>2</sub> n levels: about <strong>n log n</strong> steps. Watch <code>sorted()</code> do it, on numbers wrapped in a class whose <code>__lt__</code> (the method Python calls for <code>a &lt; b</code>) counts each comparison:</p>
+
+<pre class="code" data-lang="python" data-file="count_comparisons.py" data-check="run"><code>import math
+import random
+
+
+class Counted:
+    """A number that counts how often it is compared with another."""
+
+    comparisons = 0
+
+    def __init__(self, value: float) -&gt; None:
+        self.value = value
+
+    def __lt__(self, other: "Counted") -&gt; bool:
+        Counted.comparisons += 1
+        return self.value &lt; other.value
+
+
+rng = random.Random(7)
+for n in [1_000, 10_000, 100_000]:
+    numbers = [Counted(rng.random()) for _ in range(n)]
+    Counted.comparisons = 0
+    sorted(numbers)
+    estimate = n * math.log2(n)
+    print(f"n = {n:&gt;7,}: sorted() compared {Counted.comparisons:&gt;9,} times; "
+          f"n log2 n = {estimate:&gt;11,.0f}")
+</code></pre>
+<pre class="output" data-for="count_comparisons.py"><code>n =   1,000: sorted() compared     8,665 times; n log2 n =       9,966
+n =  10,000: sorted() compared   120,197 times; n log2 n =     132,877
+n = 100,000: sorted() compared 1,531,694 times; n log2 n =   1,660,964
+</code></pre>
+
+<p>Python's sort (Timsort, with the Powersort merge rule since 3.11) needs a little under n log<sub>2</sub> n comparisons on shuffled data: about 20 million for a million values.</p>
+
+<h3>What "about n" would mean</h3>
+<p>Now imagine a method that looks at all n cards, throws half away, looks at the rest, throws half of those away, and so on: 16 + 8 + 4 + 2 + 1 = 31 looks for 16 cards, under 2n, because each round costs half the one before. Selection behaves like this on average (the real figure is about 4n, as <a href="#why-the-pivot-matters">why the pivot matters</a> shows), and 4 million is far less than 20 million.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Counting steps compares methods, not programs. <code>sorted()</code> is written in C; a selection written in Python pays the interpreter's price on every step, so on a thousand timings <code>sorted()</code> may well win. The count says what happens as n grows, or when both are in the same language, as in <a href="#the-same-idea-written-in-c">the numpy section</a>.</p></div>
+
+<h2>Partition: splitting a hand around one card</h2>
+<p>Deal yourself nine cards and lay them in a row, in the order they came:</p>
+
+<pre class="grid-figure">  8   3   10   5   3   12   7   1   9
+</pre>
+
+<p>Pick one card, say the 5, and call it the <strong>pivot</strong>. Walk along the row once and put each card on one of three piles: smaller than the pivot, equal, larger:</p>
+
+<pre class="grid-figure">  pivot: 5
+
+  smaller        equal        larger
+  +---------+    +-----+      +-------------------+
+  | 3  3  1 |    |  5  |      | 8  10  12  7  9   |
+  +---------+    +-----+      +-------------------+
+   3 cards       1 card        5 cards
+</pre>
+
+<p>That walk is a <strong>partition</strong>. Inside each pile nothing is in order (the larger pile reads 8, 10, 12, 7, 9), but between the piles everything is: smaller below equal below larger. So without sorting, you know exactly which positions of the sorted hand each pile covers:</p>
+
+<table>
+<thead><tr><th>Pile</th><th>Cards (in no order)</th><th>How many</th><th>Positions it covers in the sorted hand</th></tr></thead>
+<tbody>
+<tr><td>smaller</td><td>3, 3, 1</td><td>3</td><td>0 to 2</td></tr>
+<tr><td>equal</td><td>5</td><td>1</td><td>3</td></tr>
+<tr><td>larger</td><td>8, 10, 12, 7, 9</td><td>5</td><td>4 to 8</td></tr>
+</tbody>
+</table>
+
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A partition is a sorting office with three pigeonholes, "before M", "M" and "after M". The letters in each hole are not in order, but anyone looking for "Smith" knows which hole to search. <em>Where it breaks:</em> the office chose its label in advance to split the letters evenly. Your pivot is one of the cards, and a bad one (the alphabet's "A") sends nearly everything to one hole.</p></div>
+
+<h3>One split in Python</h3>
+<p>One round in Python, on words: strings compare in dictionary order (<code>"apple" &lt; "fig"</code> is <code>True</code>), so a word can be a pivot. Each comprehension builds a <em>new</em> list:</p>
+
+<pre class="code" data-lang="python" data-file="one_split.py" data-check="run"><code>words = ["pear", "fig", "apple", "plum", "kiwi", "fig", "lime", "date", "kiwi"]
+pivot = "kiwi"
+
+# One round: every word is compared with the pivot once, and lands in one of three new lists.
+smaller = [w for w in words if w &lt; pivot]
+equal = [w for w in words if w == pivot]
+larger = [w for w in words if w &gt; pivot]
+
+print("words:  ", words)
+print("smaller:", smaller, len(smaller))
+print("equal:  ", equal, len(equal))
+print("larger: ", larger, len(larger))
+print("total:  ", len(smaller) + len(equal) + len(larger), "of", len(words))
+print("unchanged:", words)
+</code></pre>
+<pre class="output" data-for="one_split.py"><code>words:   ['pear', 'fig', 'apple', 'plum', 'kiwi', 'fig', 'lime', 'date', 'kiwi']
+smaller: ['fig', 'apple', 'fig', 'date'] 4
+equal:   ['kiwi', 'kiwi'] 2
+larger:  ['pear', 'plum', 'lime'] 3
+total:   9 of 9
+unchanged: ['pear', 'fig', 'apple', 'plum', 'kiwi', 'fig', 'lime', 'date', 'kiwi']
+</code></pre>
+
+<p>Nine words in, nine out, in three new lists, and <code>words</code> is unchanged. The equal pile holds both copies of <code>"kiwi"</code>, which matters in <a href="#why-three-piles">why three piles</a>. This version walks the list three times, one per comprehension, so it makes 3n comparisons: still "about n", since tripling the list triples the work.</p>
+<p>The other way to partition is inside the list itself, by swapping elements, with no new list at all. That is the drill <code>sort_colours</code> (<a href="../../../drills/01-arrays-hashing/sort_colours.py">drills/01-arrays-hashing/sort_colours.py</a>, in <a href="07-drills.html">chapter 7</a>), which you do before M3; the drill is where you work it out. Either way, <code>quickselect</code> must not change the list it was given, and the tests check.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Type <code>one_split.py</code> into <code>scratch/</code> and run it. Before you change anything, predict the three pile sizes with <code>pivot = "apple"</code>, then with <code>pivot = "zebra"</code>, a word that is not in the list. Then run both.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>"apple"</code>: 0, 1, 8. <code>"zebra"</code>: 9, 0, 0. A pivot need not be in the list for the split to be correct, but both are useless: one pile gets everything.</p></details>
+
+<h2>Selection, by hand</h2>
+<p>Now use the counts. You want position 4 of the nine cards in order (counting from 0), the median. The method in words:</p>
+<ol>
+<li>Pick a pivot card and split the hand into smaller, equal and larger piles.</li>
+<li>Count the piles, to know which positions each covers.</li>
+<li>If the position you want is in the equal pile, the pivot is the answer.</li>
+<li>Otherwise keep only the pile that holds it. If that is the larger pile, subtract the cards below it from the position you are looking for.</li>
+<li>Repeat with the smaller hand.</li>
+</ol>
+<p>Done by hand on <code>8 3 10 5 3 12 7 1 9</code>, looking for position 4:</p>
+
+<table>
+<thead><tr><th>Round</th><th>Hand</th><th>Looking for</th><th>Pivot</th><th>Smaller</th><th>Equal</th><th>Larger</th><th>Which pile holds it</th><th>Keep</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>8 3 10 5 3 12 7 1 9 (9 cards)</td><td>position 4</td><td>5</td><td>3 3 1 (3)</td><td>5 (1)</td><td>8 10 12 7 9 (5)</td><td>smaller covers 0 to 2, equal 3, larger 4 to 8: larger</td><td>the 5 larger cards, now looking for 4 &minus; 3 &minus; 1 = position 0</td></tr>
+<tr><td>2</td><td>8 10 12 7 9 (5 cards)</td><td>position 0</td><td>10</td><td>8 7 9 (3)</td><td>10 (1)</td><td>12 (1)</td><td>smaller covers 0 to 2: smaller</td><td>the 3 smaller cards, still position 0</td></tr>
+<tr><td>3</td><td>8 7 9 (3 cards)</td><td>position 0</td><td>7</td><td>none (0)</td><td>7 (1)</td><td>8 9 (2)</td><td>smaller covers nothing, equal covers 0: equal</td><td>stop: the answer is <strong>7</strong></td></tr>
+</tbody>
+</table>
+
+<p>Check it the slow way: in order, the hand is 1, 3, 3, 5, 7, 8, 9, 10, 12, and position 4 is 7. Rounds of 9, 5 and 3 cards make 17 comparisons with a pivot, against about 28 to sort nine cards, and nobody ever decided whether 10 comes before 12. The step that is easiest to get wrong is the subtraction in round 1: the larger pile starts at position 4 of the whole hand, so the card you want is its first, position 0. Subtract every card you threw away from below.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>With cards from a real pack or on paper, find position 7 of the same nine cards (the second largest), choosing 8 as the first pivot and the first card of the kept pile as each later pivot. Write your own table with the same columns. How many cards did you look at?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Round 1, pivot 8: smaller 3 5 3 7 1 (5), equal 8 (1), larger 10 12 9 (3). Position 7 is in the larger pile (positions 6 to 8): look for 7 &minus; 5 &minus; 1 = 1. Round 2, pivot 10: smaller 9, equal 10, larger 12; position 1 is the equal pile, so the answer is 10, after 9 + 3 = 12 cards.</p></details>
+
+<h2>Why the pivot matters</h2>
+<p>The pivots above happened to be decent. Now take the worst case: the rule is "the first card is the pivot", and the hand is already in order, as timings sometimes are. Look for the largest of nine:</p>
+
+<pre class="grid-figure">  hand in order: 1 2 3 4 5 6 7 8 9      looking for the largest
+
+  round 1   pivot 1 | smaller: none  larger: 2 3 4 5 6 7 8 9    looked at 9
+  round 2   pivot 2 | smaller: none  larger: 3 4 5 6 7 8 9      looked at 8
+  round 3   pivot 3 | smaller: none  larger: 4 5 6 7 8 9        looked at 7
+    ...
+  round 9   pivot 9 | equal: 9, the answer                        looked at 1
+                                                                  ----------
+                                                  9 + 8 + ... + 1 = 45
+</pre>
+
+<p>Every round removes one card: n + (n &minus; 1) + ... + 1 = n &times; (n + 1) / 2, about <strong>n squared over 2</strong>. Looking for the middle stops half way down the staircase, still about 3n&sup2;/8. Squared either way, which is worse than sorting:</p>
+
+<pre class="code" data-lang="python" data-file="worst_pivot.py" data-check="run"><code>import math
+
+# First card as pivot, on cards already in order: every round removes just one card.
+for n in [9, 4_000, 1_000_000]:
+    looked_at = sum(range(1, n + 1))  # n + (n - 1) + ... + 1
+    print(f"n = {n:&gt;9,}: first-card pivot {looked_at:&gt;17,}   "
+          f"random pivot ~{4 * n:&gt;10,}   n log2 n ~{n * math.log2(n):&gt;12,.0f}")
+</code></pre>
+<pre class="output" data-for="worst_pivot.py"><code>n =         9: first-card pivot                45   random pivot ~        36   n log2 n ~          29
+n =     4,000: first-card pivot         8,002,000   random pivot ~    16,000   n log2 n ~      47,863
+n = 1,000,000: first-card pivot   500,000,500,000   random pivot ~ 4,000,000   n log2 n ~  19,931,569
+</code></pre>
+
+<p>At nine cards the shape hardly matters. At a million, the first-card rule on ordered data does half a trillion steps, against about 4 million with a random pivot and 20 million to sort. That is why the M3 test <code>test_quickselect_ordered_input_is_not_the_worst_case</code> times your function on 4,000 numbers in order and shuffled, and fails if the ordered list is more than ten times slower.</p>
+
+<h3>A random pivot</h3>
+<p>The fix is to stop letting the data choose: pick the pivot at random. <code>random.choice</code> returns one element of a list, each equally likely:</p>
+
+<pre class="code" data-lang="python" data-file="pick_a_pivot.py" data-check="run"><code>import random
+
+words = ["pear", "fig", "apple", "plum", "kiwi", "fig", "lime", "date", "kiwi"]
+
+rng = random.Random(3)  # seeded, so the picks are the same every run
+for _ in range(5):
+    print(rng.choice(words))
+</code></pre>
+<pre class="output" data-for="pick_a_pivot.py"><code>plum
+kiwi
+apple
+fig
+date
+</code></pre>
+
+<p><code>random.Random(3)</code> makes a generator with its own <strong>seed</strong>, the starting number from which the whole sequence follows, so these picks are the same on every run. Now an ordered hand cannot hurt you, because the pivot no longer depends on the order. Bad luck once in a while is still possible; bad luck on every ordered list is not.</p>
+
+<h3>Expected value, with dice</h3>
+<p>"On average" needs a precise meaning. Each face of a die is equally likely, so the <strong>expected value</strong> of a roll is the plain average of the faces, (1 + 2 + ... + 6) / 6 = 3.5. No roll is ever 3.5; it is what the average of many rolls settles towards:</p>
+
+<pre class="code" data-lang="python" data-file="dice.py" data-check="run"><code>import random
+
+faces = [1, 2, 3, 4, 5, 6]
+print("average of the faces:", sum(faces) / len(faces))
+
+rng = random.Random(42)
+for rolls in [10, 1_000, 100_000]:
+    total = 0
+    for _ in range(rolls):
+        total += rng.choice(faces)
+    print(f"{rolls:&gt;7,} rolls: average {total / rolls:.3f}")
+</code></pre>
+<pre class="output" data-for="dice.py"><code>average of the faces: 3.5
+     10 rolls: average 3.000
+  1,000 rolls: average 3.519
+100,000 rolls: average 3.505
+</code></pre>
+
+<p>The more rolls, the closer to 3.5. Physically, the expected value is the balance point: put a one-gram weight on a ruler at 1, 2, 3, 4, 5 and 6 centimetres, and the ruler balances on a finger at 3.5.</p>
+<p>A random pivot is a roll of a die with n faces: its position in the sorted hand is equally likely to be any of 0 to n &minus; 1, and position i leaves i cards below and n &minus; 1 &minus; i above. Take the worse case for each roll, the bigger pile, and average it over all n faces:</p>
+
+<pre class="code" data-lang="python" data-file="bigger_pile.py" data-check="run"><code># A pivot at position i (in order) leaves i cards below it and n - 1 - i above it.
+# Every position is equally likely, so the expected bigger pile is the plain average.
+for n in [9, 100, 1_000_000]:
+    total = 0
+    for i in range(n):
+        total += max(i, n - 1 - i)
+    average = total / n
+    print(f"n = {n:&gt;9,}: bigger pile {average:&gt;12,.2f} on average, {average / n:.3f} of n")
+</code></pre>
+<pre class="output" data-for="bigger_pile.py"><code>n =         9: bigger pile         6.22 on average, 0.691 of n
+n =       100: bigger pile        74.50 on average, 0.745 of n
+n = 1,000,000: bigger pile   749,999.50 on average, 0.750 of n
+</code></pre>
+
+<p>On average the bigger pile is three quarters of the hand. A pivot from the middle half leaves a bigger pile of between a half and three quarters; one from the outer quarters, between three quarters and all of it. The balance point is 3/4.</p>
+
+<h3>The sum that comes to 4n</h3>
+<p>So each round keeps, on average and at worst, three quarters of what it looked at. The rounds look at:</p>
+<pre class="grid-figure">  n  +  (3/4) n  +  (3/4)&sup2; n  +  (3/4)&sup3; n  +  ...
+</pre>
+<p>A sum in which each term is three quarters of the one before never passes the first term divided by the share thrown away each time: n / (1/4) = <strong>4n</strong>. Watch it settle:</p>
+
+<pre class="code" data-lang="python" data-file="shrinking_rounds.py" data-check="run"><code>n = 1_000_000
+
+# A lucky-on-average round keeps three quarters of what it looked at.
+total = 0.0
+size = float(n)
+for round_number in range(1, 61):
+    total += size
+    size *= 0.75
+    if round_number in (1, 2, 3, 5, 10, 20, 40, 60):
+        print(f"after {round_number:&gt;2} rounds: {total:&gt;13,.0f} cards looked at")
+print(f"4n = {4 * n:,}")
+</code></pre>
+<pre class="output" data-for="shrinking_rounds.py"><code>after  1 rounds:     1,000,000 cards looked at
+after  2 rounds:     1,750,000 cards looked at
+after  3 rounds:     2,312,500 cards looked at
+after  5 rounds:     3,050,781 cards looked at
+after 10 rounds:     3,774,746 cards looked at
+after 20 rounds:     3,987,315 cards looked at
+after 40 rounds:     3,999,960 cards looked at
+after 60 rounds:     4,000,000 cards looked at
+4n = 4,000,000
+</code></pre>
+
+<p>Ten rounds have done 94% of the work. That is the sense in which selection is "about n": a constant times n, against sorting's n times log n, which keeps growing. (The 4 overestimates a little, since you keep the bigger pile only some of the time.) It also counts the rounds: keeping about three quarters each time, a million cards are down to one after about 48 rounds, and 4,000 after about 29.</p>
+
+<h2>Why three piles</h2>
+<p>Why not two piles, "smaller" and "everything else"? Because timings repeat: a coarse clock can record the same count hundreds of times. Take the extreme, ten cards that are all 5:</p>
+
+<pre class="grid-figure">  hand: 5 5 5 5 5 5 5 5 5 5        pivot: 5
+
+  two piles:    smaller: none        not smaller: 5 5 5 5 5 5 5 5 5 5
+                the hand did not shrink at all; the next round is the same round
+
+  three piles:  smaller: none   equal: 5 5 5 5 5 5 5 5 5 5   larger: none
+                every position is in the equal pile: the answer is 5, in one round
+</pre>
+
+<p>With two piles, a hand of repeats never shrinks, and the method goes round forever. With three, the equal pile swallows every repeat of the pivot at once. Your tests include <code>test_quickselect_all_values_equal</code> and <code>test_quickselect_with_many_repeats</code>, on lists drawn from only eleven values.</p>
+
+<h2>Recursion, loops and the limit</h2>
+<p>"Repeat with the smaller hand" can be written two ways, and the difference matters for M3. The first is <strong>recursion</strong>: a function that calls itself on a smaller job, like this countdown:</p>
+
+<pre class="code" data-lang="python" data-file="countdown.py" data-check="run"><code>import sys
+
+
+def countdown(n: int) -&gt; None:
+    """Print n, n - 1, ..., 1, then lift-off: by calling itself with a smaller n."""
+    if n == 0:
+        print("lift-off")
+        return
+    print(n)
+    countdown(n - 1)
+
+
+countdown(3)
+print("recursion limit:", sys.getrecursionlimit())
+</code></pre>
+<pre class="output" data-for="countdown.py"><code>3
+2
+1
+lift-off
+recursion limit: 1000
+</code></pre>
+
+<p>Each call that has not finished yet holds a <strong>frame</strong>: a record of its local variables and where it was. At the deepest point of <code>countdown(3)</code>, four frames are stacked up. Python allows 1,000 by default, the number <code>sys.getrecursionlimit()</code> printed, to protect itself from a function that never stops calling itself:</p>
+
+<pre class="code" data-lang="python" data-file="too_deep.py" data-check="error"><code>def depth_of(n: int) -&gt; int:
+    """How many calls deep does counting down from n go? One call per number."""
+    if n == 0:
+        return 0
+    return 1 + depth_of(n - 1)
+
+
+print(depth_of(900))
+print(depth_of(4_000))
+</code></pre>
+<pre class="output"><code>900
+Traceback (most recent call last):
+  File ".../scratch/too_deep.py", line 9, in &lt;module&gt;
+    print(depth_of(4_000))
+          ~~~~~~~~^^^^^^^
+  File ".../scratch/too_deep.py", line 5, in depth_of
+    return 1 + depth_of(n - 1)
+               ~~~~~~~~^^^^^^^
+  File ".../scratch/too_deep.py", line 5, in depth_of
+    return 1 + depth_of(n - 1)
+               ~~~~~~~~^^^^^^^
+  File ".../scratch/too_deep.py", line 5, in depth_of
+    return 1 + depth_of(n - 1)
+               ~~~~~~~~^^^^^^^
+  [Previous line repeated 996 more times]
+RecursionError: maximum recursion depth exceeded
+</code></pre>
+
+<p>Nine hundred calls deep was fine; four thousand was not. Read the traceback from the bottom: the error, the line that kept repeating, the line that started it. Now connect it to selection. If each round is a call to itself with the kept pile, the depth is the number of rounds: a few dozen with a random pivot, but 2,000 with the first card as pivot on 4,000 ordered numbers, looking for the middle. The M3 timing test catches that <code>RecursionError</code> and sends you back here.</p>
+<p>The second way to repeat is a <strong>loop</strong>, which runs in one frame however many times it goes round:</p>
+
+<pre class="code" data-lang="python" data-file="countdown_loop.py" data-check="run"><code>def countdown_loop(n: int) -&gt; int:
+    """The same countdown with a loop: one call, however large n is. Returns the steps taken."""
+    steps = 0
+    while n &gt; 0:
+        n -= 1
+        steps += 1
+    return steps
+
+
+print(countdown_loop(4_000))
+print(countdown_loop(1_000_000))
+</code></pre>
+<pre class="output" data-for="countdown_loop.py"><code>4000
+1000000
+</code></pre>
+
+<p>A million steps, one frame. A function whose last act is to call itself on a smaller problem can always be written as a loop that replaces its variables instead. Recursion often reads closer to the words; a loop has no depth limit. Either is fine for M3 if the pivot keeps the depth small. (<code>sys.setrecursionlimit</code> raises the limit; do not use it to rescue a bad pivot, since far enough up it crashes the interpreter itself.)</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Type <code>too_deep.py</code> and change 4,000 to 990, then to 999. Which works? The limit is 1,000, so why does the largest count that fits come out a little below it?</p></div>
+<details class="hint"><summary>A nudge</summary><p>Count every frame that is open at the deepest point, including the one that is not a call to <code>depth_of</code> at all.</p></details>
+<details class="answer"><summary>Show the answer</summary><p>990 works, and so does 998; 999 fails. <code>depth_of(998)</code> opens 999 frames of <code>depth_of</code> (from 998 down to 0), and the module itself, the code at the top level of your file, is one more frame: 1,000 in all. <code>depth_of(999)</code> needs 1,001.</p></details>
+
+
+<h2>Binary search, the cousin</h2>
+<p><strong>Binary search</strong> also throws away the part the answer is not in, but it needs a list <em>already</em> in order, and it answers "where is this value?", not "what is at position k?". Think of a guessing game: I pick a number from 1 to 1,000,000 and answer "higher" or "lower". Guess the middle of what is left, and half the possibilities vanish each time:</p>
+
+<pre class="code" data-lang="python" data-file="guess_the_number.py" data-check="run"><code>secret = 731_337
+low, high = 1, 1_000_000  # the secret is somewhere in low..high, both included
+guesses = 0
+while True:
+    guess = (low + high) // 2
+    guesses += 1
+    if guess == secret:
+        break
+    if guess &lt; secret:
+        low = guess + 1  # too small: throw away the lower half, guess included
+    else:
+        high = guess - 1  # too big: throw away the upper half
+    if guesses &lt;= 4:
+        print(f"guess {guesses}: {guess:&gt;7,}   the secret is in {low:,}..{high:,}")
+print(f"found {secret:,} in {guesses} guesses")
+</code></pre>
+<pre class="output" data-for="guess_the_number.py"><code>guess 1: 500,000   the secret is in 500,001..1,000,000
+guess 2: 750,000   the secret is in 500,001..749,999
+guess 3: 625,000   the secret is in 625,001..749,999
+guess 4: 687,500   the secret is in 687,501..749,999
+found 731,337 in 16 guesses
+</code></pre>
+
+<p>Sixteen guesses, never more than 20: a million halves to one in 20 rounds. The standard library has it as <code>bisect</code>, which finds where a value belongs in a sorted list:</p>
+
+<pre class="code" data-lang="python" data-file="bisect_words.py" data-check="run"><code>import bisect
+
+dictionary = ["apple", "date", "fig", "kiwi", "lime", "pear", "plum"]  # already in order
+
+for word in ["kiwi", "mango"]:
+    place = bisect.bisect_left(dictionary, word)
+    found = place &lt; len(dictionary) and dictionary[place] == word
+    print(f"{word}: place {place}, found {found}")
+</code></pre>
+<pre class="output" data-for="bisect_words.py"><code>kiwi: place 3, found True
+mango: place 5, found False
+</code></pre>
+
+<p>"kiwi" is at place 3; "mango" is absent and would belong at place 5. The cousins side by side:</p>
+
+<table>
+<thead><tr><th></th><th>Binary search</th><th>Selection</th></tr></thead>
+<tbody>
+<tr><td>Needs the data in order?</td><td>yes</td><td>no</td></tr>
+<tr><td>Question</td><td>where is this value?</td><td>what value is at this position?</td></tr>
+<tr><td>Each round throws away</td><td>exactly half, for certain</td><td>a pile, of a size that depends on the pivot</td></tr>
+<tr><td>Each round looks at</td><td>one value, the middle</td><td>every value still in the hand</td></tr>
+<tr><td>Total work</td><td>about log<sub>2</sub> n</td><td>about 4n on average</td></tr>
+</tbody>
+</table>
+
+<p>Binary search is far cheaper per question, but someone had to sort first, at n log n. For one answer from unsorted data, selection wins. Module 4 uses binary search for top-p sampling, on probabilities already in order.</p>
+
+<h2>The same idea, written in C</h2>
+<p>numpy has selection built in. <code>numpy.partition(a, k)</code> returns a new array whose position k holds the value that sorting would put there, with nothing larger before it and nothing smaller after: the three piles laid end to end, each in whatever order the method left. Use it to look at data and to check your hand-worked tables, never in <code>stats.py</code>:</p>
+
+<pre class="code" data-lang="python" data-file="numpy_partition.py" data-check="run"><code>import numpy as np
+
+cards = np.array([8, 3, 10, 5, 3, 12, 7, 1, 9])
+split = np.partition(cards, 4)  # a new array; cards itself is not changed
+
+print("cards:      ", cards)
+print("partitioned:", split)
+print("position 4: ", split[4])
+print("smaller:    ", split[:4], "(in no particular order)")
+print("larger:     ", split[5:], "(in no particular order)")
+print("sorted, to check:", np.sort(cards))
+</code></pre>
+<pre class="output" data-for="numpy_partition.py"><code>cards:       [ 8  3 10  5  3 12  7  1  9]
+partitioned: [ 1  3  3  5  7  8 12 10  9]
+position 4:  7
+smaller:     [1 3 3 5] (in no particular order)
+larger:      [ 8 12 10  9] (in no particular order)
+sorted, to check: [ 1  3  3  5  7  8  9 10 12]
+</code></pre>
+
+<p>Position 4 is 7, as in your table. The smaller side happens to come out in order; the larger, 8 12 10 9, shows that nothing promises it. Now both methods in C, on ten million random numbers:</p>
+
+<pre class="code" data-lang="python" data-file="partition_against_sort.py" data-check="run"><code>import time
+
+import numpy as np
+
+rng = np.random.default_rng(1)
+values = rng.random(10_000_000)
+middle = len(values) // 2
+
+start = time.perf_counter_ns()
+by_sort = np.sort(values)[middle]
+sort_ms = (time.perf_counter_ns() - start) / 1e6
+
+start = time.perf_counter_ns()
+by_partition = np.partition(values, middle)[middle]
+partition_ms = (time.perf_counter_ns() - start) / 1e6
+
+print(f"same answer: {by_sort == by_partition}")
+print(f"np.sort:      {sort_ms:7.1f} ms")
+print(f"np.partition: {partition_ms:7.1f} ms")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>same answer: True
+np.sort:        296.4 ms
+np.partition:    45.7 ms
+</code></pre>
+
+<p>The same answer, six times faster (two more runs: 294.6 against 47.2 ms, 293.8 against 46.0 ms), and the gap grows with n.</p>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>To choose its next token, a language model scores every token in its vocabulary, one <strong>logit</strong> each: 50,257 for GPT-2, 128,256 for Llama 3, 151,936 for Qwen 2.5. <strong>Top-k sampling</strong> (Module 4) keeps the k highest, say 50, and draws from among them, at every step, for every request in the batch. Sorting 128,256 numbers to keep 50 is this chapter's opening question again. PyTorch's <code>torch.topk</code> finds the k largest by selection, without sorting the vocabulary, and vLLM's sampler (<code>vllm/v1/sample/ops/topk_topp_sampler.py</code>) uses it to find the cut-off score when only top-k is asked for.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>In your own words: why does sorting a list cost about n log n comparisons? Use the picture of levels.</p><details class="answer"><summary>Answer</summary><p>It works in about log<sub>2</sub> n levels, the number of times n halves down to 1, and at each level every value is handled about once: n times log<sub>2</sub> n.</p></details></div>
+<div class="q"><p>You split the hand <code>6 2 9 4 9 1 7</code> around the pivot 6, looking for position 5. Which pile do you keep, and which position do you look for next?</p><details class="answer"><summary>Answer</summary><p>Smaller: 2 4 1 (3 cards, positions 0 to 2). Equal: 6 (position 3). Larger: 9 9 7 (positions 4 to 6). Position 5 is in the larger pile; subtract the 3 + 1 cards below it, and look for position 1 of 9 9 7. (In order, 7 9 9, so the answer will be 9.)</p></details></div>
+<div class="q"><p>Your selection uses the first element as its pivot. It is fast on shuffled lists but very slow on a list of timings that you had sorted earlier. Explain why, with a number for 4,000 values.</p><details class="answer"><summary>Answer</summary><p>On an ordered list the first element is the smallest, so each round removes only one value. The middle of 4,000 takes about 2,000 rounds and some 6 million looks (4,000 + 3,999 + ... + 2,001), against about 16,000 with a random pivot; and 2,000 recursive calls pass the limit of 1,000.</p></details></div>
+<div class="q"><p>Each round of a selection keeps on average three quarters of the hand. Why does the total come to about 4n and not n log n?</p><details class="answer"><summary>Answer</summary><p>The rounds shrink: n, 3n/4, (3/4)&sup2;n..., which sums to n / (1/4) = 4n. Sorting handles all n values at every one of its log n levels.</p></details></div>
+<div class="q"><p>Why does a selection that splits into only two piles ("smaller" and "not smaller") fail on <code>[5, 5, 5, 5]</code>?</p><details class="answer"><summary>Answer</summary><p>Nothing is smaller than the pivot, so the other pile holds all four values and the hand never shrinks. With an equal pile, all four land there and the answer comes in one round.</p></details></div>
+<div class="q"><p>Binary search finds a value among a million in at most 20 steps; selection needs about 4 million. Why would you ever use selection?</p><details class="answer"><summary>Answer</summary><p>Binary search needs sorted data, and sorting a million values costs about 20 million comparisons. For one answer from fresh, unsorted timings, selection's 4 million is cheaper. Binary search wins when data is sorted once and searched many times.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say why sorting a million values to read one position does far more than the question needs.</li>
+<li>Explain n log n as levels of halving, count the comparisons <code>sorted()</code> makes, and compare it with about n.</li>
+<li>Partition a hand of cards around a pivot into three piles, and split a list of words into three new lists with comprehensions.</li>
+<li>Work a selection by hand: split, count the piles, keep the one that holds the position, adjust the position, repeat.</li>
+<li>Explain why the first element is a bad pivot on ordered data, why a random one is good, and where 3/4 and 4n come from.</li>
+<li>Say why repeats need an equal pile, and why recursion has a depth limit that a loop does not.</li>
+<li>Tell binary search from selection, and use <code>numpy.partition</code> to check an answer.</li>
+</ul>
+</main>
+</body>
+</html>

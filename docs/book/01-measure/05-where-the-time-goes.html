@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>05 · Where the time goes — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 05</p>
+<h1>Where the time goes</h1>
+<p class="lede">At the end of this chapter you will be able to profile a program with cProfile and read its table, write a tracer of your own that sees every call, line and return, and say when to trace and when to sample.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: a total time does not say which part was slow.</li>
+<li>Two ways to watch a program: tracing and sampling.</li>
+<li>cProfile and pstats on two Fibonaccis, and how to read <code>ncalls</code>, <code>tottime</code> and <code>cumtime</code>.</li>
+<li>How tracing works: <code>sys.settrace</code>, its four events, and frames.</li>
+<li>A worked example: counting calls per function, and putting the old tracer back with <code>try</code>/<code>finally</code>.</li>
+<li>What tracing costs; <code>sys.monitoring</code>; sampling a running server with py-spy.</li>
+</ul>
+</div>
+
+<h2>The problem: 1.2 milliseconds, but where?</h2>
+<p>By the end of this module your harness will tell you that a function takes 1.2 ms at p50. That is a fact about the whole function, and it does not say what to change. Nine of its ten lines might cost almost nothing while the tenth costs nearly all of it; or the cost might be spread evenly, and no single change will help. Before you rewrite anything, you want to know which.</p>
+<p>A <strong>profiler</strong> answers "where did the time go?" without you editing the function. This chapter shows how one piece of Python can watch another, because Milestone 6 asks you to build such a watcher.</p>
+
+<h2>Two ways to watch a program</h2>
+<p>A <strong>tracing profiler</strong> is told about every event as it happens: a function starts, a line is about to run, a function returns. Its counts are exact, and it pays for that with some work at every event, of which a busy program has millions.</p>
+<p>A <strong>sampling profiler</strong> is told nothing. Every few milliseconds it looks at the program and writes down where it is. After a few thousand looks it has a statistical picture: if the program was inside one function in 80 of 100 samples, that function takes about 80% of the time. It misses events, but between samples it costs nothing.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A factory floor. Tracing is a stopwatch on every worker, clicked at every start and stop of every task. Sampling is a photographer on the balcony who photographs the whole floor every ten milliseconds; afterwards you count the photos that show each worker at each machine. <em>Where it breaks:</em> a real stopwatch does not slow the worker down, but a tracer does, because it runs on the same processor, in between the program's own steps. And the camera is not free either: py-spy, the sampler at the end of this chapter, briefly pauses the program for each sample unless you ask it not to.</p></div>
+
+<div class="callout principle"><span class="label">First principle</span><p>A profiler can only report what it can see, and seeing has a cost. A tracer sees every event and pays at every event; a sampler sees a few snapshots and pays only for those. Whichever you use, the program you measure is not quite the program that runs without the profiler.</p></div>
+
+<h2>cProfile on two Fibonaccis</h2>
+<p>Python ships with a tracing profiler, <strong>cProfile</strong>, written in C to keep it cheap. Here is a toy for it: two ways to compute the 25th Fibonacci number (each is the sum of the two before it: 0, 1, 1, 2, 3, 5, 8, and so on). The slow way calls itself twice for every number, recomputing the same small numbers over and over; the fast way walks forward once with two variables.</p>
+
+<pre class="code" data-lang="python" data-file="two_fibs.py" data-check="run"><code>def fib_slow(n):
+    if n &lt; 2:
+        return n
+    return fib_slow(n - 1) + fib_slow(n - 2)
+
+
+def fib_fast(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+
+print("slow:", fib_slow(25))
+print("fast:", fib_fast(25))
+</code></pre>
+<pre class="output" data-for="two_fibs.py"><code>slow: 75025
+fast: 75025
+</code></pre>
+
+<div class="callout note"><span class="label">Python you need</span><p><code>python -m NAME</code> runs a module as a program, the way <code>python -m llm101.bench</code> will run yours; everything after the name becomes that module's arguments. So <code>python -m cProfile -s cumulative scratch/two_fibs.py</code> runs cProfile, which runs your file under its watch.</p></div>
+
+<p>Run it under cProfile, sorted by cumulative time:</p>
+<pre class="shell"><code>$ uv run python -m cProfile -s cumulative scratch/two_fibs.py
+</code></pre>
+<p>One run on the M5; your numbers will differ:</p>
+<pre class="output"><code>slow: 75025
+fast: 75025
+         242791 function calls (7 primitive calls) in 0.019 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.019    0.019 {built-in method builtins.exec}
+        1    0.000    0.000    0.019    0.019 two_fibs.py:1(&lt;module&gt;)
+ 242785/1    0.019    0.000    0.019    0.019 two_fibs.py:1(fib_slow)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.print}
+        1    0.000    0.000    0.000    0.000 two_fibs.py:7(fib_fast)
+
+
+</code></pre>
+
+<h2>Reading ncalls, tottime and cumtime</h2>
+<p>After your program's own output come a summary line and one row per function:</p>
+<ul>
+<li><strong>ncalls</strong>: how many calls. <code>242785/1</code> means 242,785 in all, of which 1 was a <strong>primitive call</strong>, one that did not come from the function itself; the rest were <code>fib_slow</code> calling itself.</li>
+<li><strong>tottime</strong>: seconds spent in the function's own code, over all its calls, not counting the functions it called.</li>
+<li><strong>cumtime</strong>: seconds from entering the function to leaving it, everything it called included (for a recursive function, from the outermost call, so nothing is counted twice).</li>
+<li><strong>percall</strong>: the first is <code>tottime</code> divided by <code>ncalls</code>, the second <code>cumtime</code> divided by the primitive calls.</li>
+<li><strong>filename:lineno(function)</strong>: where the function is defined. Rows in braces, such as <code>{built-in method builtins.print}</code>, are functions written in C.</li>
+</ul>
+<p>The top level of your file, <code>&lt;module&gt;</code>, has a <code>tottime</code> of 0.000 and a <code>cumtime</code> of 0.019: its own lines cost nothing, and everything happened in what they called. <code>fib_slow</code> is the opposite, its two times equal, because it calls nothing but itself. <code>fib_fast</code> rounds to 0.000: same answer, 242,785 calls against 1.</p>
+<p>Sorting by <code>cumtime</code> (<code>-s cumulative</code>) puts the big containers on top, so you can walk down from "the whole program" to "this function". Sorting by <code>tottime</code> (<code>-s tottime</code>) puts on top the functions that do the work themselves.</p>
+
+<p>You can also switch the profiler on and off inside a program, and print the table with <strong>pstats</strong>, the module that reads cProfile's records. This profiles one call, not the whole file:</p>
+<pre class="code" data-lang="python" data-file="profile_in_code.py" data-check="run"><code>import cProfile
+import pstats
+
+
+def fib_slow(n):
+    if n &lt; 2:
+        return n
+    return fib_slow(n - 1) + fib_slow(n - 2)
+
+
+def fib_fast(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+
+def both(n):
+    return fib_slow(n), fib_fast(n)
+
+
+profiler = cProfile.Profile()
+profiler.enable()
+both(25)
+profiler.disable()
+
+stats = pstats.Stats(profiler)
+stats.strip_dirs().sort_stats("cumulative").print_stats(4)
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>         242788 function calls (4 primitive calls) in 0.019 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.019    0.019 profile_in_code.py:18(both)
+ 242785/1    0.019    0.000    0.019    0.019 profile_in_code.py:5(fib_slow)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.000    0.000 profile_in_code.py:11(fib_fast)
+
+
+</code></pre>
+<p><code>strip_dirs()</code> shortens file names, <code>sort_stats</code> takes the same names as <code>-s</code>, and <code>print_stats(4)</code> keeps four rows. (<code>python -m cProfile -o fibs.prof …</code> saves the records instead, for <code>pstats.Stats("fibs.prof")</code> to read later.)</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Before you run it, predict the <code>ncalls</code> of <code>fib_slow</code> for <code>fib_slow(20)</code>. Then change both 25s in <code>two_fibs.py</code> to 20 and run cProfile again. Is the time about what you would expect from the number of calls?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>21,891 calls. Each step of <code>n</code> multiplies the calls by about 1.6 (the ratio that neighbouring Fibonacci numbers tend to), so five steps down is about 1.6<sup>5</sup>, roughly 11 times fewer. The time falls by about the same factor, to 0.002 s on the M5: the time of <code>fib_slow</code> is the cost of its calls.</p></details>
+
+<h2>cProfile counts functions, not lines</h2>
+<p>cProfile listens for two things only: a function starts, a function ends. That keeps it cheap, and it is also its limit. Here two lines both call <code>sum</code>, one on a thousand numbers and one on three million:</p>
+<pre class="code" data-lang="python" data-file="two_sums.py" data-check="run"><code>import cProfile
+import pstats
+
+
+def weigh_parcels():
+    light = sum(range(1_000))
+    heavy = sum(range(3_000_000))
+    return light + heavy
+
+
+profiler = cProfile.Profile()
+profiler.enable()
+weigh_parcels()
+profiler.disable()
+pstats.Stats(profiler).strip_dirs().sort_stats("cumulative").print_stats()
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>         4 function calls in 0.017 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.017    0.017 two_sums.py:5(weigh_parcels)
+        2    0.017    0.009    0.017    0.009 {built-in method builtins.sum}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+
+
+</code></pre>
+<p>Two calls of <code>sum</code> took all 17 ms, and they share one row, so the table cannot say that one of them took nearly all of it. Here you can guess; in a function of twenty lines with three calls to the same helper, you cannot. To see lines you need a tracer that is told about lines.</p>
+
+<h2>How tracing works: sys.settrace</h2>
+<p>The CPython interpreter runs your program one step at a time, and at certain moments it can stop, call a function of yours with a description of where it is, and carry on. <code>sys.settrace(tracer)</code> switches that on, where <code>tracer</code> takes three arguments, <code>(frame, event, arg)</code>; <code>sys.settrace(None)</code> switches it off.</p>
+<p>The <strong>event</strong> is a string that says what is happening:</p>
+<ul>
+<li><code>"call"</code>: a Python function is starting; the frame is the new function's frame.</li>
+<li><code>"line"</code>: the interpreter is about to run a new line of the frame's code.</li>
+<li><code>"return"</code>: the function is about to return. <code>arg</code> is the value it returns, or <code>None</code> if it is leaving because of an exception.</li>
+<li><code>"exception"</code>: an exception has been raised in this frame. <code>arg</code> is a tuple of the exception's type, the exception and its traceback.</li>
+</ul>
+<p>(A fifth, <code>"opcode"</code>, for each bytecode instruction, is off unless you ask for it; bytecode is in <a href="06-boxes-and-arrays.html">chapter 6</a>.)</p>
+<p>A <strong>frame</strong> is the interpreter's record of one running call: its code, its current line, its local variables and its caller. Every call gets a new frame, so a recursion 25 calls deep has 25 frames alive at once. The attributes you need:</p>
+<ul>
+<li><code>frame.f_code</code>: the function's compiled code. <code>f_code.co_name</code> is the function's name and <code>f_code.co_filename</code> is the file it was defined in.</li>
+<li><code>frame.f_lineno</code>: the line the frame is on now, numbered as in the file.</li>
+<li><code>frame.f_back</code>: the caller's frame, or <code>None</code> at the very top. Following it again and again walks the call stack, which is how a traceback is built.</li>
+</ul>
+<p>The function you pass to <code>sys.settrace</code> is the <strong>global tracer</strong>. It is called with <code>"call"</code> events only, once per new frame, and what it returns decides that frame's fate. A function becomes the frame's <strong>local tracer</strong>, which receives the frame's <code>"line"</code>, <code>"return"</code> and <code>"exception"</code> events. <code>None</code> means the frame is not traced at all. The local tracer, in turn, returns the function to use for the frame's next event, normally itself.</p>
+
+<h2>A tracer that prints every event</h2>
+<p>The simplest tracer prints what it is told and returns itself, so that it is both the global and the local tracer. Point it at a three-line function:</p>
+<pre class="code" data-lang="python" data-file="print_events.py" data-check="run"><code>import sys
+
+
+def brew(cups):
+    water = cups * 250
+    leaves = cups * 3
+    return water, leaves
+
+
+def show(frame, event, arg):
+    name = frame.f_code.co_name
+    print(f"{event:&lt;7} {name:&lt;6} line {frame.f_lineno}  arg={arg!r}")
+    return show
+
+
+sys.settrace(show)
+brew(2)
+sys.settrace(None)
+print("done")
+</code></pre>
+<pre class="output" data-for="print_events.py"><code>call    brew   line 4  arg=None
+line    brew   line 5  arg=None
+line    brew   line 6  arg=None
+line    brew   line 7  arg=None
+return  brew   line 7  arg=(500, 6)
+done
+</code></pre>
+<p>The <code>call</code> event reports line 4, the <code>def</code> line: the function has started, but none of its body has run. Then a <code>line</code> event for each of lines 5, 6 and 7, and <code>return</code> on line 7 with the return value as <code>arg</code>. <code>print</code> made no events, because it is written in C and <code>sys.settrace</code> reports only Python frames. Nor did the file's own lines after <code>brew(2)</code>: that frame was already running when the tracer was installed, and only frames that start later are offered to it.</p>
+<p>Now an exception. <code>careful</code> calls <code>risky</code>, which fails to turn <code>"tea"</code> into a number:</p>
+<pre class="code" data-lang="python" data-file="exception_event.py" data-check="run"><code>import sys
+
+
+def risky(text):
+    number = int(text)
+    return number * 2
+
+
+def careful(text):
+    try:
+        return risky(text)
+    except ValueError:
+        return 0
+
+
+def show(frame, event, arg):
+    print(f"{event:&lt;9} {frame.f_code.co_name:&lt;7} line {frame.f_lineno}")
+    return show
+
+
+sys.settrace(show)
+result = careful("tea")
+sys.settrace(None)
+print("result:", result)
+</code></pre>
+<pre class="output" data-for="exception_event.py"><code>call      careful line 9
+line      careful line 10
+line      careful line 11
+call      risky   line 4
+line      risky   line 5
+exception risky   line 5
+return    risky   line 5
+exception careful line 11
+line      careful line 12
+line      careful line 13
+return    careful line 13
+result: 0
+</code></pre>
+<p><code>risky</code> gets an <code>exception</code> event on line 5, then a <code>return</code>, with <code>None</code> as its <code>arg</code>, because the exception makes it leave. The exception reaches <code>careful</code> on line 11, which gets its own <code>exception</code> event before its <code>except</code> clause runs lines 12 and 13. Every frame an exception passes through sees it once.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>In <code>exception_event.py</code>, call <code>careful("21")</code> instead. Predict the events, line by line, before you run it. Which events disappear, and what is the <code>arg</code> of <code>risky</code>'s <code>return</code>? (Add <code>arg</code> to the print to check.)</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Both <code>exception</code> events go, and so do lines 12 and 13. <code>risky</code> now gets <code>call</code>, line 5, line 6 and <code>return</code> on line 6 with <code>arg</code> 42; <code>careful</code> gets <code>call</code>, lines 10 and 11, and <code>return</code> on line 11 with 42.</p></details>
+
+<h2>Choosing which frames to trace</h2>
+<p>A tracer that returns itself for every frame traces everything, the standard library included. Usually you want one function or one file, and the global tracer is where you decide. Here the global and local tracers are separate functions, and the global one also looks one frame back to see who made the call:</p>
+<pre class="code" data-lang="python" data-file="choose_frames.py" data-check="run"><code>import os
+import sys
+
+
+def boil(cups):
+    return cups * 250
+
+
+def brew(cups):
+    water = boil(cups)
+    leaves = cups * 3
+    return water, leaves
+
+
+def on_line(frame, event, arg):
+    print(f"    {event:&lt;6} line {frame.f_lineno}")
+    return on_line
+
+
+def on_call(frame, event, arg):
+    code = frame.f_code
+    caller = frame.f_back
+    print(f"call {code.co_name} in {os.path.basename(code.co_filename)}", end="")
+    print(f", called from {caller.f_code.co_name} line {caller.f_lineno}")
+    if code.co_name == "brew":
+        return on_line
+    return None
+
+
+sys.settrace(on_call)
+brew(2)
+sys.settrace(None)
+</code></pre>
+<pre class="output" data-for="choose_frames.py"><code>call brew in choose_frames.py, called from &lt;module&gt; line 31
+    line   line 10
+call boil in choose_frames.py, called from brew line 10
+    line   line 11
+    line   line 12
+    return line 12
+</code></pre>
+<p><code>on_call</code> is offered both new frames. It returns <code>on_line</code> for <code>brew</code>, whose lines and return are then reported, and <code>None</code> for <code>boil</code>, which runs without line events. The <code>f_back</code> of <code>boil</code>'s frame is <code>brew</code>'s frame, on line 10, the line that made the call.</p>
+<p>Two smaller facts: <code>sys.settrace</code> covers only the calling thread, and a frame is a live record whose <code>f_lineno</code> keeps changing, so to remember a line, copy the number out.</p>
+
+<h2>Worked example: counting calls per function</h2>
+<p>Now a useful tracer: how many times is each function called? It needs only <code>"call"</code> events, so it returns <code>None</code> for every frame and never asks for a line. Its counts live in a dictionary from a function's name to a number.</p>
+
+<div class="callout note"><span class="label">Python you need</span><p><code>counts.get(key, 0)</code> is the value under <code>key</code>, or 0 if there is none, so <code>counts[key] = counts.get(key, 0) + 1</code> adds one either way. A dictionary keeps its keys in the order they were first added. And <code>try</code>/<code>finally</code>: the <code>finally</code> block runs however the <code>try</code> block ends, normally, by <code>return</code> or by an exception, which then carries on to the caller.</p>
+<pre class="code" data-lang="python" data-file="finally_runs.py" data-check="error"><code>try:
+    print("opening the shop")
+    raise ValueError("no change in the till")
+finally:
+    print("locking the door")
+</code></pre>
+<p>Its output, with the start of the path shortened: the <code>finally</code> block ran, and then the exception went on.</p>
+<pre class="output"><code>opening the shop
+locking the door
+Traceback (most recent call last):
+  File "/…/scratch/finally_runs.py", line 3, in &lt;module&gt;
+    raise ValueError("no change in the till")
+ValueError: no change in the till
+</code></pre>
+</div>
+
+<pre class="code" data-lang="python" data-file="call_counter.py" data-check="run"><code>import sys
+
+
+def fib_slow(n):
+    if n &lt; 2:
+        return n
+    return fib_slow(n - 1) + fib_slow(n - 2)
+
+
+def fib_fast(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+
+def both(n):
+    return fib_slow(n), fib_fast(n)
+
+
+calls = {}
+
+
+def count_call(frame, event, arg):
+    name = frame.f_code.co_name
+    calls[name] = calls.get(name, 0) + 1
+    return None  # no local tracer: this frame's lines are not traced
+
+
+old = sys.gettrace()
+sys.settrace(count_call)
+try:
+    both(15)
+finally:
+    sys.settrace(old)
+
+for name, count in calls.items():  # in the order of each first call
+    print(f"{name:&lt;9} {count:&gt;6,} calls")
+print("tracer back to:", sys.gettrace())
+</code></pre>
+<pre class="output" data-for="call_counter.py"><code>both           1 calls
+fib_slow   1,973 calls
+fib_fast       1 calls
+tracer back to: None
+</code></pre>
+<p>One call of <code>both</code>, one of <code>fib_fast</code>, 1,973 of <code>fib_slow</code>, as cProfile would say. Copy the program's pattern whenever you install a tracer:</p>
+<ol>
+<li>Remember the tracer that was there before: <code>sys.gettrace()</code> returns the current global tracer, or <code>None</code>.</li>
+<li>Install yours.</li>
+<li>Run the code you want to watch inside <code>try</code>.</li>
+<li>In <code>finally</code>, put back what you remembered.</li>
+</ol>
+<p>The last line shows the tracer back to what it was, <code>None</code>.</p>
+
+<h2>Put the old tracer back</h2>
+<p>Two things go wrong without that ceremony. The first is an exception: the code being watched raises, and the line that would switch the tracer off never runs.</p>
+<pre class="code" data-lang="python" data-file="forgot_finally.py" data-check="run"><code>import sys
+
+calls = {}
+
+
+def count_call(frame, event, arg):
+    name = frame.f_code.co_name
+    calls[name] = calls.get(name, 0) + 1
+    return None
+
+
+def parse_order(text):
+    return int(text)
+
+
+def later_work():
+    return "nobody asked to trace this"
+
+
+try:
+    sys.settrace(count_call)
+    parse_order("two")  # raises ValueError
+    sys.settrace(None)  # never runs
+except ValueError as error:
+    print("caught:", error)
+
+later_work()
+print("still tracing:", sys.gettrace() is not None)
+print("calls counted:", calls)
+</code></pre>
+<pre class="output" data-for="forgot_finally.py"><code>caught: invalid literal for int() with base 10: 'two'
+still tracing: True
+calls counted: {'parse_order': 1, 'later_work': 1}
+</code></pre>
+<p>The program carried on, and so did the tracer: it counted <code>later_work</code>, which nobody asked it to watch, and it slows every call from here on. In a test suite, the next test runs under a tracer it knows nothing about.</p>
+<p>The second is someone else's tracer. Debuggers and coverage tools are tracers too, and there is one global tracer at a time. <code>sys.settrace(None)</code> does not mean "remove mine"; it means "remove whatever is there". Here <code>outer</code>, a stand-in for a debugger, is tracing when a helper installs its own:</p>
+<pre class="code" data-lang="python" data-file="put_it_back.py" data-check="run"><code>import sys
+
+seen_by_outer = []
+
+
+def outer(frame, event, arg):
+    # Stands in for a tool that was already tracing: a debugger, or a coverage counter.
+    seen_by_outer.append(frame.f_code.co_name)
+    return None
+
+
+def inner(frame, event, arg):
+    return None
+
+
+def step_one():
+    return 1
+
+
+def step_two():
+    return 2
+
+
+def rude():
+    sys.settrace(inner)
+    step_one()
+    sys.settrace(None)  # switches off whoever was tracing before
+
+
+def polite():
+    old = sys.gettrace()
+    sys.settrace(inner)
+    try:
+        step_one()
+    finally:
+        sys.settrace(old)  # puts back whoever was tracing before
+
+
+for helper in (rude, polite):
+    seen_by_outer.clear()
+    sys.settrace(outer)
+    helper()
+    step_two()
+    sys.settrace(None)
+    print(f"{helper.__name__:&lt;6} outer saw: {seen_by_outer}")
+</code></pre>
+<pre class="output" data-for="put_it_back.py"><code>rude   outer saw: ['rude']
+polite outer saw: ['polite', 'step_two']
+</code></pre>
+<p>After <code>rude</code>, the outer tracer had been switched off and never saw <code>step_two</code>; after <code>polite</code>, it was back and did. (It missed <code>step_one</code> both times, while the inner tracer was installed: one at a time is a real limit.)</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Never end with a bare <code>sys.settrace(None)</code>, and never switch back without a <code>finally</code>. Remember <code>sys.gettrace()</code> first and restore it in <code>finally</code>: the one shape that is safe both when the code raises and when another tool was tracing before you.</p></div>
+
+<div class="callout try"><span class="label">Try it</span><p>In <code>forgot_finally.py</code>, rewrite the <code>try</code> block with the four-step pattern, keeping the <code>except ValueError</code> outside it. Predict the last two lines of output before you run it.</p></div>
+<details class="hint"><summary>A nudge</summary><p>Two <code>try</code> statements: an inner one whose <code>finally</code> puts the tracer back, inside an outer one whose <code>except</code> catches the error after the tracer is gone. Expect <code>still tracing: False</code> and only <code>parse_order</code> in the counts.</p></details>
+
+<h2>What tracing costs</h2>
+<p>A tracer is a Python function call at each event, and calls are what <code>fib_slow</code> showed to be expensive. This times two kinds of work once each way, with <code>time.perf_counter_ns</code> from <a href="01-two-clocks.html">chapter 1</a>: <code>fib_slow(25)</code>, almost all calls, and a loop that computes the 25th Fibonacci number ten thousand times, almost all lines. Each runs with no tracer, with the call counter, and with a tracer that asks for every event and does nothing with it.</p>
+<pre class="code" data-lang="python" data-file="tracing_cost.py" data-check="run"><code>import sys
+import time
+
+
+def fib_slow(n):
+    if n &lt; 2:
+        return n
+    return fib_slow(n - 1) + fib_slow(n - 2)
+
+
+def fib_fast_many(times):
+    total = 0
+    for _ in range(times):
+        a, b = 0, 1
+        for _ in range(25):
+            a, b = b, a + b
+        total += a
+    return total
+
+
+calls = {}
+
+
+def count_call(frame, event, arg):
+    name = frame.f_code.co_name
+    calls[name] = calls.get(name, 0) + 1
+    return None
+
+
+def ignore_everything(frame, event, arg):
+    return ignore_everything  # asks for every event of every frame, and does nothing with it
+
+
+def run_once(work, tracer):
+    old = sys.gettrace()
+    sys.settrace(tracer)
+    try:
+        start = time.perf_counter_ns()
+        work()
+        return time.perf_counter_ns() - start
+    finally:
+        sys.settrace(old)
+
+
+jobs = [
+    ("fib_slow(25)", lambda: fib_slow(25)),
+    ("fib_fast_many(10_000)", lambda: fib_fast_many(10_000)),
+]
+for label, work in jobs:
+    plain = run_once(work, None)
+    counted = run_once(work, count_call)
+    every = run_once(work, ignore_everything)
+    print(label)
+    print(f"  no tracer:     {plain / 1e6:6.1f} ms")
+    print(f"  call counter:  {counted / 1e6:6.1f} ms  {counted / plain:5.1f} times")
+    print(f"  every event:   {every / 1e6:6.1f} ms  {every / plain:5.1f} times")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>fib_slow(25)
+  no tracer:        4.4 ms
+  call counter:    23.7 ms    5.4 times
+  every event:     25.8 ms    5.9 times
+fib_fast_many(10_000)
+  no tracer:        2.5 ms
+  call counter:     4.6 ms    1.9 times
+  every event:     11.6 ms    4.7 times
+</code></pre>
+<p>Three things to read. On call-heavy work even the call counter costs about five times: each of 242,785 calls also runs <code>count_call</code>. On the loop, asking for every event costs nearly five times, while the call counter costs under two. And the call counter slowed the loop at all, though it never asked for a line: since Python 3.12, <code>sys.settrace</code> is built on the newer monitoring machinery (next section), and while any tracer is installed the interpreter checks at each line whether the frame has a local tracer. Quick, but not free.</p>
+<p>The lesson for any tracer, yours in Milestone 6 included: what it reports is real, about a program running several times slower than normal. It is good at "which part is slow compared with the others", and poor at "how many milliseconds without me". For that, go back to the harness.</p>
+
+<h2>sys.monitoring, the newer API</h2>
+<p>Python 3.12 added <strong><code>sys.monitoring</code></strong>. Instead of one global function that hears everything, a tool registers for the events it wants, and the interpreter switches on only those. A callback can also answer "do not tell me about this spot again", and the interpreter stops reporting that event there, so a tool stops paying for what it has already seen. It was designed for debuggers, coverage tools and profilers cheap enough to leave on, and cProfile now uses it. This module uses <code>sys.settrace</code>; a line timer on <code>sys.monitoring</code> is one of its stretch goals.</p>
+
+<h2>Sampling a running program: py-spy</h2>
+<p>Everything so far traces from inside: the program installs the tracer itself. That does not help with a server that has run for an hour and just became slow. You cannot add a tracer without restarting it, and one that slows it fivefold would change what you are looking at.</p>
+<p>A sampling profiler such as <strong>py-spy</strong> works from outside. It is a separate program that reads the running process's memory, finds the interpreter's frames, and writes down each thread's call stack, 100 times a second by default. The program is not changed or restarted. You do not need py-spy this module and it is not installed; these are the commands (12345 stands for the process id that <code>ps</code> or Activity Monitor shows; on macOS py-spy needs <code>sudo</code>):</p>
+<pre class="shell"><code>$ sudo py-spy dump --pid 12345
+$ sudo py-spy top --pid 12345
+$ sudo py-spy record -o profile.svg --pid 12345
+</code></pre>
+<p><code>dump</code> prints every thread's stack once: "what is it doing right now?", for a server that seems stuck. <code>top</code> is a live table of the functions seen most often. <code>record</code> samples until Ctrl-C and draws a <strong>flame graph</strong>: one bar per function, as wide as its share of the samples, stacked on the function that called it.</p>
+<p>The trade is the one from the start of the chapter. py-spy is cheap and needs no change, but it reports shares of samples, not exact counts, and something shorter than one sampling interval may never appear. Use the tracer on a function you can call in a test; use the sampler on a program you cannot stop.</p>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>In vLLM and SGLang, most of a forward pass runs on the GPU, where neither of this chapter's tools can see. For that there is the <strong>PyTorch profiler</strong> (<code>torch.profiler</code>), which records the operators the Python code launched and the GPU kernels that ran for them, with each one's duration, and can save it as a timeline for a trace viewer. The scheduler, the tokenizer and the API layer are ordinary Python, and for a server already running under load, a sampling profiler such as py-spy is the usual way to see where its threads spend their time.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>In a cProfile table, a function has <code>tottime</code> 0.001 and <code>cumtime</code> 0.950. What does that tell you, and where do you look next?</p><details class="answer"><summary>Answer</summary><p>Nearly all the time is in functions it calls, not in its own code. Look below it, sorted by <code>cumtime</code>, for the callee behind the 0.95 s, or sort by <code>tottime</code>.</p></details></div>
+<div class="q"><p>What does <code>ncalls</code> of <code>1973/1</code> mean?</p><details class="answer"><summary>Answer</summary><p>1,973 calls in all, of which 1 was a primitive call, one that did not come from the function itself. The other 1,972 were the function calling itself: it is recursive.</p></details></div>
+<div class="q"><p>Your global tracer returns <code>None</code> for every frame. Which events does it receive, and which does it never see?</p><details class="answer"><summary>Answer</summary><p>Only <code>"call"</code> events, one per new Python frame. Because no frame gets a local tracer, it never sees <code>"line"</code>, <code>"return"</code> or <code>"exception"</code> events.</p></details></div>
+<div class="q"><p>Inside a tracer, how do you find the name of the function that made the call you are being told about, and the line it made it from?</p><details class="answer"><summary>Answer</summary><p><code>frame.f_back.f_code.co_name</code> and <code>frame.f_back.f_lineno</code>. <code>f_back</code> is the caller's frame, and its current line is the line of the call.</p></details></div>
+<div class="q"><p>A colleague's helper ends with <code>sys.settrace(None)</code>. Name two ways this goes wrong.</p><details class="answer"><summary>Answer</summary><p>If the code before it raises, it never runs and the tracer stays installed. And if a debugger or coverage tool was tracing before, <code>None</code> switches that off too.</p></details></div>
+<div class="q"><p>Your call counter made <code>fib_slow(25)</code> about five times slower. Does that mean the counts are wrong?</p><details class="answer"><summary>Answer</summary><p>No. A tracer is told about every call, so the counts are exact. What it changes is the time: absolute times under a tracer describe a slowed-down program.</p></details></div>
+<div class="q"><p>A web server has been slow for ten minutes and you may not restart it. Tracer or sampler, and why?</p><details class="answer"><summary>Answer</summary><p>A sampler such as py-spy: it attaches from outside, needs no change and costs little. A tracer would need installing from inside and would slow the server several times over.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say why a total time is not enough, and how tracing and sampling differ.</li>
+<li>Run cProfile and read <code>ncalls</code>, <code>tottime</code> and <code>cumtime</code>, per function.</li>
+<li>Install a tracer with <code>sys.settrace</code>, name its four events, choose frames with the global tracer, and read <code>f_code.co_name</code>, <code>f_lineno</code> and <code>f_back</code>.</li>
+<li>Count calls per function with a tracer, and restore the old tracer with <code>sys.gettrace</code> and <code>try</code>/<code>finally</code>.</li>
+<li>Name <code>sys.monitoring</code>, and use py-spy on a program you cannot stop.</li>
+</ul>
+</main>
+</body>
+</html>

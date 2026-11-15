@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>09 · Appendix — Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 09</p>
+<h1>Appendix</h1>
+<p class="lede">The page to keep open while you build: how to read a traceback, pytest's report and hypothesis's report; every error message this module is likely to show you, with its cause and its fix; cheat sheets for the tools and library calls of the module; the module's words; and a first look at Module 2.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>Reading a traceback, from the bottom up.</li>
+<li>Reading pytest's report, and the options that make it shorter or longer.</li>
+<li>Reading hypothesis's report: the failing example, shrinking, and the folder that remembers.</li>
+<li>The errors of this module, as tables: message, cause, fix, chapter.</li>
+<li>Cheat sheets: pytest, hypothesis, uv, the clocks, numpy and statistics, rich, <code>sys.settrace</code>.</li>
+<li>A glossary of the module's words.</li>
+<li>What Module 2 brings: the tokenizer.</li>
+</ul>
+</div>
+
+<h2>Reading a traceback</h2>
+<p>When a Python program raises an exception that nothing catches, the interpreter stops and prints a <strong>traceback</strong>: the chain of calls that were in progress at that moment, and the exception at the end. It is called a trace<em>back</em> because it lists the calls from the outside in, oldest first, so the line where things went wrong is at the bottom. Read it from the bottom up.</p>
+
+<div class="callout principle"><span class="label">First principle</span>
+<p>While a program runs, the interpreter keeps one <strong>frame</strong> for every call that has started and not yet returned: the function, its local variables, and the line it is on. The frames form a stack (<a href="07-drills.html">chapter 7</a>): a call pushes one, a return pops one. A traceback is a printout of that stack at the moment of the exception, one entry per frame, with the outermost frame (your script, called <code>&lt;module&gt;</code>) at the top.</p>
+</div>
+
+<p>A trip with three legs, one of which took no time at all:</p>
+<pre class="code" data-lang="python" data-file="trip_report.py" data-check="error"><code>def average_speed(distance_km, hours):
+    return distance_km / hours
+
+
+def trip_report(legs):
+    speeds = [average_speed(km, hours) for km, hours in legs]
+    return max(speeds)
+
+
+legs = [(120, 1.5), (80, 1.0), (15, 0)]
+print(trip_report(legs))
+</code></pre>
+<pre class="output"><code>Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/trip_report.py", line 11, in &lt;module&gt;
+    print(trip_report(legs))
+          ~~~~~~~~~~~^^^^^^
+  File "…/llm-inference-101/scratch/trip_report.py", line 6, in trip_report
+    speeds = [average_speed(km, hours) for km, hours in legs]
+              ~~~~~~~~~~~~~^^^^^^^^^^^
+  File "…/llm-inference-101/scratch/trip_report.py", line 2, in average_speed
+    return distance_km / hours
+           ~~~~~~~~~~~~^~~~~~~
+ZeroDivisionError: division by zero
+</code></pre>
+<p>(Paths in the outputs of this chapter are shortened to <code>…/</code>; yours show the full path to <code>scratch/</code>.) Read it in this order:</p>
+<ol>
+<li><strong>The last line</strong> is the exception: its type, <code>ZeroDivisionError</code>, then its message, <code>division by zero</code>. Most of the time this line alone tells you what happened.</li>
+<li><strong>The entry just above it</strong> says where: the file, line 2, inside <code>average_speed</code>, with the line's source text. Since Python 3.11 the carets under the line (<code>~~~^~~~</code>) point at the exact operation inside the line, here the <code>/</code>.</li>
+<li><strong>Walk upwards</strong> to find out how the program got there: <code>trip_report</code> called it at line 6, and the script called <code>trip_report</code> at line 11. The first entry that is in <em>your</em> code, reading upwards, is usually where the fix goes. Here the bug is not the division, which is correct, but the data: a leg of 0 hours.</li>
+</ol>
+<p>When a test fails, the entries at the top of a traceback belong to pytest and the ones at the bottom to your code; pytest hides its own frames, which is one reason its reports are shorter. When an exception happens while another one is being handled, Python prints both tracebacks, joined by "During handling of the above exception, another exception occurred". Read the <em>last</em> one first; the first one is the cause.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span>
+<p>A line of people passing a message along, each of whom asked the next one for help. The traceback lists them from the first who asked to the last, who is the one who failed. Where it breaks: the person who failed is not always the one to blame. The last entry says where the error was <em>noticed</em>; the mistake can be in any frame above it, often in an argument passed down from higher up.</p>
+</div>
+
+<h2>Reading pytest's output</h2>
+<p>pytest runs every function whose name starts with <code>test_</code> in every file whose name starts with <code>test_</code>, and reports. A toy test file with one bug in each of two functions:</p>
+<pre class="code" data-lang="python" data-file="test_thermometer.py" data-check="run"><code>import pytest
+
+
+def to_fahrenheit(celsius):
+    return celsius * 9 / 5 + 23  # a bug: the offset is 32
+
+
+def parse_reading(text):
+    """'21.5C' -&gt; 21.5. Should raise ValueError for anything that does not end in C."""
+    return float(text.rstrip("C"))
+
+
+def test_freezing_point():
+    assert to_fahrenheit(0) == 32
+
+
+def test_a_week_of_readings():
+    readings = [to_fahrenheit(c) for c in (0, 10, 20)]
+    assert readings == [32, 50, 68]
+
+
+def test_a_reading_without_its_unit_is_refused():
+    with pytest.raises(ValueError):
+        parse_reading("21.5")
+
+
+def test_a_reading_with_its_unit():
+    assert parse_reading("21.5C") == 21.5
+</code></pre>
+<p>Run as a program, it only defines functions, so it prints nothing. Run it with pytest from the repository root (pyproject.toml adds <code>--tb=short</code> to every run, which keeps each failure to a few lines):</p>
+<pre class="shell"><code>$ uv run pytest scratch/test_thermometer.py
+</code></pre>
+<pre class="output"><code>============================= test session starts ==============================
+platform darwin -- Python 3.13.18, pytest-9.2.0, pluggy-1.7.0
+rootdir: …/llm-inference-101
+configfile: pyproject.toml
+plugins: hypothesis-6.170.15
+collected 4 items
+
+scratch/test_thermometer.py FFF.                                         [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_freezing_point ______________________________
+scratch/test_thermometer.py:14: in test_freezing_point
+    assert to_fahrenheit(0) == 32
+E   assert 23.0 == 32
+E    +  where 23.0 = to_fahrenheit(0)
+___________________________ test_a_week_of_readings ____________________________
+scratch/test_thermometer.py:19: in test_a_week_of_readings
+    assert readings == [32, 50, 68]
+E   assert [23.0, 41.0, 59.0] == [32, 50, 68]
+E     
+E     At index 0 diff: 23.0 != 32
+E     Use -v to get more diff
+__________________ test_a_reading_without_its_unit_is_refused __________________
+scratch/test_thermometer.py:23: in test_a_reading_without_its_unit_is_refused
+    with pytest.raises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ============================
+FAILED scratch/test_thermometer.py::test_freezing_point - assert 23.0 == 32
+FAILED scratch/test_thermometer.py::test_a_week_of_readings - assert [23.0, 4...
+FAILED scratch/test_thermometer.py::test_a_reading_without_its_unit_is_refused
+========================= 3 failed, 1 passed in 0.05s ==========================
+</code></pre>
+<ul>
+<li><strong>The progress line</strong>, <code>FFF.</code>: one character per test, in file order. <code>.</code> passed, <code>F</code> failed (an assertion was false), <code>E</code> an error outside the test itself (in a fixture, or at import), <code>s</code> skipped.</li>
+<li><strong>One section per failure</strong>, headed by the test's name: the file and line of the test, the line that failed, and then the <strong>E lines</strong>, which are what went wrong.</li>
+<li><strong>Assertion rewriting.</strong> A plain <code>assert</code> only knows "true" or "false". pytest rewrites every <code>assert</code> in a test file before it runs, so that on failure it can show the values on both sides: <code>assert 23.0 == 32</code> and, under it, where the 23.0 came from: <code>where 23.0 = to_fahrenheit(0)</code>. For lists it shows the first index at which they differ. That is why tests here use bare <code>assert</code> and not <code>assertEqual</code>.</li>
+<li><strong>DID NOT RAISE.</strong> <code>with pytest.raises(ValueError):</code> fails when the block inside it finishes <em>without</em> raising. The code accepted input that the spec says it must refuse.</li>
+<li><strong>The short summary</strong> at the bottom: one line per failure, and the totals.</li>
+</ul>
+<p>Four options change what you see. <code>-x</code> stops at the first failure, which is how you work one red test at a time. <code>-k week</code> runs only the tests whose name contains "week" (and <code>-k "not slow"</code> all the others). <code>--lf</code> ("last failed") reruns only the tests that failed last time, which pytest remembers in <code>.pytest_cache/</code>. <code>-q</code> drops the header and keeps the report short; <code>-vv</code> does the opposite and prints full diffs instead of "Use -v to get more diff". With <code>-x</code>:</p>
+<pre class="shell"><code>$ uv run pytest -x -q --tb=line scratch/test_thermometer.py
+</code></pre>
+<pre class="output"><code>F
+=================================== FAILURES ===================================
+E   assert 23.0 == 32
+     +  where 23.0 = to_fahrenheit(0)
+…/llm-inference-101/scratch/test_thermometer.py:14: assert 23.0 == 32
+=========================== short test summary info ============================
+FAILED scratch/test_thermometer.py::test_freezing_point - assert 23.0 == 32
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 0.03s
+</code></pre>
+
+<div class="callout trap"><span class="label">Trap</span>
+<p>A test that passes on day one is not a test you have passed. In this module four tests are green before you type anything: they read your code and check that <code>stats.py</code> neither imports numpy nor sorts, and that two drills do not sort. They are green because the stubs do nothing, and their job is to stay green.</p>
+</div>
+
+<h2>Reading hypothesis output</h2>
+<p>A <strong>property test</strong> does not check one example; it states something that must be true for <em>every</em> input of some kind, and hypothesis tries a hundred inputs of that kind, chosen to find trouble: empty lists, zeros, huge and tiny numbers, repeats. A bill split into shares that should add up to the bill:</p>
+<pre class="code" data-lang="python" data-file="test_split_bill.py" data-check="run"><code>from hypothesis import given
+from hypothesis import strategies as st
+
+
+def split_bill(total_pence, people):
+    """Shares in whole pence, one per person, that add up to the total."""
+    return [total_pence // people] * people  # a bug: the remainder goes missing
+
+
+@given(total_pence=st.integers(0, 10_000), people=st.integers(1, 10))
+def test_the_shares_add_up_to_the_bill(total_pence, people):
+    assert sum(split_bill(total_pence, people)) == total_pence
+</code></pre>
+<pre class="output"><code>=================================== FAILURES ===================================
+______________________ test_the_shares_add_up_to_the_bill ______________________
+scratch/test_split_bill.py:11: in test_the_shares_add_up_to_the_bill
+    def test_the_shares_add_up_to_the_bill(total_pence, people):
+                   ^^^
+scratch/test_split_bill.py:12: in test_the_shares_add_up_to_the_bill
+    assert sum(split_bill(total_pence, people)) == total_pence
+E   assert 0 == 1
+E    +  where 0 = sum([0, 0])
+E    +    where [0, 0] = split_bill(1, 2)
+E   Failing test case: test_the_shares_add_up_to_the_bill(
+E       total_pence=1,
+E       people=2,
+E   )
+=========================== short test summary info ============================
+FAILED scratch/test_split_bill.py::test_the_shares_add_up_to_the_bill - asser...
+============================== 1 failed in 0.07s ===============================
+</code></pre>
+<p>The E lines are pytest's as usual, then hypothesis adds the <strong>failing example</strong>: the arguments for which the property was false. This version of hypothesis heads it "Failing test case"; older versions and most of what you read online say "Falsifying example". It is the same thing.</p>
+<p>The example is small for a reason. The first input that failed was probably something like <code>total_pence=7311, people=6</code>. Hypothesis then <strong>shrinks</strong> it: it tries smaller and simpler inputs that still fail (smaller numbers, shorter lists, earlier letters) until it cannot make it any simpler. One penny shared by two people is the smallest bill that loses its remainder, and that is the example you are shown. Read it as a ready-made <code>scratch/</code> program: call the function with exactly those arguments and look.</p>
+<p>Hypothesis also <strong>remembers</strong>. Every failing example is saved in a <code>.hypothesis/</code> folder next to where you ran pytest (git ignores it), and the next run tries the saved examples first. So a failure you have not fixed fails again at once, and a fix you think works is tested on the very input that broke it. If a failure ever seems to follow you after you have changed the test itself, deleting <code>.hypothesis/</code> is safe.</p>
+
+<h2>The errors of this module</h2>
+<p>Every message below is one you are likely to meet this module, with what it usually means. "Chapter" is where the idea behind the fix is taught.</p>
+
+<h3>Running things</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>NotImplementedError: TODO(you)</code></td><td>A stub whose body you have not written yet. Every contract function and drill starts like this.</td><td>Write the body. On day one this is the expected red.</td><td><a href="00-start-here.html">0</a></td></tr>
+<tr><td><code>ModuleNotFoundError: No module named 'llm101'</code></td><td>The program ran with a Python that is not the project's: <code>python3 scratch/x.py</code> or <code>pytest</code> straight from the shell, instead of through uv. Or <code>.venv</code> does not exist yet.</td><td>Run through uv: <code>uv run python scratch/x.py</code>, <code>uv run pytest</code>. If that fails too, <code>uv sync</code>.</td><td><a href="00-start-here.html">0</a></td></tr>
+<tr><td><code>ModuleNotFoundError: No module named 'numpy'</code> (or <code>rich</code>)</td><td>The same: the wrong Python.</td><td>The same.</td><td><a href="00-start-here.html">0</a></td></tr>
+<tr><td><code>TypeError: area() missing 1 required positional argument: 'height'</code></td><td>A call with fewer arguments than the function takes.</td><td>Compare the call with the <code>def</code> line. In a test, compare with the signature in the stub: the tests call those exact names and arguments.</td><td>below</td></tr>
+<tr><td><code>TypeError: f() takes 2 positional arguments but 3 were given</code></td><td>A call with too many. In a method, the forgotten <code>self</code> in the <code>def</code> line counts as one.</td><td>The same.</td><td>below</td></tr>
+<tr><td><code>TypeError: 'int' object is not callable</code></td><td>You passed the <em>result</em> of a call where a function was wanted: <code>run(roll())</code> instead of <code>run(roll)</code>.</td><td>Pass the function without the brackets, or wrap a call that needs arguments: <code>lambda: f(x)</code>.</td><td><a href="01-two-clocks.html">1</a></td></tr>
+<tr><td><code>RecursionError: maximum recursion depth exceeded</code></td><td>A function that calls itself more than about 1,000 deep: a base case that is never reached, or a recursion whose depth grows with the input.</td><td>Check the base case. For quickselect, a pivot that throws away one element per round on ordered input recurses n deep: see the test's message and choose a better pivot, or turn the recursion into a loop.</td><td><a href="03-partition-and-select.html">3</a></td></tr>
+<tr><td><code>TypeError: unhashable type: 'list'</code></td><td>A list used as a dict key or put into a set.</td><td>Use a tuple or a string.</td><td><a href="07-drills.html">7</a></td></tr>
+<tr><td><code>IndexError: pop from empty list</code></td><td>A stack popped when it was empty.</td><td>Check the length before popping, and decide what an empty stack means for the problem.</td><td><a href="07-drills.html">7</a></td></tr>
+</tbody>
+</table>
+<p>The two most common <code>TypeError</code>s, one after the other:</p>
+<pre class="code" data-lang="python" data-file="wrong_arguments.py" data-check="error"><code>def area(width, height):
+    return width * height
+
+
+print(area(3, 4))
+print(area(3))
+</code></pre>
+<pre class="output"><code>12
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/wrong_arguments.py", line 6, in &lt;module&gt;
+    print(area(3))
+          ~~~~^^^
+TypeError: area() missing 1 required positional argument: 'height'
+</code></pre>
+<pre class="code" data-lang="python" data-file="not_callable.py" data-check="error"><code>def roll():
+    return 4
+
+
+def call_three_times(fn):
+    return [fn() for _ in range(3)]
+
+
+print(call_three_times(roll))
+print(call_three_times(roll()))
+</code></pre>
+<pre class="output"><code>[4, 4, 4]
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/not_callable.py", line 10, in &lt;module&gt;
+    print(call_three_times(roll()))
+          ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "…/llm-inference-101/scratch/not_callable.py", line 6, in call_three_times
+    return [fn() for _ in range(3)]
+            ~~^^
+TypeError: 'int' object is not callable
+</code></pre>
+<p>A stub, called, and what the wrong Python says:</p>
+<pre class="code" data-lang="python" data-file="stub_demo.py" data-check="error"><code>def area_of_triangle(base, height):
+    """Half the base times the height."""
+    raise NotImplementedError("TODO(you)")
+
+
+print(area_of_triangle(4, 3))
+</code></pre>
+<pre class="output"><code>Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/stub_demo.py", line 6, in &lt;module&gt;
+    print(area_of_triangle(4, 3))
+          ~~~~~~~~~~~~~~~~^^^^^^
+  File "…/llm-inference-101/scratch/stub_demo.py", line 3, in area_of_triangle
+    raise NotImplementedError("TODO(you)")
+NotImplementedError: TODO(you)
+</code></pre>
+<pre class="shell"><code>$ python3 -c "import llm101"
+Traceback (most recent call last):
+  File "&lt;string&gt;", line 1, in &lt;module&gt;
+    import llm101
+ModuleNotFoundError: No module named 'llm101'
+</code></pre>
+<p>And recursion that goes too deep. Python stops at a fixed depth, 1,000 frames by default, rather than let the stack grow until the process crashes; the traceback folds the thousand identical entries into one line:</p>
+<pre class="code" data-lang="python" data-file="count_down.py" data-check="error"><code>import sys
+
+
+def count_down(n):
+    if n == 0:
+        return 0
+    return 1 + count_down(n - 1)
+
+
+print(sys.getrecursionlimit())
+print(count_down(500))
+print(count_down(5_000))
+</code></pre>
+<pre class="output"><code>1000
+500
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/count_down.py", line 12, in &lt;module&gt;
+    print(count_down(5_000))
+          ~~~~~~~~~~^^^^^^^
+  File "…/llm-inference-101/scratch/count_down.py", line 7, in count_down
+    return 1 + count_down(n - 1)
+               ~~~~~~~~~~^^^^^^^
+  File "…/llm-inference-101/scratch/count_down.py", line 7, in count_down
+    return 1 + count_down(n - 1)
+               ~~~~~~~~~~^^^^^^^
+  File "…/llm-inference-101/scratch/count_down.py", line 7, in count_down
+    return 1 + count_down(n - 1)
+               ~~~~~~~~~~^^^^^^^
+  [Previous line repeated 996 more times]
+RecursionError: maximum recursion depth exceeded
+</code></pre>
+
+<h3>The tests' own messages</h3>
+<p>Some tests read your source code with the <code>ast</code> module (Python's own parser) instead of running it, and fail with a sentence of their own. That sentence is the second half of an E line, after <code>AssertionError:</code>.</p>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>stats.py selects; it never sorts</code></td><td>Something in <code>stats.py</code> calls <code>sorted()</code> or <code>.sort()</code>, perhaps in a helper or while you debug.</td><td>Remove it. A percentile needs one or two positions of the sorted order, which selection finds without sorting.</td><td><a href="03-partition-and-select.html">3</a></td></tr>
+<tr><td><code>assert all(alias.name.split(".")[0] != "numpy" ...)</code></td><td><code>stats.py</code> imports numpy.</td><td>Remove the import. numpy is the tests' oracle, not your tool.</td><td><a href="02-tails-and-percentiles.html">2</a></td></tr>
+<tr><td><code>percentile finds its values with your quickselect()</code></td><td><code>percentile</code> does not call <code>quickselect</code>.</td><td>Build it on your quickselect, as its docstring says.</td><td><a href="03-partition-and-select.html">3</a></td></tr>
+<tr><td><code>quickselect went more than 1,000 calls deep on 4,000 ordered numbers: which pivot does an ordered list give you?</code></td><td>A pivot taken from a fixed place (the first or last element) on a list that is already in order.</td><td>Choose the pivot so that ordered input is not the worst case.</td><td><a href="03-partition-and-select.html">3</a></td></tr>
+<tr><td><code>ordered input took … ms against … ms shuffled</code></td><td>The same pivot problem, in a loop instead of recursion.</td><td>The same.</td><td><a href="03-partition-and-select.html">3</a></td></tr>
+<tr><td><code>summarise computes p50, p95 and p99 with your percentile()</code></td><td><code>summarise</code> does not call <code>percentile</code>.</td><td>Use your own percentile.</td><td><a href="04-pictures-in-the-terminal.html">4</a></td></tr>
+<tr><td><code>assert 'perf_counter_ns' in {...}</code></td><td><code>time_calls</code> does not read the clock its docstring names (the same for <code>process_time_ns</code>).</td><td>Use the two <code>_ns</code> clocks.</td><td><a href="01-two-clocks.html">1</a></td></tr>
+<tr><td><code>a 50 ms warm-up call was recorded</code></td><td>Warm-up calls ended up in the recorded timings.</td><td>Make the warm-up calls first and record only the <code>n</code> calls after them.</td><td><a href="01-two-clocks.html">1</a></td></tr>
+<tr><td><code>render_report returns the report; the caller prints it</code></td><td><code>render_report</code> printed something.</td><td>Return the renderable; let the caller print it.</td><td><a href="04-pictures-in-the-terminal.html">4</a></td></tr>
+<tr><td><code>helper's own lines appear</code>, <code>only lines of one_slow_line itself</code></td><td>The line timer counted lines of functions that the traced function called.</td><td>Only lines of the traced function's own frame count.</td><td><a href="05-where-the-time-goes.html">5</a></td></tr>
+<tr><td><code>do it without sorting (see the docstring)</code>, <code>swap elements instead (see the docstring)</code></td><td>The drills <code>longest_streak</code> or <code>sort_colours</code> call <code>sorted()</code> or <code>.sort()</code>.</td><td>The point of both drills is to do without.</td><td><a href="07-drills.html">7</a></td></tr>
+<tr><td><code>took … s: a loop inside a loop is too slow here</code></td><td><code>pair_with_sum</code> compares every pair.</td><td>One pass that remembers what it has seen.</td><td><a href="07-drills.html">7</a></td></tr>
+<tr><td><code>Failed: DID NOT RAISE ValueError</code></td><td>The code accepted input that the docstring says it must refuse: an empty list, <code>n &lt; 1</code>, <code>q</code> outside 0 to 100.</td><td>Check the input at the top of the function and <code>raise ValueError("...")</code>.</td><td>above</td></tr>
+</tbody>
+</table>
+
+<h3>Hypothesis errors</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>hypothesis.errors.DeadlineExceeded: Test took 255.04ms, which exceeds the deadline of 200.00ms</code></td><td>One example took longer than 200 ms. In this module that means code that is far slower than it should be: a sort or a loop inside a loop on a list of a few hundred numbers, or a tracer left switched on.</td><td>Make the code faster. Do not add <code>@settings(deadline=None)</code> to a course test: that weakens the test.</td><td><a href="03-partition-and-select.html">3</a></td></tr>
+<tr><td><code>hypothesis.errors.FailedHealthCheck</code></td><td>Hypothesis could not produce examples in reasonable time, or the smallest example is too big. It names the check: <code>too_slow</code>, <code>large_base_example</code>, <code>filter_too_much</code>.</td><td>In a course test, report it (the test is wrong, not you). In your own tests, ask for smaller inputs.</td><td>above</td></tr>
+<tr><td><code>hypothesis.errors.FlakyFailure</code> (older versions: <code>Flaky</code>)</td><td>The same input passed once and failed once: the code depends on something other than its input, such as a clock, a random number or a global left over from a previous call.</td><td>Find the state that leaks between calls.</td><td><a href="01-two-clocks.html">1</a></td></tr>
+</tbody>
+</table>
+<p>What a slow example looks like. A deliberately slow test that sleeps for 250 ms, limited to five examples so that it finishes:</p>
+<pre class="output"><code>=================================== FAILURES ===================================
+________________________ test_squares_are_not_negative _________________________
+scratch/test_slow.py:13: in test_squares_are_not_negative
+    @given(st.integers(0, 100))
+                   ^^^
+…/.venv/lib/python3.13/site-packages/hypothesis/core.py:1040: in test
+    raise DeadlineExceeded(
+E   hypothesis.errors.DeadlineExceeded: Test took 255.04ms, which exceeds the deadline of 200.00ms. If you expect test cases to take this long, you can use @settings(deadline=...) to either set a higher deadline, or to disable it with deadline=None.
+E   Failing test case: test_squares_are_not_negative(
+E       x=0,  # or any other generated value
+E   )
+=========================== short test summary info ============================
+FAILED scratch/test_slow.py::test_squares_are_not_negative - hypothesis.errors.Deadli...
+============================== 1 failed in 18.47s ==============================
+</code></pre>
+
+<h3>rich and the hook</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td>No message: text in square brackets is missing from the output</td><td>rich reads <code>[word]</code> as a style tag (markup) and removes it. A tag starts with a letter, <code>#</code>, <code>/</code> or <code>@</code>, so <code>[i]</code> and <code>[i * i for ...]</code> vanish while <code>[3, 5]</code> stays.</td><td>Wrap text that is not yours in <code>rich.markup.escape()</code>, or pass a <code>Text</code>, which is never read as markup.</td><td><a href="04-pictures-in-the-terminal.html">4</a></td></tr>
+<tr><td><code>rich.errors.MarkupError: closing tag '[/x]' at position 2 doesn't match any open tag</code></td><td>Text containing <code>[/</code> was read as a closing tag.</td><td>The same.</td><td><a href="04-pictures-in-the-terminal.html">4</a></td></tr>
+<tr><td><code>pre-commit: src/llm101/bench/stats.py is not formatted; run: uv run ruff format src/llm101/bench/stats.py</code></td><td>The hook found a file that ruff would reformat, and refused the commit.</td><td>Run the command it prints, look at what it changed, <code>git add</code> the file again, commit again.</td><td><a href="00-start-here.html">0</a></td></tr>
+<tr><td><code>pre-commit: ... has lint findings (above); fix them and stage again</code></td><td>ruff's lint rules found something, such as <code>F401 `os` imported but unused</code>; the finding is printed above the line.</td><td>Fix it by hand (the hook never changes your code), stage, commit.</td><td><a href="00-start-here.html">0</a></td></tr>
+</tbody>
+</table>
+<p>The brackets, three ways:</p>
+<pre class="code" data-lang="python" data-file="rich_brackets.py" data-check="run"><code>from rich.console import Console
+from rich.markup import escape
+from rich.text import Text
+
+console = Console(width=60)
+line = "line 7: total = prices[i] * counts[n]"
+console.print(line)  # read as markup: [i] and [n] look like style tags
+console.print(escape(line))  # escape() protects the brackets
+console.print(Text(line))  # a Text is never read as markup
+console.print("[bold]rain[/bold] in [3, 5, 8] mm")  # [3, ...] is not a tag: it starts with a digit
+</code></pre>
+<pre class="output" data-for="rich_brackets.py"><code>line 7: total = prices * counts
+line 7: total = prices[i] * counts[n]
+line 7: total = prices[i] * counts[n]
+rain in [3, 5, 8] mm
+</code></pre>
+<p>The first line lost <code>[i]</code> and <code>[n]</code> without a word of warning. The last line shows the other side: <code>[bold]</code> was a real tag (bold does not show in plain text), and <code>[3, 5, 8]</code> was not a tag at all.</p>
+<p>And what ruff says about a file the hook would refuse, so that you recognise it:</p>
+<pre class="shell"><code>$ uv run ruff format --check scratch/shapes.py
+</code></pre>
+<pre class="output"><code>unformatted: File would be reformatted
+ --&gt; scratch/shapes.py:3:1
+  |
+2 |
+  - def area(w,h):
+  -     return w*h
+3 +
+4 + def area(w, h):
+5 +     return w * h
+  |
+
+1 file would be reformatted
+</code></pre>
+
+<h2>Cheat sheets</h2>
+
+<h3>pytest</h3>
+<table>
+<thead><tr><th>You want to</th><th>Type</th></tr></thead>
+<tbody>
+<tr><td>run the module's tests</td><td><code>uv run pytest tests/m01</code></td></tr>
+<tr><td>one file, or one test in it</td><td><code>uv run pytest tests/m01/test_quickselect.py</code>, <code>...::test_quickselect_with_many_repeats</code></td></tr>
+<tr><td>stop at the first failure</td><td><code>-x</code></td></tr>
+<tr><td>only tests whose name matches</td><td><code>-k quickselect</code>, <code>-k "time_calls and not busy"</code></td></tr>
+<tr><td>only what failed last time; failed first, then the rest</td><td><code>--lf</code>; <code>--ff</code></td></tr>
+<tr><td>less output; full diffs</td><td><code>-q</code>; <code>-vv</code></td></tr>
+<tr><td>see your <code>print</code> output even when tests pass</td><td><code>-s</code></td></tr>
+<tr><td>traceback length</td><td><code>--tb=short</code> (this repository's default), <code>--tb=long</code>, <code>--tb=line</code>, <code>--tb=no</code></td></tr>
+<tr><td>the five slowest tests</td><td><code>--durations=5</code></td></tr>
+<tr><td>in a test: a float within tolerance</td><td><code>assert x == pytest.approx(0.15)</code></td></tr>
+<tr><td>in a test: an exception must be raised</td><td><code>with pytest.raises(ValueError):</code></td></tr>
+<tr><td>in a test: the same test for several inputs</td><td><code>@pytest.mark.parametrize("q", [-0.1, 100.1])</code></td></tr>
+<tr><td>in a test: what was printed</td><td>a <code>capsys</code> argument, then <code>capsys.readouterr().out</code></td></tr>
+</tbody>
+</table>
+
+<h3>hypothesis</h3>
+<table>
+<thead><tr><th>Piece</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>@given(values=st.lists(...))</code></td><td>Runs the test about 100 times, each time with a new value for each named argument.</td></tr>
+<tr><td><code>st.integers(-5, 5)</code></td><td>Whole numbers in that range, both ends included; <code>st.integers()</code> has no limits.</td></tr>
+<tr><td><code>st.floats(-1e6, 1e6, allow_nan=False, allow_infinity=False, allow_subnormal=False)</code></td><td>Floats in a range, without NaN, infinities or the tiny "subnormal" floats near 0. The tests of <code>tests/m01</code> use exactly this.</td></tr>
+<tr><td><code>st.lists(elements, min_size=1, max_size=300)</code></td><td>Lists whose items come from another strategy.</td></tr>
+<tr><td><code>st.text(alphabet="abcdef", max_size=6)</code></td><td>Strings made of those letters (the anagram drill's test).</td></tr>
+<tr><td><code>st.data()</code>, then <code>data.draw(strategy)</code></td><td>Draw values inside the test, when one depends on another: a list first, then a <code>k</code> between 0 and its length minus 1 (<code>test_quickselect.py</code>).</td></tr>
+<tr><td><code>st.sampled_from(["a", "b"])</code></td><td>One of a fixed set of values.</td></tr>
+<tr><td><code>@example(values=[1, 1])</code></td><td>An input that is always tried, on top of the generated ones.</td></tr>
+<tr><td><code>@settings(max_examples=500)</code></td><td>More (or fewer) examples. For your own tests; the course tests are the spec.</td></tr>
+<tr><td><code>.hypothesis/</code></td><td>The database of failing examples, tried first on the next run.</td></tr>
+</tbody>
+</table>
+
+<h3>uv</h3>
+<table>
+<thead><tr><th>Command</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>uv sync</code></td><td>Makes <code>.venv</code> match <code>pyproject.toml</code> and <code>uv.lock</code>: creates it, installs, removes. Run it once, and again after the dependencies change.</td></tr>
+<tr><td><code>uv run python scratch/x.py</code></td><td>Runs a command with the project's Python and packages, syncing first if needed. Use it for everything: <code>uv run pytest</code>, <code>uv run ruff check .</code>, <code>uv run python -m llm101.bench</code>.</td></tr>
+<tr><td><code>uv add httpx</code>, <code>uv add --dev name</code></td><td>Adds a dependency to <code>pyproject.toml</code>, locks and installs it. In this course dependencies arrive with the module that needs them, at its spec ritual (<a href="../../../docs/setup.md">docs/setup.md</a>).</td></tr>
+<tr><td><code>uv remove name</code></td><td>The reverse.</td></tr>
+<tr><td><code>uv tree</code></td><td>What is installed, and what needs what.</td></tr>
+</tbody>
+</table>
+
+<h3>The time module's clocks</h3>
+<table>
+<thead><tr><th>Clock</th><th>Measures</th><th>Use it for</th></tr></thead>
+<tbody>
+<tr><td><code>time.perf_counter_ns()</code></td><td>Wall time, in whole nanoseconds, from an arbitrary starting point; never goes backwards</td><td>How long something took, waiting included</td></tr>
+<tr><td><code>time.process_time_ns()</code></td><td>CPU time of this process, all its threads, in nanoseconds; stops while the process sleeps or waits</td><td>How much computing something did</td></tr>
+<tr><td><code>time.thread_time_ns()</code></td><td>CPU time of the current thread only</td><td>Rarely, in this course</td></tr>
+<tr><td><code>time.monotonic_ns()</code></td><td>Wall time that never goes backwards, often coarser than <code>perf_counter</code></td><td>Timeouts and deadlines</td></tr>
+<tr><td><code>time.time()</code></td><td>The calendar clock: seconds since 1 January 1970; can be set, and can jump</td><td>Timestamps in a log, never durations</td></tr>
+<tr><td><code>time.get_clock_info("perf_counter")</code></td><td>A clock's resolution, and whether it is monotonic or adjustable</td><td>Knowing what a clock can see</td></tr>
+</tbody>
+</table>
+<p>The four clocks on this Mac. One run on the M5; on another machine the resolutions differ:</p>
+<pre class="code" data-lang="python" data-file="clocks.py" data-check="run"><code>import time
+
+for name in ("perf_counter", "process_time", "monotonic", "time"):
+    info = time.get_clock_info(name)
+    print(f"{name:13} resolution {info.resolution:.0e} s  monotonic {info.monotonic!s:5}  "
+          f"adjustable {info.adjustable}")
+</code></pre>
+<pre class="output"><code>perf_counter  resolution 4e-08 s  monotonic True   adjustable False
+process_time  resolution 1e-06 s  monotonic True   adjustable False
+monotonic     resolution 4e-08 s  monotonic True   adjustable False
+time          resolution 1e-06 s  monotonic False  adjustable True
+</code></pre>
+
+<h3>Looking at data with numpy and statistics</h3>
+<table>
+<thead><tr><th>Call</th><th>Gives</th></tr></thead>
+<tbody>
+<tr><td><code>np.percentile(xs, 95)</code>, <code>np.percentile(xs, [50, 95, 99])</code></td><td>Percentiles by the linear method, the definition your <code>percentile</code> matches</td></tr>
+<tr><td><code>np.histogram(xs, bins=20)</code></td><td>(counts, edges): 20 counts and 21 edges of equal-width bins</td></tr>
+<tr><td><code>np.mean</code>, <code>np.median</code>, <code>np.std</code>, <code>np.min</code>, <code>np.max</code></td><td>The usual summaries</td></tr>
+<tr><td><code>statistics.fmean(xs)</code>, <code>statistics.median(xs)</code>, <code>statistics.stdev(xs)</code></td><td>The same without numpy</td></tr>
+<tr><td><code>statistics.quantiles(xs, n=100, method="inclusive")</code></td><td>The 99 cut points between 100 equal groups; with <code>method="inclusive"</code> they agree with numpy's linear method, with the default (<code>"exclusive"</code>) they do not</td></tr>
+</tbody>
+</table>
+<p>These are for looking at data and for checking your answers by hand. Your <code>stats.py</code> may use none of them: its percentile is built on your quickselect.</p>
+<pre class="code" data-lang="python" data-file="look_at_data.py" data-check="run"><code>import statistics
+
+import numpy as np
+
+commute_min = [22, 25, 24, 31, 23, 26, 58, 24, 27, 25, 23, 41]
+
+print("mean   ", round(statistics.fmean(commute_min), 2))
+print("median ", statistics.median(commute_min))
+print("stdev  ", round(statistics.stdev(commute_min), 2))
+print("numpy p50, p90, p99:", np.percentile(commute_min, [50, 90, 99]))
+print("quartiles, numpy's way:   ", statistics.quantiles(commute_min, n=4, method="inclusive"))
+print("quartiles, the default way:", statistics.quantiles(commute_min, n=4))
+counts, edges = np.histogram(commute_min, bins=4)
+print("counts", counts)
+print("edges ", edges)
+</code></pre>
+<pre class="output" data-for="look_at_data.py"><code>mean    29.08
+median  25.0
+stdev   10.47
+numpy p50, p90, p99: [25.   40.   56.13]
+quartiles, numpy's way:    [23.75, 25.0, 28.0]
+quartiles, the default way: [23.25, 25.0, 30.0]
+counts [9 1 1 1]
+edges  [22. 31. 40. 49. 58.]
+</code></pre>
+<p>One commute of 58 minutes pulls the mean (29.08) well above the median (25.0), and nine of the twelve trips fall into the first of the four bins. The two quartile lines show why you name the method whenever you quote a percentile.</p>
+
+<h3>rich</h3>
+<table>
+<thead><tr><th>Piece</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>Console()</code>, <code>console.print(x)</code></td><td>Prints text with markup, tables, and anything else rich can draw</td></tr>
+<tr><td><code>Console(record=True, width=60, file=io.StringIO())</code></td><td>A console that keeps what it printed, at a fixed width, without writing to the screen (how the tests read your report)</td></tr>
+<tr><td><code>console.export_text()</code></td><td>What a recording console printed, as plain text</td></tr>
+<tr><td><code>Table(title=...)</code>, <code>.add_column("mm", justify="right")</code>, <code>.add_row("Jan", "78")</code></td><td>A table; every cell is a string</td></tr>
+<tr><td><code>Text("...", style="bold")</code>, <code>text.append("more", style="red")</code></td><td>Styled text that is never read as markup</td></tr>
+<tr><td><code>Group(a, b)</code></td><td>Several renderables as one, printed one below the other</td></tr>
+<tr><td><code>rich.markup.escape(s)</code></td><td>Protects square brackets in <code>s</code> from being read as markup</td></tr>
+</tbody>
+</table>
+<pre class="code" data-lang="python" data-file="rich_weather.py" data-check="run"><code>import io
+
+from rich.console import Console, Group
+from rich.table import Table
+from rich.text import Text
+
+rain_mm = {"Jan": 78, "Feb": 52, "Mar": 61}
+
+table = Table(title="Rainfall")
+table.add_column("Month")
+table.add_column("mm", justify="right")
+for month, mm in rain_mm.items():
+    table.add_row(month, str(mm))
+
+note = Text("wettest: Jan", style="bold")
+console = Console(file=io.StringIO(), record=True, width=40)
+console.print(Group(table, note))
+print(console.export_text())
+</code></pre>
+<pre class="output" data-for="rich_weather.py"><code>   Rainfall   
+┏━━━━━━━┳━━━━┓
+┃ Month ┃ mm ┃
+┡━━━━━━━╇━━━━┩
+│ Jan   │ 78 │
+│ Feb   │ 52 │
+│ Mar   │ 61 │
+└───────┴────┘
+wettest: Jan
+
+</code></pre>
+
+<h3>sys.settrace and its events</h3>
+<table>
+<thead><tr><th>Piece</th><th>What it is</th></tr></thead>
+<tbody>
+<tr><td><code>sys.settrace(tracer)</code></td><td>Installs a global tracer: from now on, every new call in this thread calls <code>tracer(frame, "call", None)</code></td></tr>
+<tr><td><code>sys.settrace(None)</code></td><td>Removes it. Put it in a <code>finally</code>, so that it happens even when the traced code raises</td></tr>
+<tr><td><code>sys.gettrace()</code></td><td>The tracer installed now, or <code>None</code></td></tr>
+<tr><td>the tracer's return value</td><td>On a <code>"call"</code> event, the function to use as the <em>local</em> tracer for that frame's other events, or <code>None</code> for "not interested in this frame"</td></tr>
+<tr><td><code>"call"</code></td><td>A function is entered; <code>arg</code> is <code>None</code></td></tr>
+<tr><td><code>"line"</code></td><td>A new line is about to run, in a frame that has a local tracer</td></tr>
+<tr><td><code>"return"</code></td><td>A function is about to return; <code>arg</code> is the value it returns</td></tr>
+<tr><td><code>"exception"</code></td><td>An exception happened in the frame; <code>arg</code> is (type, value, traceback)</td></tr>
+<tr><td><code>frame.f_code.co_name</code>, <code>frame.f_code.co_filename</code></td><td>The function's name and file</td></tr>
+<tr><td><code>frame.f_lineno</code></td><td>The line number the frame is on now</td></tr>
+<tr><td><code>frame.f_back</code></td><td>The caller's frame</td></tr>
+</tbody>
+</table>
+<p>A tracer is called by the interpreter for every event, so a program runs many times slower while one is installed. That is the price of exact counts, and the reason profilers of busy servers sample instead (<a href="05-where-the-time-goes.html">chapter 5</a>).</p>
+
+<h2>Glossary</h2>
+<dl>
+<dt>Assertion rewriting</dt><dd>pytest's trick of rewriting each <code>assert</code> in a test file so that a failure shows the values on both sides (9).</dd>
+<dt>Big-O</dt><dd>How the number of steps grows with the size of the input, keeping only the fastest-growing part: O(n), O(n log n), O(n²) (3).</dd>
+<dt>Bin</dt><dd>One of the equal-width ranges of a histogram, and the count of values that fall in it (2).</dd>
+<dt>Binary search</dt><dd>Finding a value in a sorted list by looking at the middle and throwing away the half it cannot be in, again and again (3).</dd>
+<dt>Box</dt><dd>The object Python wraps around every value, with its type and reference count, which is why a float takes 24 bytes and not 8 (6).</dd>
+<dt>Contiguous</dt><dd>Stored side by side in one block of memory, as the numbers in a numpy array are and the floats of a list are not (6).</dd>
+<dt>CPU share</dt><dd>CPU time divided by wall time: about 1 for busy work, about 0 for waiting (1).</dd>
+<dt>CPU time</dt><dd>The time a process spent computing, measured with <code>time.process_time_ns</code>; it stops while the process waits (1).</dd>
+<dt>Edge</dt><dd>A boundary between two bins of a histogram; n bins have n + 1 edges (2).</dd>
+<dt>Event</dt><dd>One thing a tracer is told about: a call, a line, a return or an exception (5).</dd>
+<dt>Expected value</dt><dd>The average result of something random over many tries, such as 3.5 for one die (3).</dd>
+<dt>Frame</dt><dd>The interpreter's record of one call in progress: the function, its locals, and the line it is on (5).</dd>
+<dt>Half-open interval</dt><dd>An interval that includes its start but not its end, like a booking from 13 to 15 (7).</dd>
+<dt>Hash</dt><dd>A number computed from a key, used by a dict or a set to jump to the key's slot without searching (7).</dd>
+<dt>Histogram</dt><dd>A count of how many values fall in each of a row of bins, drawn as bars: the shape of a spread (2).</dd>
+<dt>Interpolation</dt><dd>Reading a value between two known ones on the straight line that joins them (2).</dd>
+<dt>Markup</dt><dd>rich's square-bracket tags, such as <code>[bold]</code>, that style text instead of being printed (4).</dd>
+<dt>Oracle</dt><dd>A slow or trusted way to get the right answer, used to check a fast one; numpy is this module's (8).</dd>
+<dt>p50, p95, p99</dt><dd>The 50th, 95th and 99th percentiles: the typical call, and the slow calls one in twenty and one in a hundred users meet (2).</dd>
+<dt>Partition</dt><dd>Splitting items around a pivot into smaller, equal and larger groups (3).</dd>
+<dt>Percentile</dt><dd>The value below which a given percentage of the values lie (2).</dd>
+<dt>Pivot</dt><dd>The value a partition splits around (3).</dd>
+<dt>Profiler</dt><dd>A tool that says where a program spends its time (5).</dd>
+<dt>Property test</dt><dd>A test that states something true for every input of a kind and lets hypothesis search for an input that breaks it (2).</dd>
+<dt>Quickselect</dt><dd>Finding the k-th smallest value by partitioning and keeping only the side the answer is on: about n steps on average (3).</dd>
+<dt>Resolution</dt><dd>The smallest step a clock can show (1).</dd>
+<dt>Run</dt><dd>A stretch of neighbours in a sequence that agree: the same letter, the same direction (7).</dd>
+<dt>Sampling</dt><dd>Profiling by looking at where a program is at regular moments instead of recording every event: cheap and approximate (5).</dd>
+<dt>Selection</dt><dd>Finding the value at one position of the sorted order without sorting (3).</dd>
+<dt>Shrinking</dt><dd>Hypothesis's search for the smallest, simplest input that still fails (2).</dd>
+<dt>Sliding window</dt><dd>A fixed-width run of consecutive items that moves one step at a time, one item in and one out (7).</dd>
+<dt>Stack</dt><dd>A pile where you only touch the top: last in, first out (7).</dd>
+<dt>Tail</dt><dd>The slow end of a spread of timings, where p95 and p99 live (2).</dd>
+<dt>Throughput</dt><dd>Calls completed per second of wall time; the docstring of <code>summarise</code> defines it (8).</dd>
+<dt>Traceback</dt><dd>The printout of the calls in progress when an exception was raised, oldest first (9).</dd>
+<dt>Tracer</dt><dd>A function the interpreter calls on every event once it is installed with <code>sys.settrace</code> (5).</dd>
+<dt>Wall time</dt><dd>Time on a stopwatch, waiting included, measured with <code>time.perf_counter_ns</code> (1).</dd>
+<dt>Warm-up</dt><dd>Calls made before recording starts, so that one-time costs such as filling a cache are not counted (1).</dd>
+</dl>
+
+<h2>What Module 2 brings</h2>
+<p>Module 2 is the <strong>tokenizer</strong>: the piece of an engine that turns text into the numbers a model reads, and back. A preview, so that you recognise the names; nothing here is needed this module.</p>
+<ul>
+<li><strong>Bytes and UTF-8.</strong> A string is a sequence of characters, but a file, a socket and a tokenizer see bytes. UTF-8 spends one byte on an English letter and up to four on other characters, so the length of a text depends on what you count.</li>
+<li><strong>Byte-pair encoding (BPE).</strong> Start from single bytes, count every pair of neighbours, merge the most frequent pair into a new token, and repeat. GPT-2's tokenizer is the list of merges this produced.</li>
+<li><strong>The patterns.</strong> Hash maps, to count the pairs (this module's dicts again); heaps, to find the best merge first; linked lists, to merge neighbours in place without shifting a whole list.</li>
+<li><strong>Done when</strong> round trips are exact on any Unicode text, and your token ids match GPT-2's tokenizer on the test set, with tiktoken as the oracle.</li>
+<li><strong>Measured</strong> with the harness you build this week: how many tokens per second, and what tokenization does to cost and latency.</li>
+</ul>
+<pre class="code" data-lang="python" data-file="utf8_bytes.py" data-check="run"><code>for text in ["a", "é", "€", "🙂"]:
+    data = text.encode("utf-8")
+    print(f"{text!r:5} characters: {len(text)}  bytes: {len(data)}  {list(data)}")
+
+print(bytes([99, 97, 102, 195, 169]).decode("utf-8"))
+print(len("café"), len("café".encode("utf-8")))
+</code></pre>
+<pre class="output" data-for="utf8_bytes.py"><code>'a'   characters: 1  bytes: 1  [97]
+'é'   characters: 1  bytes: 2  [195, 169]
+'€'   characters: 1  bytes: 3  [226, 130, 172]
+'🙂'   characters: 1  bytes: 4  [240, 159, 153, 130]
+café
+4 5
+</code></pre>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>A traceback has four entries and ends with <code>KeyError: 'p95'</code>. Which entry do you read first, and what do you look for in it?</p><details class="answer"><summary>Answer</summary><p>The last one, just above the exception: the file, the line and its source text, with the carets under the part that failed. There a dict was read with the key <code>'p95'</code>, which it does not have. Then walk upwards to find where that dict was built, which is often where the fix goes.</p></details></div>
+<div class="q"><p>pytest prints <code>E   assert [1, 2, 4] == [1, 2, 3]</code>. What does it tell you, and what made it possible?</p><details class="answer"><summary>Answer</summary><p>Your code returned <code>[1, 2, 4]</code> where the test expected <code>[1, 2, 3]</code>; the next line says they differ at index 2. Assertion rewriting made it possible: pytest rewrote the plain <code>assert</code> so that it keeps the values of both sides.</p></details></div>
+<div class="q"><p>Which pytest command reruns only the tests that just failed, and stops at the first one that still fails?</p><details class="answer"><summary>Answer</summary><p><code>uv run pytest --lf -x</code>, with the path if you want to limit it.</p></details></div>
+<div class="q"><p>Hypothesis reports a failing example <code>values=[0.0, 0.0]</code>. Why is it so small, and what do you do with it?</p><details class="answer"><summary>Answer</summary><p>Hypothesis shrank the input that first failed to the simplest one that still fails. Call your function with exactly that input in a <code>scratch/</code> program and look at what it does. The example is also saved in <code>.hypothesis/</code>, so the next run tries it first.</p></details></div>
+<div class="q"><p>Your quickselect passes on shuffled lists and fails with <code>RecursionError</code> on a list that is already in order. What is wrong, in one sentence?</p><details class="answer"><summary>Answer</summary><p>The pivot comes from a fixed place, so on ordered input each round throws away only one element and the recursion goes n deep, past Python's limit of about 1,000.</p></details></div>
+<div class="q"><p>Your report shows <code>line 12: squares = </code> and nothing after the equals sign. What happened?</p><details class="answer"><summary>Answer</summary><p>rich read the square brackets of the source text as markup and removed them with everything inside. Escape the text with <code>rich.markup.escape</code>, or pass it as a <code>Text</code>.</p></details></div>
+<div class="q"><p>How many bytes does the word "naïve" take in UTF-8?</p><details class="answer"><summary>Answer</summary><p>Six: one each for n, a, v and e, and two for ï. It is five characters.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Read a traceback from the bottom up, and find the frame where the fix goes.</li>
+<li>Read pytest's report, its E lines and DID NOT RAISE, and narrow a run with <code>-x</code>, <code>-k</code>, <code>--lf</code>, <code>-q</code> and <code>-vv</code>.</li>
+<li>Read hypothesis's failing example, say why it is small, and know where hypothesis remembers it.</li>
+<li>Decode every error message of this module from its first words, and say which chapter has the fix.</li>
+<li>Use the cheat sheets for pytest, hypothesis, uv, the clocks, numpy and statistics, rich and <code>sys.settrace</code> instead of searching.</li>
+<li>Explain every word of the glossary in two sentences, for the retrieval block.</li>
+<li>Say what Module 2 builds, and which data structures it needs.</li>
+</ul>
+</main>
+</body>
+</html>

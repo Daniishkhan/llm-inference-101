@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Measure first</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Module 1 of 18 · LLM inference in Python</p>
+<h1>Measure first</h1>
+<p class="lede">Ten chapters that take you from "it feels slow" to a number you can trust: two clocks, a hundred calls instead of one, the typical call and the slow tail, a histogram drawn in the terminal, and a line timer that points at the slow line. By the end you have typed a benchmark harness that every later module measures itself with.</p>
+
+<h2>What this book is</h2>
+<p>This is the book of <strong>Module 1</strong>, the first of the 18 modules in <a href="../../../goal.md">goal.md</a>, the plan of the whole course. The module's spec, its contract and its milestones are in <a href="../../../modules/01-measure/README.md">modules/01-measure/README.md</a>; this book teaches everything the spec needs, one idea at a time.</p>
+<p>What you build is <code>python -m llm101.bench</code>: a program that calls a function many times, times every call with a wall clock and a CPU clock, and prints p50, p95 and p99, a histogram of the times, and, with <code>--profile</code>, the five slowest lines of the function. Along the way you meet quickselect, the selection algorithm that finds one position of a sorted list without sorting it, and the drills of the module, which are hashing problems.</p>
+<p>The rule of the course holds on every page. The book teaches each mechanism with complete, runnable examples on a <em>different</em> problem (a kettle, a café queue, a hand of cards, a weather report), and never shows a function of your contract or a drill. Chapter 8 gives you the milestones and the hint ladders; the code is yours to type.</p>
+
+<h2>How to read it</h2>
+<p>Read in order; each chapter uses only what came before it. Type every example into <code>scratch/</code> and run it with <code>uv run python scratch/NAME.py</code>, rather than copying it. When a program's output is shown, compare yours with it line by line. Answer each check-yourself question before you open its answer. Tick the box at the bottom of a chapter when you have worked through it; your progress is saved in this browser.</p>
+<p>The coloured boxes mean:</p>
+<div class="callout principle"><span class="label">First principle</span><p>What the machine is really doing underneath the code: the interpreter, the clock, memory. The rest of the course is built on these.</p></div>
+<div class="callout analogy"><span class="label">Analogy</span><p>A picture from everyday life, followed by where the picture breaks down.</p></div>
+<div class="callout twin"><span class="label">In a real engine</span><p>Where the thing you just learned appears in vLLM, nano-vLLM or SGLang, and where in that engine.</p></div>
+<div class="callout trap"><span class="label">Trap</span><p>A mistake that is easy to make and that Python will not point out for you.</p></div>
+<div class="callout try"><span class="label">Try it</span><p>Stop reading and type something. Each one takes a few minutes.</p></div>
+<div class="callout note"><span class="label">Note</span><p>Anything else: "In this chapter", a "Python you need" refresher, a pointer to the appendix.</p></div>
+<p>Hidden text looks like this:</p>
+<details class="hint"><summary>Stuck? First nudge</summary><p>Hints come in rungs. Open one, try again, and open the next only if you must.</p></details>
+<details class="answer"><summary>Show the answer</summary><p>Answers to the check-yourself questions. Write your own answer first.</p></details>
+
+<h2>Contents</h2>
+<div class="progress"></div>
+<div class="toc-cards" data-auto
+  data-blurb0="What the module builds and why, Done when, the day-by-day plan, first-time setup and reading the red."
+  data-blurb1="Wall time against CPU time: a kettle you wait for and sums you do. Clock resolution, the wrong clock, and warm-up."
+  data-blurb2="One timing is an anecdote. Spread, the typical value and the slow tail, reading between two readings, and histograms."
+  data-blurb3="Split a hand of cards around one card and keep only the side that matters. Expected cost, with dice."
+  data-blurb4="rich: tables, bars, recorded consoles and text with square brackets. A weather report in the terminal."
+  data-blurb5="Profilers: cProfile on a toy, then a tracer that watches every call. Frames, and putting things back."
+  data-blurb6="How big a Python number is, a thousand floats three ways, and why numpy beats a Python loop."
+  data-blurb7="The patterns behind the drills, each taught on another problem, and a hint ladder for every drill."
+  data-blurb8="The seven milestones of the harness, each with its hint ladder, common bugs and commit."
+  data-blurb9="Reading a traceback, the errors of this module, cheat sheets for pytest, hypothesis and uv, and a glossary."></div>
+<p class="book-sub">The cards above are drawn by <code>assets/book.js</code> from their <code>data-blurb</code> attributes; the chapter list itself lives in <code>book-config.js</code>.</p>
+
+<h2>Around the book</h2>
+<ul>
+<li><a href="../../../modules/01-measure/README.md">The module README</a>: the spec, the contract, the milestones, "Done when", and the decisions of the spec ritual.</li>
+<li><a href="../../../goal.md">goal.md</a>: the whole course, and why it starts with measuring.</li>
+<li><a href="../../methodology.md">docs/methodology.md</a>: how a day and a module run.</li>
+<li><a href="../../../CLAUDE.md">CLAUDE.md</a>: the rules Claude follows in this repository, the hint ladder among them.</li>
+<li><a href="../index.html">Every book of the course</a>.</li>
+</ul>
+
+<h2>Opening the book</h2>
+<p>Open <code>docs/book/01-measure/index.html</code> straight from the folder, or serve the books on this Mac and read them at <code>http://localhost:8767/01-measure/</code>:</p>
+<pre class="shell"><code>$ uv run python tools/serve-book.py
+</code></pre>
+<p>The tutor panel (press <kbd>A</kbd>, or select any text) does not answer here. It composes your question, with the chapter and section it came from, and copies it to the clipboard; paste it into Claude Code in the terminal of this repository, where <a href="../../../CLAUDE.md">CLAUDE.md</a> applies. Progress ticks are stored per browser and per address.</p>
+<p>To check that every example in the book still runs and prints what it claims:</p>
+<pre class="shell"><code>$ uv run python tools/book-check.py
+</code></pre>
+</main>
+</body>
+</html>

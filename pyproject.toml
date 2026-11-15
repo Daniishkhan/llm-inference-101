@@ -1,0 +1,60 @@
+[project]
+name = "llm-inference-101"
+version = "0.1.0"
+description = "LLM inference in Python, typed by hand: a benchmark harness, a tokenizer, GPT-2 in numpy, sampling, a KV cache, then a mini serving engine, then vLLM"
+readme = "README.md"
+requires-python = ">=3.13"
+# Dependencies arrive with the module that needs them (docs/setup.md has the list).
+dependencies = [
+    "numpy>=2.3",
+    "rich>=14",
+]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.140",
+    "pytest>=8.4",
+    "ruff>=0.14",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "llm101"
+
+[tool.llm101]
+# Modules whose "Done when" has passed. From then on CI keeps their tests green
+# (tools/ci-modules.py). You add a module here yourself, on the day it is done.
+done = []
+# Names the book may never define in an example (tools/book-check.py): every contract function and
+# given type so far, and every drill. Claude adds a module's names at its spec ritual. The list stays
+# after you have written a function, so the book can never show one.
+guarded = [
+    # Module 1, src/llm101/bench/
+    "time_calls", "summarise", "quickselect", "percentile", "histogram", "render_report",
+    "slowest_lines", "Timings", "Report",
+    # Drills, sets 00 and 01
+    "encode", "top_endpoints", "pair_with_sum", "is_balanced", "merge", "MovingAverage",
+    "group_anagrams", "longest_streak", "sort_colours",
+]
+
+[tool.pytest.ini_options]
+addopts = "--tb=short"
+testpaths = ["drills", "tests"]
+
+[tool.ruff]
+line-length = 100
+# Each drill set is a folder of top-level modules, so a test's `from run_length import encode` is a
+# first-party import and sorts below `import pytest`.
+src = ["src", "drills/*", "tools"]
+
+[tool.ruff.lint]
+# E, W: pycodestyle. F: pyflakes (unused and undefined names). I: import order. B: likely bugs.
+# Idiom rules (UP, SIM) stay off: that feedback belongs to the review.
+select = ["E", "F", "W", "I", "B"]
+
+[tool.basedpyright]
+# Zed's default, written down so that the command line agrees with the editor.
+typeCheckingMode = "standard"
