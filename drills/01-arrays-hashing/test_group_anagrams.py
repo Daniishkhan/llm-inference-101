@@ -1,5 +1,7 @@
 import random
+import signal
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -69,3 +71,32 @@ def test_shuffled_copies_of_a_word_always_land_in_one_group(base, others, copies
     # All the shuffled copies of `base` sit in one and the same group.
     homes = {i for i, g in enumerate(groups) for w in g if w in shuffled}
     assert len(homes) == 1
+
+
+class StillRunning(Exception):
+    pass
+
+
+def stop_the_run(signum, frame):
+    raise StillRunning
+
+
+def test_twenty_thousand_words_in_two_seconds():
+    # 10,000 words, no two of them anagrams (word i has as many a's as the first digit of i, as many
+    # b's as the second, and so on), then a shuffled copy of each: 10,000 groups of two.
+    rng = random.Random(1)
+    words = [
+        "".join(letter * int(digit) for letter, digit in zip("abcde", f"{i:05d}", strict=True))
+        for i in range(1, 10_001)
+    ]
+    copies = ["".join(rng.sample(word, len(word))) for word in words]
+    before = signal.signal(signal.SIGALRM, stop_the_run)
+    signal.setitimer(signal.ITIMER_REAL, 2.0)
+    try:
+        result = group_anagrams(words + copies)
+    except StillRunning:
+        pytest.fail("still running after 2 s: comparing every word with every other is too slow")
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, before)
+    assert result == [[word, copy] for word, copy in zip(words, copies, strict=True)]

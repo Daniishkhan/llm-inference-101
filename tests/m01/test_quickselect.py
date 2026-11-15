@@ -100,8 +100,10 @@ def test_quickselect_ordered_input_is_not_the_worst_case():
         return best
 
     t_shuffled = best_of_three(shuffled)
-    t_ordered = best_of_three(ordered)
-    assert t_ordered < 10 * t_shuffled + 0.005, (
-        f"ordered input took {t_ordered * 1e3:.1f} ms against {t_shuffled * 1e3:.1f} ms shuffled: "
-        "which pivot does an ordered list give you? (book chapter 3)"
-    )
+    t_rising = best_of_three(ordered)
+    t_falling = best_of_three(ordered[::-1])
+    for order, took in (("rising", t_rising), ("falling", t_falling)):
+        assert took < 10 * t_shuffled + 0.005, (
+            f"input in {order} order took {took * 1e3:.1f} ms against {t_shuffled * 1e3:.1f} ms "
+            f"shuffled: which pivot does a list in {order} order give you? (book chapter 3)"
+        )

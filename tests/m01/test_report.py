@@ -66,6 +66,33 @@ def test_render_report_the_fullest_bin_gets_the_full_width():
     assert bars == expected_bars(5, 25)
 
 
+def report_of(wall):
+    """A Report for a list of wall times, worked out with numpy."""
+    return Report(
+        n=len(wall),
+        mean_ns=float(np.mean(wall)),
+        min_ns=min(wall),
+        p50_ns=float(np.percentile(wall, 50)),
+        p95_ns=float(np.percentile(wall, 95)),
+        p99_ns=float(np.percentile(wall, 99)),
+        max_ns=max(wall),
+        throughput_per_s=len(wall) / (sum(wall) / 1e9),
+        cpu_share=1.0,
+    )
+
+
+def test_render_report_rounds_half_a_character_the_way_round_does():
+    # Three bins of 16, 5 and 1 calls, 40 characters wide: 40, then 5/16 of 40 = 12.5, then
+    # 1/16 of 40 = 2.5. round() takes a half to the even neighbour, so the bars are 40, 12 and 2.
+    wall = [1_000] * 16 + [2_000] * 5 + [3_000]
+    timings = Timings(wall_ns=wall, cpu_ns=wall)
+    text = printed(render_report(report_of(wall), timings, bins=3, bar_width=40))
+    bars = [len(run) for run in re.findall("█+", text)]
+    assert bars == [40, 12, 2], (
+        "a bar of 12.5 characters is round(12.5), which is 12, and 2.5 is 2 (see the docstring)"
+    )
+
+
 def test_the_program_prints_a_report():
     command = [sys.executable, "-m", "llm101.bench", "--n", "30", "--warmup", "2", "--bins", "5"]
     result = subprocess.run(command, capture_output=True, text=True, timeout=120)

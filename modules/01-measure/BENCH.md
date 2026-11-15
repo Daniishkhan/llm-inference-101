@@ -14,7 +14,8 @@ Fill this in at M7. Book chapter 6 explains the measurement. The harness you mea
 **Question.** Summing the squares of the numbers 0 to 999,999: how much faster is numpy than a Python
 loop, and how many bytes does each keep per number?
 
-**Prediction.** Write it before you run anything: a number and a reason.
+**Prediction.** Write it before you run anything: a number and a reason. Commit it on its own
+(`M7: prediction`) before you measure.
 
 - numpy is about ___ times faster, because
 - a list of a million floats keeps about ___ bytes per number, and a numpy array about ___, because

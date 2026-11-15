@@ -105,7 +105,8 @@ no redos.
    one of them an edge case. Only then run the tests, and count the runs until green. An interview
    often has no tests to lean on, so the aim is green on the first run.
 6. **Redos.** Two days and seven days after the first attempt, empty the function (git keeps your first
-   version) and type it again, cold. A problem you cannot redo is not solved yet.
+   version) and type it again, cold. A problem you cannot redo is not solved yet. A redo that falls on a
+   Sunday moves to the Monday.
 7. **A timeout has no reveal.** The problem stays open and comes back at the +2 day redo, with the rungs
    you have not used yet.
 8. **One commit per solved drill**, with the minutes in the message: `pair_with_sum: 11 min, no hints`.
@@ -210,7 +211,8 @@ review your diff, and never writes it.
 
 ---
 
-*Changelog:* 2026-11-15, after an audit of the lesson structure the same day: a set has six problems,
+*Changelog:* 2026-11-15, after a day-by-day check of week 1: a redo that falls on a Sunday moves to the
+Monday. 2026-11-15, after an audit of the lesson structure the same day: a set has six problems,
 two of them for review with the pattern not named; a debugging drill from set 02 on; cover and retype
 in the read block; a dry run and a count of test runs; three readiness numbers each Saturday; from
 Module 2 on, one "write it" exercise and at most eight programs a chapter (docs/book/assets/SPEC.md).

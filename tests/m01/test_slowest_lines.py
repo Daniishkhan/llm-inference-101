@@ -82,8 +82,8 @@ def test_slowest_lines_come_slowest_first():
 
 def test_slowest_lines_a_callee_counts_toward_the_line_that_called_it():
     result = slowest_lines(calls_a_slow_helper)
-    assert result[0][0] == line_of(calls_a_slow_helper, "# the slow line")
     assert not source_lines_of(helper) & {line for line, _ in result}, "helper's own lines appear"
+    assert result[0][0] == line_of(calls_a_slow_helper, "# the slow line")
 
 
 def test_slowest_lines_a_line_in_a_loop_adds_up_its_runs():
@@ -100,10 +100,25 @@ def test_slowest_lines_passes_the_arguments_through():
     assert line_of(add, "# the only line") in [line for line, _ in result]
 
 
+def other_tool(frame, event, arg):
+    """A stand-in for a debugger or a coverage tool that was tracing before slowest_lines ran."""
+    return None
+
+
+PUT_IT_BACK = (
+    "the tracer that was there before slowest_lines must be back afterwards; switching tracing "
+    "off is not the same (book chapter 5, the Trap)"
+)
+
+
 def test_slowest_lines_removes_its_tracer():
-    before = sys.gettrace()
-    slowest_lines(one_slow_line)
-    assert sys.gettrace() is before
+    sys.settrace(other_tool)
+    try:
+        slowest_lines(one_slow_line)
+        after = sys.gettrace()
+    finally:
+        sys.settrace(None)
+    assert after is other_tool, PUT_IT_BACK
 
 
 class Boom(Exception):
@@ -111,14 +126,17 @@ class Boom(Exception):
 
 
 def test_slowest_lines_removes_its_tracer_when_fn_raises():
-    before = sys.gettrace()
-
     def fails():
         raise Boom()
 
-    with pytest.raises(Boom):
-        slowest_lines(fails)
-    assert sys.gettrace() is before
+    sys.settrace(other_tool)
+    try:
+        with pytest.raises(Boom):
+            slowest_lines(fails)
+        after = sys.gettrace()
+    finally:
+        sys.settrace(None)
+    assert after is other_tool, PUT_IT_BACK
 
 
 def test_the_program_prints_the_slowest_lines_with_profile():

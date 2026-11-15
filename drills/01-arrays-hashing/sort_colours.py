@@ -10,7 +10,8 @@ given.
 
 The rules: one pass over the list, swapping elements, with a few variables and no second list.
 Counting the 0s, 1s and 2s and then writing them back takes two passes, so it does not count. The
-tests read your function and fail if it calls sorted() or .sort().
+tests read your function and fail if it calls sorted() or .sort(), and they check that the list
+ends up holding the very elements it was given, moved.
 
 This move is the heart of quickselect: smaller than a pivot to the left, larger to the right, equal
 in the middle. Module 1's quickselect milestone (M3) uses it, so do this drill first.

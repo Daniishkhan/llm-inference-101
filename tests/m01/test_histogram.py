@@ -47,6 +47,15 @@ def test_histogram_a_value_on_an_inner_edge_goes_to_the_right():
     assert histogram([0, 1, 2, 3, 4], 4) == ([1, 1, 1, 2], [0.0, 1.0, 2.0, 3.0, 4.0])
 
 
+def test_histogram_decides_membership_with_the_edges():
+    # 3.3 sits exactly on an inner edge, 1.8 + 3 * 0.5, so numpy counts it in bin 3. Division
+    # alone, (3.3 - 1.8) / 0.5, gives 2.9999999999999996: one bin too low.
+    counts, _ = histogram([6.3, 3.3, 1.8], 9)
+    assert counts == [1, 0, 0, 1, 0, 0, 0, 0, 1], (
+        "decide membership with the edges (see the docstring)"
+    )
+
+
 def test_histogram_one_bin_holds_everything():
     assert histogram([5, 1, 3], 1) == ([3], [1.0, 5.0])
 

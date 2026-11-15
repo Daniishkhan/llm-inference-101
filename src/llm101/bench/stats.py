@@ -20,9 +20,9 @@ def quickselect(values: Sequence[float], k: int) -> float:
     not in. Do not call sorted() or .sort(), and do not change the list you were given: the tests
     check both.
 
-    The tests also time it on a list that is already in order and expect that to take about as long
-    as on a shuffled list of the same size, so choose the pivot so that ordered input is not your
-    worst case.
+    The tests also time it on lists that are already in order, rising and falling, and expect each
+    to take about as long as a shuffled list of the same size, so choose the pivot so that ordered
+    input is not your worst case.
 
     Raises ValueError if values is empty, and IndexError if k is not in range(len(values)).
     """

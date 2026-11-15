@@ -16,8 +16,9 @@ def slowest_lines(
     runs. Time spent inside a function that fn calls counts toward the line of fn that made the
     call; the callee's own lines are not listed.
 
-    Build it on sys.settrace (book chapter 5). The tracer must be gone when slowest_lines returns,
-    and also when fn raises, in which case the exception goes on to the caller.
+    Build it on sys.settrace (book chapter 5). When slowest_lines returns, and also when fn raises
+    (the exception then goes on to the caller), the tracer that was installed before it, usually
+    none, must be back in place. Switching tracing off is not the same.
 
     What fn returns is not needed.
     """

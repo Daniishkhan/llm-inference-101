@@ -26,7 +26,9 @@ uv run pytest drills/01-arrays-hashing/test_group_anagrams.py
 ```
 
 Three of these test files read your code. `longest_streak` and `sort_colours` fail if they call
-`sorted()` or `.sort()`, and `tidy_path` fails if its file imports `os`, `posixpath` or `pathlib`. The
-point of all three is to do without.
+`sorted()` or `.sort()`, and `tidy_path` fails if its file imports a path library (`os`, `posixpath`,
+`ntpath`, `pathlib`) or loads a module by its name. The point of all three is to do without. Three
+time your function on a long input and stop it after two seconds (`group_anagrams`, `longest_streak`
+and `count_stretches`), and `sort_colours` checks that it moves the elements it was given.
 
 After each problem: its row in [the ledger](../../ledger.md), and a commit if it is green.

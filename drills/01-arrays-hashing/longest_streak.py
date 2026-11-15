@@ -12,7 +12,8 @@ counts once. The list you are given must come back unchanged.
     longest_streak([])                               ->  0
 
 Sorting first would work and costs n log n. Do it without sorting, in time proportional to n: the
-tests read your function and fail if it calls sorted() or .sort().
+tests read your function and fail if it calls sorted() or .sort(), and they give it one streak of
+200,000 numbers and two seconds.
 
 Time box: 30 minutes.
 """

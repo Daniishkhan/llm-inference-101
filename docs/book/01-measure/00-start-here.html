@@ -37,7 +37,7 @@
 <li>It calls a given function, <code>demo()</code>, a thousand times after fifty warm-up calls, and times each call with two clocks: one that keeps running while the program waits, and one that runs only while it computes (<a href="01-two-clocks.html">chapter 1</a>).</li>
 <li>It prints a table: the number of calls, the fastest, the mean, the <strong>p50</strong> (the typical call), the <strong>p95</strong> and <strong>p99</strong> (the slow calls a user notices), the slowest, the calls per second, and the share of the time spent computing (<a href="02-tails-and-percentiles.html">chapter 2</a>).</li>
 <li>Under the table it draws a <strong>histogram</strong>: one line per range of times, with a bar for how many calls fell into it.</li>
-<li>With <code>--profile</code>, it adds the five slowest lines inside <code>demo()</code>: where the time goes, not only how much there is (<a href="05-where-the-time-goes.html">chapter 5</a>).</li>
+<li>With <code>--profile</code>, it adds the slowest lines inside <code>demo()</code>, at most five: where the time goes, not only how much there is (<a href="05-where-the-time-goes.html">chapter 5</a>).</li>
 </ul>
 <p>You write all of it, including the parts a library would normally do. The percentiles come from your own selection algorithm; numpy is only the tests' oracle, used to check your answers.</p>
 
@@ -63,7 +63,7 @@
 <li><code>uv run pytest tests/m01</code> is green from end to end.</li>
 <li><code>uv run python -m llm101.bench --profile</code> prints the table, the histogram and the slowest lines.</li>
 <li><code>modules/01-measure/BENCH.md</code> has its Experiment: a prediction written before the run, the measurement, and two sentences on why.</li>
-<li>One commit per milestone, M1 to M7, each through the pre-commit hook.</li>
+<li>One commit per milestone, M1 to M7, each through the pre-commit hook, and one more for M7's prediction, made before its measurement.</li>
 <li>A review of the whole module has been run, and its three questions are answered in <code>log.md</code>.</li>
 <li>Five lines in <code>log.md</code>, and <code>"m01"</code> added to <code>done</code> under <code>[tool.llm101]</code> in <code>pyproject.toml</code>.</li>
 </ul>
@@ -75,13 +75,13 @@
 <tbody>
 <tr><td>1, Mon 16 Nov</td><td>The 20-minute spec ritual, then set 00, the diagnostic: six problems, cold, 2 hours this once</td><td>This chapter, and <a href="01-two-clocks.html">01 Two clocks</a></td><td><strong>M1</strong> <code>time_calls</code> (2 hours today, because the drill block took 2)</td></tr>
 <tr><td>2, Tue 17 Nov</td><td><code>group_anagrams</code>, then <code>tidy_path</code></td><td><a href="02-tails-and-percentiles.html">02 Tails and percentiles</a></td><td><strong>M2</strong> <code>histogram</code></td></tr>
-<tr><td>3, Wed 18 Nov</td><td><code>sort_colours</code>, and the redos of set 00 that fall due (+2 days)</td><td><a href="03-partition-and-select.html">03 Partition and select</a></td><td><strong>M3</strong> <code>quickselect</code>, and start <strong>M4</strong> <code>percentile</code></td></tr>
+<tr><td>3, Wed 18 Nov</td><td>The redos of set 00 that fall due (+2 days), then <code>sort_colours</code>: 1 h 30 today</td><td><a href="03-partition-and-select.html">03 Partition and select</a></td><td><strong>M3</strong> <code>quickselect</code>, and start <strong>M4</strong> <code>percentile</code> (2 h 30 today)</td></tr>
 <tr><td>4, Thu 19 Nov</td><td>The redos of day 2, then <code>longest_streak</code></td><td><a href="04-pictures-in-the-terminal.html">04 Pictures in the terminal</a></td><td>Finish <strong>M4</strong>, then <strong>M5</strong>: <code>summarise</code>, <code>render_report</code> and <code>main</code></td></tr>
 <tr><td>5, Fri 20 Nov</td><td>The <code>sort_colours</code> redo, then <code>count_stretches</code>, then <code>free_slots</code> if the hour allows</td><td><a href="05-where-the-time-goes.html">05 Where the time goes</a></td><td><strong>M6</strong> <code>slowest_lines</code>, and <code>--profile</code></td></tr>
-<tr><td>6, Sat 21 Nov</td><td>The mock round: say "mock" to Claude Code</td><td><a href="06-boxes-and-arrays.html">06 Boxes and arrays</a></td><td><strong>M7</strong> the Experiment in <code>BENCH.md</code>, and the module review</td></tr>
+<tr><td>6, Sat 21 Nov</td><td>The <code>longest_streak</code> redo, then the mock round: say "mock" to Claude Code</td><td><a href="06-boxes-and-arrays.html">06 Boxes and arrays</a></td><td><strong>M7</strong> the Experiment in <code>BENCH.md</code>, and the module review</td></tr>
 </tbody>
 </table>
-<p>The <strong>spec ritual</strong> is twenty minutes with the README: read it, settle each item of its last section, "Decisions for the spec ritual", and freeze it with a commit (<code>Module 1: spec frozen</code>). After that a requirement can only move to "Stretch", in writing, with the date. The <strong>redos</strong> come from <code>ledger.md</code>: two and seven days after a first attempt, you empty the function and type it again, cold. Set 01 is on the module's pattern, <strong>arrays and hashing</strong>, plus the partition step behind quickselect, which is why <code>sort_colours</code> comes on day 3, just before M3. Two of the set's six problems are review: they do not say which pattern they need, and naming it is part of the drill. <a href="07-drills.html">Chapter 7</a> teaches each pattern on a different problem first.</p>
+<p>The <strong>spec ritual</strong> is twenty minutes with the README: read it, settle each item of its last section, "Decisions for the spec ritual", and freeze it with a commit (<code>Module 1: spec frozen</code>). After that a requirement can only move to "Stretch", in writing, with the date. The <strong>redos</strong> come from <code>ledger.md</code>: two and seven days after a first attempt, you empty the function and type it again, cold. A redo that falls on a Sunday moves to the Monday. Set 01 is on the module's pattern, <strong>arrays and hashing</strong>, plus the partition step behind quickselect, which is why <code>sort_colours</code> comes on day 3, just before M3. Two of the set's six problems are review: they do not say which pattern they need, and naming it is part of the drill. <a href="07-drills.html">Chapter 7</a> teaches each pattern on a different problem first. Read the section a drill needs in block 5 of the day before: in this module block 5 has room, because nothing is measured until M7.</p>
 
 <h3>The five blocks of a day</h3>
 <p>A day is eight hours, Monday to Saturday, in five blocks, always in this order (<code>docs/methodology.md</code>, "The day"). Sunday is off, every week.</p>
@@ -92,7 +92,7 @@
 <tr><td>2. Private</td><td>1 h</td><td>Kept in <code>../interview-prep</code>, outside this repository. It comes second so that it is never the block that gets skipped.</td></tr>
 <tr><td>3. Read</td><td>1 h 30</td><td>The day's chapter of this book, by cover and retype: read a program, cover it, type it into <code>scratch/</code> from memory, compare, run.</td></tr>
 <tr><td>4. Build</td><td>3 h</td><td>The day's milestone, red to green. No Claude in this block except to decode an error message.</td></tr>
-<tr><td>5. Measure, review, log</td><td>1 h 30</td><td>Commit, ask for the review, five lines in <code>log.md</code>, five rows of <code>CONCEPTS.md</code> explained out loud.</td></tr>
+<tr><td>5. Measure, review, log</td><td>1 h 30</td><td>Commit, ask for the review, five lines in <code>log.md</code>, five rows of <code>CONCEPTS.md</code> explained out loud. In this module, also the chapter 7 section for the next day's drill.</td></tr>
 </tbody>
 </table>
 <p>Stop the build block on time, even mid-bug: write the bug down in the log and come back tomorrow.</p>
@@ -109,16 +109,16 @@ $ tools/install-hooks.sh
 <p>Now run the module's tests:</p>
 <pre class="shell"><code>$ uv run pytest tests/m01
 ...
-tests/m01/test_histogram.py FFFFFFFFFFF.FF                               [ 18%]
-tests/m01/test_percentile.py FFFFFFFFFFFFFF                              [ 37%]
-tests/m01/test_quickselect.py FFFFFFFFFFF.FFF                            [ 58%]
-tests/m01/test_report.py FFFFF                                           [ 64%]
+tests/m01/test_histogram.py FFFFFFFFFFFF.FF                              [ 19%]
+tests/m01/test_percentile.py FFFFFFFFFFFFFF                              [ 38%]
+tests/m01/test_quickselect.py FFFFFFFFFFF.FFF                            [ 57%]
+tests/m01/test_report.py FFFFFF                                          [ 65%]
 tests/m01/test_slowest_lines.py FFFFFFFFF                                [ 77%]
 tests/m01/test_timing.py FFFFFFFFFFFFFFFFF                               [100%]
 ...
-========================= 72 failed, 2 passed in 1.75s =========================
+========================= 74 failed, 2 passed in 0.27s =========================
 </code></pre>
-<p>Seventy-four tests, and almost all of them red. That is the starting line, not a problem. Each <code>F</code> is a failed test and each <code>.</code> a passing one, file by file. Narrow it down to the first milestone and read one failure properly:</p>
+<p>Seventy-six tests, and almost all of them red. That is the starting line, not a problem. Each <code>F</code> is a failed test and each <code>.</code> a passing one, file by file. Narrow it down to the first milestone and read one failure properly:</p>
 <pre class="shell"><code>$ uv run pytest tests/m01 -k time_calls -x
 ...
 _______________________ test_time_calls_records_n_calls ________________________
@@ -179,7 +179,7 @@ E   NotImplementedError: TODO(you)
 
 <h2>A contract with yourself</h2>
 <ul>
-<li><strong>One commit per milestone</strong>, named: <code>M1: time_calls green</code>. Seven such commits are the record a reviewer wants to see.</li>
+<li><strong>One commit per milestone</strong>, named: <code>M1: time_calls green</code>. Seven such commits, and M7's prediction committed before its run, are the record a reviewer wants to see.</li>
 <li><strong>The log, every day</strong>: five lines in <code>log.md</code> on what surprised you, in block 5, on the day.</li>
 <li><strong>The prediction before the measurement</strong>, written in <code>BENCH.md</code> before anything runs. Only a written guess can surprise you.</li>
 </ul>

@@ -27,7 +27,10 @@ it must **never** contain a working implementation, a sketch, pseudo-code or a "
 Teach each mechanism on a **different problem**, one step away, with its own names. Each module's
 section at the end of this file has a table: *Mechanism, Teach it with, Never*. `tools/book-check.py`
 refuses any code block that defines a stub's function or class name, and that check is a floor, not
-the rule: a block that solves the same problem under another name breaks the rule too.
+the rule: a block that solves the same problem under another name breaks the rule too. The
+"Never" column governs the teaching: the chapters, their worked examples and every rung 4. The folded
+rungs 2 and 3 of the build chapter and of the drills chapter describe their own problem's idea in
+words, as the ladder in CLAUDE.md says they do, and never in code.
 
 ## Voice
 
@@ -84,8 +87,8 @@ label) refresh a construct in a few lines where a chapter first leans on it (clo
 - **Drills**: one `h3` per drill (the tutor panel puts its rung box after each `h3`), with: the
   pattern in one sentence, a link to the stub, the time box, and rungs 1 to 3 of the ladder as
   `details.hint` blocks ("Rung 1: where to look", "Rung 2: the idea in words", "Rung 3: the shape").
-  A review drill does not name its pattern: its pattern line says so, and the name first appears
-  inside rung 2.
+  A review drill names its pattern only inside rung 2: its pattern line says that it is not said, and
+  rungs 1 and 3 do not name it either.
   No solution in any form, folded or not. Before the drills, one `h2` per pattern that teaches the
   pattern on a different problem, with a complete worked example.
 - **Build**: "The spec, restated" (short, linking the README), "Setup: read the red", then one `h2` per

@@ -51,7 +51,7 @@ The program is `python -m llm101.bench`.
 | `--n N` | recorded calls | 1000 |
 | `--warmup N` | calls made before recording starts | 50 |
 | `--bins N` | histogram bins | 20 |
-| `--profile` | after the report, the five slowest lines of `demo()`, with their seconds and source text | off |
+| `--profile` | after the report, the slowest lines of `demo()`, at most five, with their seconds and source text | off |
 
 Behaviour:
 
@@ -61,7 +61,7 @@ Behaviour:
   share, with times in a readable unit.
 - Under the table, a histogram of the wall times: one line per bin, a bar of `█` characters, the
   fullest bin 40 characters wide.
-- With `--profile`, the five slowest lines of `demo()`.
+- With `--profile`, the slowest lines of `demo()`, at most five.
 
 Example: `uv run python -m llm101.bench --n 2000 --bins 30 --profile`
 
@@ -121,7 +121,8 @@ in a test function.*
 - [ ] `uv run python -m llm101.bench --profile` prints the table, the histogram and the slowest lines.
 - [ ] [BENCH.md](BENCH.md) has its Experiment: a prediction written before the run, the measurement, and
       two sentences on why.
-- [ ] One commit per milestone (M1 to M7), each through the pre-commit hook.
+- [ ] One commit per milestone (M1 to M7), each through the pre-commit hook, and one more for M7's
+      prediction, made before its measurement.
 - [ ] A review of the whole module has been run, and its three questions are answered in
       [log.md](../../log.md).
 - [ ] Five lines in log.md, and `"m01"` added to `done` under `[tool.llm101]` in `pyproject.toml`.
@@ -134,8 +135,10 @@ in a test function.*
   `group_anagrams` and `tidy_path` (day 2), `sort_colours` (day 3, before M3), `longest_streak` (day 4),
   `count_stretches` and `free_slots` (day 5). `tidy_path` and `free_slots` are review: they do not say
   which pattern they need. Redos come first every day, and a new problem that does not fit in the hour
-  waits for the next drill block.
-- **Saturday:** the drill block is a mock round.
+  waits for the next drill block. On day 3 the six redos of the diagnostic come first, so the drill
+  block runs to 1 h 30 that day and the build block is 2 h 30 (decision 6). Read the chapter 7 section
+  that a drill needs in block 5 of the day before.
+- **Saturday:** the `longest_streak` redo, then a mock round.
 
 ## Stretch goals (only after "Done when")
 
@@ -150,13 +153,17 @@ in a test function.*
 Each has a default. Change what you want here, then freeze.
 
 1. **Milestone order**: as above, with the screen at M5. Default: keep.
-2. **The quickselect speed test** (ordered input against shuffled): keep it, or move it to stretch.
-   Default: keep. It is the test that shows why the pivot matters.
+2. **The quickselect speed test** (input in rising and in falling order, against shuffled): keep it, or
+   move it to stretch. Default: keep. It is the test that shows why the pivot matters.
 3. **The line timer** on `sys.settrace` (as drafted), or on `sys.monitoring`. Default: `sys.settrace`,
    which the book teaches; the tests are the same for both.
 4. **The Experiment (M7)**: "a Python loop against numpy, summing the squares of a million numbers: how
    much faster, and how many bytes per number?", or a question of your own. Default: as drafted.
 5. **Times in the table**: a readable unit chosen per value (default), or always milliseconds.
+6. **Day 3's drill block.** The six redos of the diagnostic fall due on day 3, and so does
+   `sort_colours`, which M3 builds on. Default: the drill block runs to 1 h 30 that day and the build
+   block is 2 h 30, as day 1 does for the diagnostic. The other choice: a one-hour block, and
+   `sort_colours` waits for day 4 if the redos fill it.
 
 ## How to run
 

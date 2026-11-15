@@ -1,7 +1,9 @@
 import ast
 import inspect
 import random
+import signal
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -72,3 +74,29 @@ def test_streaks_built_with_gaps_between_them(lengths, start, seed):
     numbers += rng.choices(numbers, k=len(numbers) // 3)
     rng.shuffle(numbers)
     assert longest_streak(numbers) == max(lengths)
+
+
+class StillRunning(Exception):
+    pass
+
+
+def stop_the_run(signum, frame):
+    raise StillRunning
+
+
+def test_one_streak_of_two_hundred_thousand_numbers_in_two_seconds():
+    numbers = list(range(-100_000, 100_000))
+    random.Random(1).shuffle(numbers)
+    before = signal.signal(signal.SIGALRM, stop_the_run)
+    signal.setitimer(signal.ITIMER_REAL, 2.0)
+    try:
+        result = longest_streak(numbers)
+    except StillRunning:
+        pytest.fail(
+            "still running after 2 s: counting a streak up from every number, or looking numbers "
+            "up in a list, is too slow"
+        )
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, before)
+    assert result == 200_000

@@ -11,6 +11,7 @@ Every drill you attempt gets a row, on the day. The rules are in
 - **Result**: `green`, `green+hint` or `timeout`.
 - **Redo**: 2 days and 7 days after the first attempt, empty the function (git keeps your first version)
   and type it again cold. Write the date and the minutes. A problem you cannot redo is not solved yet.
+  A redo that falls on a Sunday moves to the Monday.
 - **Katas**: a finished function of a done module, typed again cold, gets a row too. Write the set as
   `kata m01`.
 

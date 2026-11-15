@@ -17,8 +17,9 @@ The list you are given must come back unchanged.
     group_anagrams(["", ""])  ->  [["", ""]]
     group_anagrams([])        ->  []
 
-Comparing every word with every other word works, but it is quadratic in the number of words. Aim
-for one pass over the words.
+Comparing every word with every other word gives the right groups, but it is quadratic in the
+number of words, and the tests give it 20,000 words and two seconds. Aim for one pass over the
+words.
 
 Time box: 25 minutes.
 """

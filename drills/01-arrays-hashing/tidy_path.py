@@ -20,7 +20,8 @@ separated by one "/", and it has no "." or "..", and no slash at the end. The ro
 
 Any other run of characters between two slashes is a name: ".config", "x.y" and "..." are names.
 
-Do it by hand: the tests read your file and fail if it imports os, posixpath or pathlib.
+Do it by hand: the tests read your file and fail if it imports os, posixpath, ntpath, pathlib or
+importlib, or loads a module by its name some other way.
 
 Time box: 25 minutes.
 """

@@ -24,6 +24,26 @@ numpy's on random data, and your line timer names the slow line of a test functi
 
 -
 
+#### Tue 17 Nov 2026
+
+-
+
+#### Wed 18 Nov 2026
+
+-
+
+#### Thu 19 Nov 2026
+
+-
+
+#### Fri 20 Nov 2026
+
+-
+
+#### Sat 21 Nov 2026
+
+-
+
 ### Diagnostic (drill set 00)
 
 Everything you had to look up, one per line. This list is the next morning's warm-up:

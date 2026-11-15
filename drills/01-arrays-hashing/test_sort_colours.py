@@ -49,6 +49,21 @@ def test_it_changes_the_list_it_was_given():
     assert colours == [0, 1]
 
 
+class Ball(int):
+    """A colour that is also an object of its own, so that the test can tell two 0s apart."""
+
+
+def test_it_moves_the_balls_it_was_given():
+    balls = [Ball(colour) for colour in [2, 0, 2, 1, 1, 0, 1, 2, 0]]
+    ids_before = sorted(id(ball) for ball in balls)
+    sort_colours(balls)
+    assert balls == [0, 0, 0, 1, 1, 1, 2, 2, 2]
+    assert sorted(id(ball) for ball in balls) == ids_before, (
+        "the list holds new values instead of the ones it was given: swap elements; counting the "
+        "colours and writing them back is two passes (see the docstring)"
+    )
+
+
 def test_it_does_not_sort():
     tree = ast.parse(inspect.getsource(module))
     for node in ast.walk(tree):

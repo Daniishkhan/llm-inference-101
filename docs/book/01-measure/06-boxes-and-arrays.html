@@ -260,7 +260,7 @@ dis.dis(add_up)
   8           LOAD_FAST                1 (total)
               RETURN_VALUE
 </code></pre>
-<p>The numbers on the left are source lines. The loop is the five instructions from <code>L1</code> to <code>JUMP_BACKWARD</code>, and they run once for every element:</p>
+<p>The numbers on the left are source lines. The loop is the six instructions from <code>L1</code> to <code>JUMP_BACKWARD</code>, and they run once for every element:</p>
 <ul>
 <li><code>FOR_ITER</code> asks the list's iterator for the next pointer, and adds one to that box's reference count; when there is none left, it jumps to <code>L2</code>.</li>
 <li><code>STORE_FAST</code> puts it in the local variable <code>price</code>.</li>
@@ -269,7 +269,7 @@ dis.dis(add_up)
 <li><code>STORE_FAST</code> makes <code>total</code> refer to the new box; the old total's count falls to zero and it is freed.</li>
 <li><code>JUMP_BACKWARD</code> goes round again.</li>
 </ul>
-<p>One floating-point addition, wrapped in five instructions, each one a trip round the interpreter's loop, plus reference counts going up and down and a box made and freed per element. Python keeps a small stock of spare float boxes so that making one is quick, but it is still work that the addition itself does not need.</p>
+<p>One floating-point addition, wrapped in six instructions, each one a trip round the interpreter's loop, plus reference counts going up and down and a box made and freed per element. Python keeps a small stock of spare float boxes so that making one is quick, but it is still work that the addition itself does not need.</p>
 <p>Since Python 3.11 the interpreter also rewrites instructions it has seen used with the same types into faster, specialised versions. Ask <code>dis</code> for the adaptive form after a few calls:</p>
 <pre class="code" data-lang="python" data-file="bytecode_warm.py" data-check="run"><code>import dis
 
@@ -307,10 +307,10 @@ dis.dis(add_up, adaptive=True)
   8           LOAD_FAST                1 (total)
               RETURN_VALUE
 </code></pre>
-<p><code>FOR_ITER_LIST</code> knows it is walking a list, and <code>BINARY_OP_ADD_FLOAT</code> knows both sides are floats, so they skip some checks. That is part of why this loop costs about 7 ns per number and not much more. But the shape is the same: five instructions and a new box per element.</p>
+<p><code>FOR_ITER_LIST</code> knows it is walking a list, and <code>BINARY_OP_ADD_FLOAT</code> knows both sides are floats, so they skip some checks. That is part of why this loop costs about 7 ns per number and not much more. But the shape is the same: six instructions and a new box per element.</p>
 
 <div class="callout try"><span class="label">Try it</span><p>Change the loop's body to <code>total += price</code> and run <code>dis.dis</code> again. Predict whether the loop gets shorter.</p></div>
-<details class="answer"><summary>Show the answer</summary><p>It does not. The only change is that <code>BINARY_OP 0 (+)</code> becomes <code>BINARY_OP 13 (+=)</code>: the same five instructions per element. <code>+=</code> on a float still makes a new box, because a float cannot be changed in place.</p></details>
+<details class="answer"><summary>Show the answer</summary><p>It does not. The only change is that <code>BINARY_OP 0 (+)</code> becomes <code>BINARY_OP 13 (+=)</code>: the same six instructions per element. <code>+=</code> on a float still makes a new box, because a float cannot be changed in place.</p></details>
 
 <h2>What numpy does instead</h2>
 <p><code>block.sum()</code> is one call from Python into numpy's C code. From there, numpy knows three things the interpreter could not: every element is a <code>float64</code>, every element is 8 bytes after the previous one, and there are exactly <code>block.size</code> of them. So it runs one tight loop in C, over <strong>contiguous</strong> memory (one unbroken block), with no type check per element, no reference counts and no new boxes.</p>
@@ -363,12 +363,12 @@ making the numpy array from the list: 13.57 ms
 </code></pre>
 <p>Three speeds, and each step has a reason:</p>
 <ul>
-<li>The <code>for</code> loop, about 6.7 ns per number: the five bytecode instructions, a box made and freed, every time.</li>
+<li>The <code>for</code> loop, about 6.7 ns per number: the six bytecode instructions, a box made and freed, every time.</li>
 <li>The built-in <code>sum</code>, about four times faster: its loop is written in C, so there is no bytecode per element and no new box for each partial total. But it still follows every pointer to a box and checks every box's type, because a list could hold anything.</li>
 <li>numpy, about 0.25 ns per number, some 25 times faster than the loop: no pointers, no boxes, no checks, contiguous memory. It read 8 MB in a quarter of a millisecond, about 32 GB per second.</li>
 </ul>
 <p>The last line is the one people forget. Making the numpy array from the list took 13.6 ms, longer than all three sums together, because it has to visit every box once to copy its number out. numpy pays off when the numbers live in an array from the start, or are converted once and then used many times.</p>
-<p>The totals agree to four decimals here. They need not agree in the last digit: numpy adds in a different order (it splits the array into pieces and adds the pieces' totals), and floating-point addition gives slightly different results in different orders, the surprise from <a href="02-tails-and-percentiles.html">chapter 2</a>.</p>
+<p>The totals agree to four decimals here. They need not agree in the last digit: numpy adds in a different order (it splits the array into pieces and adds the pieces' totals), and floating-point addition rounds at every step, so the same numbers added in another order can differ in the last digits. It is the rounding behind chapter 2's <a href="02-tails-and-percentiles.html#floating-point-surprises">floating-point surprises</a>.</p>
 <p>One more thing to keep in mind when you time Python loops: keep them inside a function, as here. At the top level of a file, every variable is looked up by name in a dictionary instead of in a numbered slot (<code>LOAD_NAME</code> and <code>STORE_NAME</code> instead of <code>LOAD_FAST</code> and <code>STORE_FAST</code>). On the M5 the same loop at the top level of a file ran two to three times as slowly.</p>
 
 <h2>Trap: when numpy is slower</h2>
