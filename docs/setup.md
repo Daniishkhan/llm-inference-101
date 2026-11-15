@@ -8,7 +8,7 @@
 | OS | macOS 26.7.2 |
 | uv | 0.13.7 |
 | Python | 3.13.18 (installed with mise). The project pins 3.13 in `.python-version`; Homebrew's 3.14 and 3.15 are also installed and unused here |
-| In `.venv` | numpy 2.5.4, rich 15.0.0; for development pytest 9.2.0, hypothesis 6.170.15, ruff 0.17.5 |
+| In `.venv` | numpy 2.5.4, rich 15.0.0, regex 2026.11.9; for development pytest 9.2.0, hypothesis 6.170.15, ruff 0.17.5, tiktoken 0.14.0 |
 | git, gh | git 2.56.0; gh 2.103.3, signed in as `Daniishkhan` |
 | Editor | Zed, with edit predictions and completion off for this project (`.zed/settings.json`) |
 
@@ -58,8 +58,9 @@ is used. Claude adds them in that module's spec ritual.
 | When | What | Why |
 |---|---|---|
 | Now | numpy, rich; pytest, hypothesis, ruff | Module 1, and the book's examples |
-| Module 2 | tiktoken (development only) | The oracle that your tokenizer's ids are checked against |
-| Module 2 | GPT-2's `vocab.json` and `merges.txt` (about 1.5 MB), fetched by a tools script | The merges your tokenizer loads |
+| Module 2 | regex | GPT-2's split pattern needs `\p{L}` and `\p{N}`, which Python's own `re` does not know |
+| Module 2 | tiktoken (development only) | The oracle that your tokenizer's ids are checked against, built from the same two files |
+| Module 2 | GPT-2's `vocab.json` and `merges.txt` (1.5 MB), committed in `data/gpt2/`; `tools/fetch-gpt2-tokenizer.py` fetches them again and checks their checksums | The merges your tokenizer loads |
 | Module 3 | safetensors, huggingface_hub | Loading GPT-2's weights |
 | Module 3 | GPT-2 small's `model.safetensors` (about 550 MB) into `models/`, which git ignores | The weights |
 | Module 3 | torch and transformers (development only; torch from the CPU index on CI) | Reference logits that your numpy model is checked against |

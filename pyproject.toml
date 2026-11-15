@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 # Dependencies arrive with the module that needs them (docs/setup.md has the list).
 dependencies = [
     "numpy>=2.3",
+    "regex>=2024.11.6",
     "rich>=14",
 ]
 
@@ -15,6 +16,7 @@ dev = [
     "hypothesis>=6.140",
     "pytest>=8.4",
     "ruff>=0.14",
+    "tiktoken>=0.14.0",
 ]
 
 [build-system]
@@ -38,6 +40,13 @@ guarded = [
     # Drills, sets 00 and 01
     "encode", "top_endpoints", "pair_with_sum", "is_balanced", "merge", "MovingAverage",
     "group_anagrams", "longest_streak", "sort_colours", "count_stretches", "tidy_path", "free_slots",
+    # Module 2, src/llm101/tokenizer/
+    "utf8_encode", "count_pairs", "merge_pair", "train_bpe", "pretokenize", "apply_merges",
+    "Tokenizer", "bytes_to_unicode", "load_gpt2", "apply_merges_fast",
+    # Drills, set 02, its debugging drill and its Write it warm-ups
+    "reverse_list", "merge_two_lists", "k_largest", "merge_sorted_runs", "days_to_wait",
+    "longest_draw", "run_order", "count_characters", "busiest_hour", "invert_table",
+    "read_palette", "next_alive", "messages_that_fit",
 ]
 
 [tool.pytest.ini_options]
@@ -47,8 +56,8 @@ testpaths = ["drills", "tests"]
 [tool.ruff]
 line-length = 100
 # Each drill set is a folder of top-level modules, so a test's `from run_length import encode` is a
-# first-party import and sorts below `import pytest`.
-src = ["src", "drills/*", "tools"]
+# first-party import and sorts below `import pytest`. The same holds for a set's warmups/ folder.
+src = ["src", "drills/*", "drills/*/warmups", "tools"]
 
 [tool.ruff.lint]
 # E, W: pycodestyle. F: pyflakes (unused and undefined names). I: import order. B: likely bugs.

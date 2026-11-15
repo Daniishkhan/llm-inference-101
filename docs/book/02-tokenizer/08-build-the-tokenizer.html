@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>08 · Build the tokenizer — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 8</p>
+<h1>Build the tokenizer</h1>
+<p class="lede">Seven milestones, one at a time, from red to green. At the end, <code>python -m llm101.tokenizer</code> shows GPT-2's tokens of any text, its ids match tiktoken's on every test, and every line that does it is one you typed.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The spec, restated: what you build, in which file, after which chapter.</li>
+<li>Setup: build nothing, run the tests, and read the red.</li>
+<li>Milestones 1 to 7. Each has its goal, what to re-read, the tests that turn green, a four-rung hint ladder, the common bugs, when it is done, and the commit message.</li>
+<li>When you are stuck: the tools, and how to compare your ids with the oracle's one token at a time.</li>
+<li>Make it yours: the four stretch goals.</li>
+<li>The review and the log, which close the module.</li>
+</ul>
+</div>
+
+<h2>The spec, restated</h2>
+<p>The full spec is the module's <a href="../../../modules/02-tokenizer/README.md">README</a>, and it wins wherever this chapter is shorter. The <strong>contract</strong> is the set of stubs in <a href="../../../src/llm101/tokenizer/">src/llm101/tokenizer/</a>: the names, the signatures, the <code>Pair</code> alias, GPT-2's split pattern <code>GPT2_PATTERN</code>, the paths of GPT-2's two files, and docstrings that are part of the spec. The tests in <a href="../../../tests/m02/">tests/m02/</a> are the same spec written as code. Every function body is yours.</p>
+
+<table>
+<thead><tr><th>Milestone</th><th>What</th><th>File</th><th>Read first</th><th>Day</th></tr></thead>
+<tbody>
+<tr><td>M1</td><td><code>utf8_encode</code></td><td><code>utf8.py</code></td><td><a href="01-bytes-and-utf8.html">Chapter 1</a></td><td>1</td></tr>
+<tr><td>M2</td><td><code>count_pairs</code>, <code>merge_pair</code></td><td><code>train.py</code></td><td><a href="02-pairs-and-merges.html">Chapter 2</a></td><td>2</td></tr>
+<tr><td>M3</td><td><code>train_bpe</code></td><td><code>train.py</code></td><td>Chapter 2</td><td>2</td></tr>
+<tr><td>M4</td><td><code>pretokenize</code>, <code>apply_merges</code>, <code>Tokenizer</code></td><td><code>bpe.py</code></td><td><a href="03-encoding-by-rank.html">Chapter 3</a></td><td>3</td></tr>
+<tr><td>M5</td><td><code>bytes_to_unicode</code>, <code>load_gpt2</code>, <code>main</code></td><td><code>gpt2.py</code>, <code>__main__.py</code></td><td><a href="04-gpt2s-tokenizer.html">Chapter 4</a></td><td>4</td></tr>
+<tr><td>M6</td><td><code>apply_merges_fast</code>, and <code>Tokenizer</code> uses it</td><td><code>fast.py</code>, <code>bpe.py</code></td><td><a href="05-heaps-and-linked-lists.html">Chapter 5</a></td><td>5</td></tr>
+<tr><td>M7</td><td>The Experiment</td><td><code>BENCH.md</code></td><td><a href="06-tokens-as-cost.html">Chapter 6</a></td><td>6</td></tr>
+</tbody>
+</table>
+
+<p>Five rules hold for every milestone:</p>
+<ul>
+<li><strong>One rule for every id.</strong> Ids 0 to 255 are the single bytes, in some order, and merge number r makes the token whose id is 256 + r. For a tokenizer you train, byte b has id b. For GPT-2 the bytes have other ids (<code>!</code> is 0), its 50,000 merges make ids 256 to 50,255, and 50,256 is <code>&lt;|endoftext|&gt;</code>, which no merge makes.</li>
+<li><strong>Three files are read by the tests.</strong> <code>utf8.py</code> may not call <code>.encode()</code> or <code>.decode()</code>, import <code>codecs</code>, or hand a string and an encoding to <code>bytes()</code> or <code>bytearray()</code>; <code>gpt2.py</code> may not import tiktoken; <code>fast.py</code> may not call <code>apply_merges</code>. tiktoken is the tests' <strong>oracle</strong>, the trusted answer your ids are compared with; it is not your tool.</li>
+<li><strong>The tests are fixed.</strong> If you believe one is wrong, say so to Claude: it fixes the test, never your code, and only when the test contradicts the spec.</li>
+<li><strong>One milestone at a time, in this order.</strong> M4 uses M2's <code>merge_pair</code> idea, M5 builds a <code>Tokenizer</code> from M4, and M6 is checked against M4's <code>apply_merges</code>.</li>
+<li><strong>One commit per milestone</strong>, with the message the milestone gives. M7 has two: its prediction, committed before the measurement, and the Experiment.</li>
+</ul>
+
+<div class="callout note"><span class="label">How to use the ladders</span>
+<p>Each milestone has four rungs, folded away. Open one rung, close it, and try again for at least ten minutes before you open the next. The rungs get closer each time: where to look, then the idea in words, then the shape, then the same mechanism on a different problem. None of them is the answer. Write the highest rung you used in <a href="../../../log.md">log.md</a>. The tutor panel can also compose a prompt that asks Claude for your next rung; that counts the same. There is no rung 5. After rung 4, reread the chapter, or commit what you have and ask Claude for a review of it.</p>
+</div>
+
+<h2>Setup: read the red</h2>
+<p>Before you type anything, check GPT-2's files and run the tests. The red is the list of things you are about to build.</p>
+<pre class="shell"><code>$ cd ~/Desktop/projects/llm-inference-101
+$ uv sync
+$ uv run python tools/fetch-gpt2-tokenizer.py --check
+$ uv run pytest tests/m02 -q
+</code></pre>
+<p>The check prints <code>ok:</code> for <code>data/gpt2/vocab.json</code> and <code>data/gpt2/merges.txt</code>. The tests end with one line:</p>
+<pre class="code" data-lang="text"><code>136 failed in 0.49s
+</code></pre>
+<p>Every test fails, and none passes. With the drills and the Write its, <code>uv run pytest tests/m02 drills/02-heaps-lists -q</code> ends <code>221 failed, 2 passed</code>: the two that pass belong to <code>print_queue</code>, the debugging drill, which is a finished program with a fault, not a stub. That is different from Module 1, where two tests that read your code passed on day one because the stubs did nothing. In this module <strong>the tests that read your code call your function first</strong>: <code>test_utf8_encode_is_done_by_hand</code>, <code>test_gpt2_does_not_import_tiktoken</code> and <code>test_apply_merges_fast_does_not_hand_the_work_to_apply_merges</code> each check one answer before they look at your source, so a stub that does nothing proves nothing, and they stay red until the function works.</p>
+<p>Here is one failure, read from the top:</p>
+<pre class="code" data-lang="text"><code>$ uv run pytest tests/m02 -x
+F
+=================================== FAILURES ===================================
+___________________ test_pretokenize_the_docstring_examples ____________________
+tests/m02/test_bpe.py:28: in test_pretokenize_the_docstring_examples
+    assert pretokenize("Hello world") == ["Hello", " world"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/llm101/tokenizer/bpe.py:32: in pretokenize
+    raise NotImplementedError("TODO(you)")
+E   NotImplementedError: TODO(you)
+</code></pre>
+<p>The underlined line is the test's own line, and the expression under the carets is the call that went wrong. The next location is in your stub: the call reached <code>pretokenize</code>, which said it is not written yet. The line that starts with <code>E</code> is the error itself. Once you have written something, the <code>E</code> lines show the two sides of the comparison that was false.</p>
+<p>Notice which test came first: pretokenize, which is M4. pytest runs the files in alphabetical order, and <code>test_bpe.py</code> comes before <code>test_utf8.py</code>, so <code>-x</code> on the whole folder stops at the wrong milestone. Run one milestone at a time, with its own command:</p>
+<pre class="shell"><code>$ uv run pytest tests/m02/test_utf8.py -x
+$ uv run pytest tests/m02 -k "count_pairs or merge_pair" -x
+</code></pre>
+<p><code>-k</code> runs only the tests whose names match, and <code>-x</code> stops at the first failure, so the screen shows one problem, not a hundred. The tests that take a fixture called <code>oracle</code> build tiktoken's GPT-2 encoding from the same two files in <code>data/gpt2/</code> that your <code>load_gpt2</code> reads (see <a href="../../../tests/m02/conftest.py">tests/m02/conftest.py</a>), once per run and never from the network. If either file has changed, that fixture fails on its checksum before any ids are compared.</p>
+
+<h2>Milestone 1: utf8_encode</h2>
+<p><strong>Goal.</strong> <code>utf8_encode(text)</code> returns the UTF-8 bytes of a string, worked out from each character's code point with shifts and masks, exactly as <code>text.encode("utf-8")</code> would. A surrogate code point (0xD800 to 0xDFFF) raises <code>ValueError</code>.</p>
+<p><strong>Re-read.</strong> Chapter 1: <a href="01-bytes-and-utf8.html#characters-and-code-points">Characters and code points</a>, <a href="01-bytes-and-utf8.html#bits-shifts-and-masks">Bits, shifts and masks</a>, <a href="01-bytes-and-utf8.html#the-utf-8-table">The UTF-8 table</a>, <a href="01-bytes-and-utf8.html#reading-utf-8-by-hand">Reading UTF-8 by hand</a> and <a href="01-bytes-and-utf8.html#surrogates-and-text-that-is-not-text">Surrogates, and text that is not text</a>. The docstring of <code>utf8_encode</code> in <a href="../../../src/llm101/tokenizer/utf8.py">utf8.py</a>, which has the table.</p>
+<p><strong>Turns green.</strong> <code>uv run pytest tests/m02/test_utf8.py</code>, twenty tests.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_utf8_encode_each_length_at_its_edges</code>: ten code points, each at the edge of a row of the table. Then <code>test_utf8_encode_rejects_a_surrogate</code> and <code>test_utf8_encode_is_done_by_hand</code>, which says exactly what the file may not contain. Work "€" (U+20AC) on paper: the row of the table it falls in, its code point written in exactly as many bits as that row has x slots (16), with zeros in front, and those bits shared out over the slots from left to right. You should get <code>e2 82 ac</code>.</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Take the characters one at a time and get each one's code point. Refuse a surrogate first. The size of the code point picks the row of the table, which says how many bytes it takes. The last byte carries the lowest six bits of the code point, the byte before it the next six, and so on; the first byte carries whatever bits are left, behind its marker (<code>0</code>, <code>110</code>, <code>1110</code> or <code>11110</code>), with zeros in front when the code point has fewer bits than the row has slots. Every byte after the first is <code>10</code> followed by six bits. Collect the bytes of every character in order, and turn them into a <code>bytes</code> once, at the end.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A <code>bytearray</code> (or a list of ints) for the output, made before the loop. One loop over the text, with <code>ord</code>. Inside it, the surrogate check, then an <code>if</code> and <code>elif</code> chain with one branch per row of the table, each comparing the code point against that row's top edge, from the docstring. In each branch, one value per byte, built the same way every time: a shift right by a multiple of six, which brings the bits that byte carries down to the bottom; a mask, which keeps only those bits; and an OR with the byte's marker. The markers (one for the first byte of each row, and one for every continuation byte) and the mask of a continuation byte are named constants at the top of the file. Work their values out from the table yourself: a marker is a byte's fixed bits with zeros in its x slots, and a mask has ones in the slots. Write each in binary in a comment beside its hex. The last line turns the collected numbers into <code>bytes</code> with one argument. Test "A", "é", "€" and "🙂" first, then the edges.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>Old FAT file systems pack a date into 16 bits: seven for the year since 1980, four for the month, five for the day. Packing puts each field in its place with a shift and an OR; unpacking takes it out again with a shift and a mask. To store the 16 bits on disk, the number is cut once more, into two bytes.</p>
+<pre class="code" data-lang="python" data-file="packed_date.py" data-check="run"><code>"""A date in 16 bits, the way old FAT file systems store it: yyyyyyym mmmddddd.
+
+    bits 15 to 9   the year minus 1980 (7 bits: 1980 to 2107)
+    bits  8 to 5   the month (4 bits)
+    bits  4 to 0   the day (5 bits)
+"""
+
+
+def pack_date(year, month, day):
+    if not 1980 &lt;= year &lt;= 2107:
+        raise ValueError(f"year {year} does not fit in 7 bits from 1980")
+    return (year - 1980) &lt;&lt; 9 | month &lt;&lt; 5 | day
+
+
+def unpack_date(packed):
+    year = (packed &gt;&gt; 9) + 1980  # the top 7 bits: shift the other 9 away
+    month = (packed &gt;&gt; 5) &amp; 0b1111  # shift the day away, then keep 4 bits
+    day = packed &amp; 0b11111  # keep the lowest 5 bits
+    return year, month, day
+
+
+packed = pack_date(2026, 11, 23)
+print(packed, f"{packed:016b}")
+print(f"{2026 - 1980:07b} {11:04b} {23:05b}")
+print(unpack_date(packed))
+
+# Stored on disk as two bytes, the low byte first.
+low, high = packed &amp; 0xFF, packed &gt;&gt; 8
+print(f"{high:08b} {low:08b}", hex(high), hex(low))
+print(unpack_date(high &lt;&lt; 8 | low))
+
+for date in [(1980, 1, 1), (1999, 12, 31), (2107, 12, 31)]:
+    assert unpack_date(pack_date(*date)) == date
+print("every date comes back")
+</code></pre>
+<pre class="output" data-for="packed_date.py"><code>23927 0101110101110111
+0101110 1011 10111
+(2026, 11, 23)
+01011101 01110111 0x5d 0x77
+(2026, 11, 23)
+every date comes back
+</code></pre>
+<p>The second line prints the three fields side by side, and they are the packed number's sixteen bits cut at the field edges. Your <code>utf8_encode</code> cuts a code point the same way, with three differences: every group has six bits except the first, the number of groups depends on the size of the number, and every byte gets marker bits in front of its group.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li><code>assert 2 == 3</code> at U+0800, or <code>3 == 2</code> at U+07FF: a row's edge is off by one. The rows end at 0x7F, 0x7FF and 0xFFFF, and each edge belongs to the lower row.</li>
+<li>A byte like <code>0x29</code> where <code>0xa9</code> belongs: the continuation marker, the <code>10</code> in front of six bits, is missing.</li>
+<li><code>ValueError: byte must be in range(0, 256)</code> (or <code>bytes must be</code>, from <code>bytes()</code>): a shifted value kept bits from the groups above it, because the mask is missing.</li>
+<li>The right bytes in the wrong order: the lowest six bits went first. In UTF-8 the first byte carries the highest bits.</li>
+<li><code>Failed: DID NOT RAISE</code> for 0xDFFF: the surrogate check misses an end of the range, which includes both 0xD800 and 0xDFFF.</li>
+<li><em>work the bytes out yourself</em>: the test found <code>.encode</code> or <code>.decode</code> somewhere in <code>utf8.py</code>, even in a line you added to print while debugging. It reads the whole file.</li>
+<li><em>return bytes, not a list or a bytearray</em>: the collected numbers were returned as they are.</li>
+</ul>
+<p><strong>Done when.</strong> <code>uv run pytest tests/m02/test_utf8.py</code> is all green. M1 is one function, so the build block may have time left: spend it on the redos that spilled out of block 1, or on reading ahead in chapter 2.</p>
+<p><strong>Commit.</strong> <code>M1: utf8_encode green</code></p>
+
+<h2>Milestone 2: count_pairs and merge_pair</h2>
+<p><strong>Goal.</strong> <code>count_pairs(ids)</code> returns a dict from each pair of neighbouring ids to how often it occurs, overlaps included. <code>merge_pair(ids, pair, new_id)</code> returns a new list in which every occurrence of the pair is replaced by <code>new_id</code>, scanning from the left, so that of two overlapping occurrences the left one wins. Neither changes the sequence it was given.</p>
+<p><strong>Re-read.</strong> Chapter 2: <a href="02-pairs-and-merges.html#counting-with-a-dict">Counting with a dict</a>, <a href="02-pairs-and-merges.html#neighbours-in-a-list">Neighbours in a list</a> and <a href="02-pairs-and-merges.html#overlapping-pairs">Overlapping pairs</a>. The docstrings of both functions in <a href="../../../src/llm101/tokenizer/train.py">train.py</a>.</p>
+<p><strong>Turns green.</strong> <code>uv run pytest tests/m02 -k "count_pairs or merge_pair"</code>, eleven tests.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Put the two docstrings side by side and read their <code>[7, 7, 7]</code> lines: <code>count_pairs</code> counts <code>(7, 7)</code> twice, and <code>merge_pair</code> makes one merge. Why do they disagree? Then read <code>test_merge_pair_returns_a_new_list</code> (three asserts: equal, not the same object, and a list even when it is given a tuple) and <code>test_merge_pair_can_be_undone</code>. Work <code>merge_pair([7, 7, 7, 7], (7, 7), 9)</code> by hand, writing down the position you are at after each step.</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p><code>count_pairs</code>: every position except the last starts one pair, the item there and the item after it. Add one to that pair's count, and move on by one, whatever you found. <code>merge_pair</code>: walk the ids from the left with a position. If the item there and the next one form the pair, write the new id and jump two places, because both items are used up; otherwise copy the item and step one place. The jump of two is what makes the left occurrence win. The last item has no next item, so it can only be copied.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p><code>count_pairs</code>: a dict, and one loop over the neighbouring pairs, made with <code>zip</code> of the ids and the ids without their first item; inside, <code>dict.get</code> with a default of 0. A <code>Counter</code> works too, since it is a dict. <code>merge_pair</code>: a new list made first, a position that starts at 0, and a <code>while</code> loop, not a <code>for</code>, because a <code>for</code> cannot jump ahead by two. Inside, one <code>if</code> whose test checks that there is a next item before it reads it, and an <code>else</code>. Test <code>[]</code>, <code>[5]</code>, <code>[7, 7, 7]</code> and <code>[1, 2]</code> with the pair <code>(2, 1)</code> first.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>Chapter 2's day-to-day temperature changes are the counting half: neighbours made with <code>zip</code>, and a dict that counts. For the scanning half, here is a scan whose step is sometimes one and sometimes two: laying dominoes along a row of squares, from the left. A domino covers two neighbouring free squares; a blocked square, or a free one with no free square after it, is stepped over.</p>
+<pre class="code" data-lang="python" data-file="dominoes.py" data-check="run"><code>"""Dominoes on a row of squares, laid from the left.
+
+"." is a free square and "#" a blocked one. A domino covers two neighbouring free squares.
+Walk from the left, and lay one wherever the square you stand on and the next are both free.
+"""
+
+
+def domino_starts(row):
+    """Where each domino starts, from left to right."""
+    starts = []
+    i = 0
+    while i &lt; len(row):
+        if row[i] == "." and i + 1 &lt; len(row) and row[i + 1] == ".":
+            starts.append(i)  # a domino on squares i and i + 1
+            i += 2  # jump past both: the second square is covered now
+        else:
+            i += 1  # blocked, or a free square with no free square after it
+    return starts
+
+
+def drawn(row, starts):
+    squares = list(row)
+    for i in starts:
+        squares[i], squares[i + 1] = "[", "]"
+    return "".join(squares)
+
+
+for row in ["....", "...", ".#..#...", "#.#.#", "......#.", ""]:
+    starts = domino_starts(row)
+    print(f"{row!r:11} {drawn(row, starts)!r:11} {len(starts)} at {starts}")
+</code></pre>
+<pre class="output" data-for="dominoes.py"><code>'....'      '[][]'      2 at [0, 2]
+'...'       '[].'       1 at [0]
+'.#..#...'  '.#[]#[].'  2 at [2, 5]
+'#.#.#'     '#.#.#'     0 at []
+'......#.'  '[][][]#.'  3 at [0, 2, 4]
+''          ''          0 at []
+</code></pre>
+<p>The second line is the left-first rule: three free squares hold one domino, and the scan lays it on the left two, so the third stays free. The jump of two is what stops a square from being covered twice, and the test <code>i + 1 &lt; len(row)</code> comes before <code>row[i + 1]</code> is read, so the last square never reaches past the end. Your <code>merge_pair</code> has the same while loop and the same two step sizes; what it asks of two neighbours, and what it builds, are different.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li><code>IndexError: list index out of range</code> in <code>count_pairs</code>: the loop ran to the last position, which has no item after it.</li>
+<li><code>{(7, 7): 1}</code> for <code>[7, 7, 7]</code>: <code>count_pairs</code> jumped ahead after a pair. Counting looks at every position; only merging skips.</li>
+<li>More new ids than there should be, such as <code>[9, 9, 7]</code> for <code>[7, 7, 7]</code>: after a merge the scan stepped one place, not two, so the middle 7 was used twice.</li>
+<li>The last id is missing, as in <code>[1, 2]</code> for <code>[1, 2, 3]</code> with a pair that is not there: the loop stopped one place early, because its test is the one for reading a pair, not the one for copying an item.</li>
+<li><em>return a new list, even when nothing changes</em>: <code>merge_pair</code> returned the list it was given when the pair was not in it.</li>
+<li><code>type(...) is list</code> fails: given a tuple, the function returned a slice or a copy of the tuple.</li>
+<li><code>test_..._does_not_change_its_input</code> fails: the list was changed in place, with <code>del</code>, <code>pop</code> or an assignment to an item.</li>
+</ul>
+<p><strong>Done when.</strong> <code>uv run pytest tests/m02 -k "count_pairs or merge_pair"</code> is all green.</p>
+<p><strong>Commit.</strong> <code>M2: count_pairs and merge_pair green</code></p>
+
+<h2>Milestone 3: train_bpe</h2>
+<p><strong>Goal.</strong> <code>train_bpe(chunks, vocab_size)</code> learns byte-pair merges from chunks of text: each round counts every neighbouring pair in every chunk, merges the most frequent one (the smallest pair on a tie) into the next free id, and repeats until the vocabulary has <code>vocab_size</code> tokens or nothing is left to merge. It returns the merges in the order they were learned, and it trains 300 merges on a million characters in under ten seconds.</p>
+<p><strong>Re-read.</strong> Chapter 2: <a href="02-pairs-and-merges.html#ties-and-choosing-with-a-key">Ties, and choosing with a key</a>, <a href="02-pairs-and-merges.html#byte-pair-encoding-by-hand">Byte-pair encoding by hand</a>, <a href="02-pairs-and-merges.html#count-each-word-once">Count each word once</a> and <a href="02-pairs-and-merges.html#what-training-gives-you">What training gives you</a>. The three numbered steps in the docstring of <code>train_bpe</code>.</p>
+<p><strong>Turns green.</strong> <code>uv run pytest tests/m02 -k train_bpe</code>, ten tests.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Work <code>train_bpe(["abab", "ab"], 258)</code> by hand as a table, one row per round: the counts of every pair, the winner, its new id, and the chunks after the merge. Then read <code>test_train_bpe_a_chunk_that_repeats_counts_each_time</code> and its comment, <code>test_train_bpe_on_a_paragraph_learns_these_merges</code> (its comments say what each merge is), and the failure message of the speed test. How many words does <code>argparse</code>'s source have ten times over, and how many different ones?</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Refuse a vocabulary below 256. Count how often each distinct chunk occurs, and turn each distinct chunk into the list of its UTF-8 byte values. Then, once per merge you have room for: count every pair in every distinct chunk, adding each chunk's counts as many times as the chunk occurs; if there is nothing to count, stop early; choose the pair with the highest total, and on a tie the smallest pair; give it the next free id; record it; and replace it in every chunk, as <code>merge_pair</code> does. The chunks are never joined, so no pair ever spans two of them.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A <code>Counter</code> of the chunks. A list of the distinct chunks as lists of ids, with a matching list of how often each occurs (or pairs of the two). A list of merges. One <code>for</code> loop over the number of merges to make, <code>vocab_size - 256</code>. Inside it: a dict of totals, filled by your <code>count_pairs</code> on each chunk, each count multiplied by that chunk's frequency; an early <code>break</code> when the dict is empty; one call to <code>max</code> or <code>min</code> with a key that is a tuple, whose first part makes higher totals win and whose second part makes smaller pairs win (a number and its negative sort in opposite orders); the new id from the number of merges so far; and your <code>merge_pair</code> on every chunk. Make the three docstring examples green first, then the repeat test, then the paragraph, then the speed test.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>A radio request show. Each round the presenter plays the most requested song, ties going to the title that comes first in the alphabet, and playing a song halves what is left of its requests. A greedy loop: count, choose by a key with two parts, change the counts, repeat, and stop early when there is nothing left to choose.</p>
+<pre class="code" data-lang="python" data-file="request_show.py" data-check="run"><code>"""A radio request show. Each round the presenter plays the most requested song (ties: the title
+that comes first in the alphabet), and playing it halves what is left of its requests, rounded
+down. A song with no requests left drops off the list."""
+
+requests = {"Yellow": 9, "Africa": 6, "Heroes": 9, "Valerie": 4, "Wonderwall": 2}
+
+for show_round in range(1, 8):
+    if not requests:
+        print("no requests left")
+        break
+    # Most requests first; among equal counts, the earlier title. One key, two parts.
+    title = min(requests, key=lambda t: (-requests[t], t))
+    print(f"round {show_round}: {title:10} ({requests[title]} requests)")
+    requests[title] //= 2
+    if requests[title] == 0:
+        del requests[title]
+
+print(requests)
+</code></pre>
+<pre class="output" data-for="request_show.py"><code>round 1: Heroes     (9 requests)
+round 2: Yellow     (9 requests)
+round 3: Africa     (6 requests)
+round 4: Heroes     (4 requests)
+round 5: Valerie    (4 requests)
+round 6: Yellow     (4 requests)
+round 7: Africa     (3 requests)
+{'Yellow': 2, 'Africa': 1, 'Heroes': 2, 'Valerie': 2, 'Wonderwall': 2}
+</code></pre>
+<p>Heroes and Yellow both start with 9, and Heroes goes first because <code>(-9, "Heroes")</code> is smaller than <code>(-9, "Yellow")</code>. The key turns "most requests" into "smallest negative", so that one <code>min</code> settles both parts. Your <code>train_bpe</code> differs in what it counts: all the pairs of every chunk, counted again each round, because a merge changes the pairs around it.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li>The docstring's tie example returns <code>[(98, 97)]</code>: on a tie the pair seen first won, by the order of a dict, instead of the smallest pair.</li>
+<li><code>test_train_bpe_a_chunk_that_repeats_counts_each_time</code> returns <code>[(97, 98)]</code>: each distinct chunk was counted once with no weight, so the two pairs tied.</li>
+<li><code>test_train_bpe_three_hundred_merges_on_a_million_characters_in_ten_seconds</code> fails with <em>still training after 10 s</em>: every one of about 92,000 words is counted each round, instead of about 2,600 distinct ones, each weighed by its frequency.</li>
+<li>A merge such as <code>(98, 97)</code> appears in <code>test_train_bpe_merges_never_cross_from_one_chunk_to_the_next</code>: the chunks were joined into one list.</li>
+<li><code>ValueError: max() iterable argument is empty</code> (or <code>min()</code>): nothing checks for a round with no pairs left.</li>
+<li><code>test_train_bpe_works_on_utf8_bytes</code> fails with 233 in the answer: the chunks became lists of code points, not of UTF-8 bytes. "é" is one code point and two bytes.</li>
+<li><em>a pair is merged once</em> fails: the new id came from somewhere other than 256 plus the number of merges so far, so two merges got the same id.</li>
+</ul>
+<p><strong>Done when.</strong> <code>uv run pytest tests/m02 -k train_bpe</code> is all green, the speed test included.</p>
+<p><strong>Commit.</strong> <code>M3: train_bpe green</code></p>
+
+<h2>Milestone 4: pretokenize, apply_merges and Tokenizer</h2>
+<p><strong>Goal.</strong> <code>pretokenize(text)</code> splits text into GPT-2's chunks. <code>apply_merges(ids, ranks)</code> replays merges on the ids of one chunk, the lowest rank first. <code>Tokenizer</code> checks its byte ids and merges, and turns text into ids (<code>encode</code>) and ids back into text (<code>decode</code>), with <code>token_bytes</code> for one token. With it, the first half of the module's "Done when" passes: round trips are exact on arbitrary Unicode.</p>
+<p><strong>Re-read.</strong> Chapter 3: <a href="03-encoding-by-rank.html#a-table-of-ranks">A table of ranks</a>, <a href="03-encoding-by-rank.html#encoding-a-word-by-hand">Encoding a word by hand</a>, <a href="03-encoding-by-rank.html#from-ids-back-to-text">From ids back to text</a> with <a href="03-encoding-by-rank.html#the-tokenizer-s-two-tables">The tokenizer's two tables</a> (the byte ids, and the table from each id to its bytes that <code>decode</code> reads), <a href="03-encoding-by-rank.html#why-split-before-merging">Why split before merging</a>, <a href="03-encoding-by-rank.html#letters-in-every-script-the-regex-package">Letters in every script: the regex package</a>, <a href="03-encoding-by-rank.html#gpt-2-s-split-pattern-piece-by-piece">GPT-2's split pattern, piece by piece</a> and <a href="03-encoding-by-rank.html#round-trips-and-hypothesis">Round trips and hypothesis</a>. The docstrings in <a href="../../../src/llm101/tokenizer/bpe.py">bpe.py</a>, the class's included.</p>
+<p><strong>Turns green.</strong> <code>uv run pytest tests/m02/test_bpe.py</code>, 36 tests, including <code>test_done_when_round_trips_are_exact_on_arbitrary_unicode</code>.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Three parts, in this order. <code>pretokenize</code>: its four docstring examples, and the cases of <code>test_pretokenize_splits_like_gpt2</code> (<code>"a   b"</code>, <code>"end  "</code> and <code>"one\n\ntwo"</code> are the subtle ones); which module knows <code>\p{L}</code>? <code>apply_merges</code>: the docstring's "The order is the rank, not the position", and <code>test_apply_merges_a_merge_can_use_an_earlier_merge</code>. <code>Tokenizer</code>: the two tests that reject bad arguments, <code>test_tokenizer_encode_goes_through_byte_ids</code> (a tokenizer whose bytes are numbered backwards), and <code>test_tokenizer_decode_replaces_a_broken_character</code>. Work <code>apply_merges([97, 98, 99], {(98, 99): 0, (97, 98): 1})</code> by hand, round by round.</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p><code>pretokenize</code>: every match of <code>GPT2_PATTERN</code>, in order, found with the <code>regex</code> package. <code>apply_merges</code>: work on a copy. Repeat: among the neighbouring pairs, find the one with the lowest rank, where a pair that has no rank counts as never; if even the best has no rank, stop; otherwise replace every occurrence of it with 256 plus its rank, as <code>merge_pair</code> does. <code>Tokenizer</code>: the constructor checks the byte ids and the merges, then builds what the methods need: the ranks of the merges, and the bytes of every token. Token 256 + r is the bytes of its left part followed by the bytes of its right part, and both exist already, because merge r only uses ids below 256 + r. A special token stands for the UTF-8 bytes of its text. <code>encode</code> turns each chunk into ids through the byte ids, merges each chunk on its own, and joins the results. <code>decode</code> joins the bytes of all the tokens first, and only then decodes, with <code>errors="replace"</code>.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p><code>pretokenize</code>: <code>import regex</code> at the top of <code>bpe.py</code>, and one call that returns every match as a list. <code>apply_merges</code>: a list made from the ids, a <code>while True</code> loop, and inside it one <code>min</code> over the neighbouring pairs with a key that looks the pair up in <code>ranks</code> with a default of <code>math.inf</code>; a <code>break</code> when the list is shorter than two or the best rank is infinite; then a merge. <code>Tokenizer.__init__</code>: two checks that raise <code>ValueError</code> (the byte ids, sorted, must be exactly 0 to 255; each id of merge r must be below 256 + r); then attributes on <code>self</code>: the byte ids as a list, a dict of ranks, a dict (or a list) from id to bytes filled in rank order, and the special tokens. <code>encode</code>: one loop over the chunks; a comprehension through the byte ids; <code>extend</code>. <code>decode</code>: <code>b"".join</code> over <code>token_bytes</code> of each id, then <code>.decode</code>. <code>token_bytes</code>: a lookup, and a <code>ValueError</code> for an id it does not know. Make the docstring examples green first, then <code>Tokenizer(range(256), [])</code>, then the backwards tokenizer.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>Two of this milestone's mechanisms on arithmetic. A regular expression whose alternatives, tried left to right, cut an expression into its pieces, with nothing lost; and a table of ranks in which anything missing ranks as infinity, so that one <code>min</code> finds the leftmost of the lowest.</p>
+<pre class="code" data-lang="python" data-file="calc_pieces.py" data-check="run"><code>import math
+import re
+
+# Every piece of an arithmetic expression, in order. The alternatives are tried left to right at
+# each place, and the first one that matches wins, so "**" must come before "*".
+PIECE = re.compile(r"\d+(?:\.\d+)?|[a-z_]+|\*\*|[-+*/()]|\s+|.")
+
+# Which operator to work out first: the lowest number wins. Anything else has no precedence.
+PRECEDENCE = {"**": 0, "*": 1, "/": 1, "+": 2, "-": 2}
+
+for text in ["2 * width + 3.5", "x**2-1", "10 - 4 - 3 ?"]:
+    pieces = PIECE.findall(text)
+    assert "".join(pieces) == text  # nothing is lost: the pieces join back into the text
+    print(pieces)
+    ranks = [PRECEDENCE.get(piece, math.inf) for piece in pieces]
+    print(" ", ranks)
+    first = min(range(len(pieces)), key=lambda i: ranks[i])  # the leftmost of the lowest
+    print("  work out first:", repr(pieces[first]), "at piece", first)
+</code></pre>
+<pre class="output" data-for="calc_pieces.py"><code>['2', ' ', '*', ' ', 'width', ' ', '+', ' ', '3.5']
+  [inf, inf, 1, inf, inf, inf, 2, inf, inf]
+  work out first: '*' at piece 2
+['x', '**', '2', '-', '1']
+  [inf, 0, inf, 2, inf]
+  work out first: '**' at piece 1
+['10', ' ', '-', ' ', '4', ' ', '-', ' ', '3', ' ', '?']
+  [inf, inf, 2, inf, inf, inf, 2, inf, inf, inf, inf]
+  work out first: '-' at piece 2
+</code></pre>
+<p>The last alternative, <code>.</code>, catches any character the others do not, which is why <code>?</code> survives and the pieces always join back into the text, the same promise <code>test_pretokenize_the_chunks_join_back_into_the_text</code> checks. In the third expression both minus signs rank 2, and <code>min</code> returns the first of equal keys, so the left one is chosen. Your <code>pretokenize</code> uses GPT-2's pattern and the <code>regex</code> package instead, and your <code>apply_merges</code> asks the rank question of pairs, over and over, merging as it goes.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li><code>re.PatternError: bad escape \p at position 0</code> (<code>re.error</code> is its old name, and still works in an <code>except</code>): <code>bpe.py</code> imported Python's <code>re</code>, which does not know <code>\p{L}</code>. GPT-2's pattern needs <code>regex</code>.</li>
+<li><code>apply_merges</code> gives <code>[256, 99]</code> where the docstring says <code>[97, 256]</code>: the first pair that has a rank was merged, by position, instead of the pair with the lowest rank.</li>
+<li>The tests hang: <code>apply_merges</code> never stops, because nothing breaks out when the best pair has no rank.</li>
+<li><code>ValueError: min() iterable argument is empty</code> on a chunk of one byte: a list shorter than two has no pairs at all.</li>
+<li><code>test_tokenizer_encode_goes_through_byte_ids</code> gets 65 for "A": the bytes were used as ids directly. Only <code>range(256)</code> makes those the same.</li>
+<li><code>test_tokenizer_merges_never_cross_chunks</code> gets <code>[256, 100]</code>: the merges ran over the whole text's bytes, not chunk by chunk.</li>
+<li>Round trips fail with several "�" where the text had one character: each token was decoded on its own. A character can be split across two tokens; join the bytes first.</li>
+<li><code>KeyError</code> where <code>ValueError</code> was expected: an unknown id reached a dict lookup unchecked.</li>
+<li><code>test_tokenizer_rejects_bad_byte_ids</code> passes "too few" but not "out of range": the check looked at the length and the repeats, but not at which numbers they are.</li>
+</ul>
+<p><strong>Done when.</strong> <code>uv run pytest tests/m02/test_bpe.py</code> is all green. That is the first half of "Done when".</p>
+<p><strong>Commit.</strong> <code>M4: pretokenize, apply_merges and Tokenizer green</code></p>
+
+<h2>Milestone 5: bytes_to_unicode, load_gpt2 and main</h2>
+<p><strong>Goal.</strong> <code>bytes_to_unicode()</code> returns GPT-2's map from each byte to a printable character. <code>load_gpt2()</code> builds GPT-2's tokenizer, a <code>Tokenizer</code>, from <code>vocab.json</code> and <code>merges.txt</code>, and its ids match tiktoken's. <code>main</code> is the program: the text token by token on alternating colours, the ids, and the count. With it, the second half of the module's "Done when" passes.</p>
+<p><strong>Re-read.</strong> Chapter 4: <a href="04-gpt2s-tokenizer.html#a-first-look-at-the-files">A first look at the files</a>, <a href="04-gpt2s-tokenizer.html#why-the-files-are-full-of">Why the files are full of Ġ</a>, <a href="04-gpt2s-tokenizer.html#reading-json-and-lines-of-text">Reading JSON and lines of text</a>, <a href="04-gpt2s-tokenizer.html#ids-in-gpt-2-s-order">Ids in GPT-2's order</a>, <a href="04-gpt2s-tokenizer.html#the-token-that-no-merge-makes">The token that no merge makes</a>, <a href="04-gpt2s-tokenizer.html#a-program-with-exclusive-arguments">A program with exclusive arguments</a> and <a href="04-gpt2s-tokenizer.html#colour-in-rich-one-piece-at-a-time">Colour in rich, one piece at a time</a>. The docstrings in <a href="../../../src/llm101/tokenizer/gpt2.py">gpt2.py</a> and <a href="../../../src/llm101/tokenizer/__main__.py">__main__.py</a>, and the Spec section of the README.</p>
+<p><strong>Turns green.</strong> <code>uv run pytest tests/m02/test_gpt2.py</code>, 50 tests, including <code>test_done_when_ids_match_gpt2_on_the_test_set</code>. Then check by eye: <code>uv run python -m llm101.tokenizer "Grüße aus München! 你好"</code>.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p><code>bytes_to_unicode</code>: the two bullets of its docstring, and <code>test_bytes_to_unicode_the_others_count_up_from_256</code>, which lists the 68 other bytes in the order they get their characters. <code>load_gpt2</code>: <code>test_load_gpt2_byte_ids</code> (<code>!</code> is 0, <code>A</code> is 32, the space is 220), the docstring's last paragraph about the empty string, and <code>test_load_gpt2_takes_its_paths_as_arguments</code>. Look at the files themselves with <code>head -3 data/gpt2/merges.txt</code>. <code>main</code>: the five program tests at the end of <a href="../../../tests/m02/test_gpt2.py">test_gpt2.py</a>. Which line of the output does <code>test_the_program_trains_a_tokenizer_with_train</code> read the ids from, and what exit status does argparse give when <code>TEXT</code> and <code>--file</code> are both missing?</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p><code>bytes_to_unicode</code>: the 188 printable bytes keep their own character. Every other byte, taken in rising order, gets the next character from 256 upwards. <code>load_gpt2</code>: read <code>vocab.json</code> into a dict from a token's string to its id. A byte's id is the id of the one-character string that the map gives that byte. Each line of <code>merges.txt</code> after the first, except the empty one at the end, names two token strings; the merge is the pair of their two ids. The one special token is <code>&lt;|endoftext|&gt;</code> at 50,256. Hand the three to your <code>Tokenizer</code>, whose checks then prove that the merges are in a valid order. <code>main</code>: read the arguments, with exactly one of the text and the file; get the tokenizer, GPT-2's or one trained on <code>--train</code>'s file (pretokenize its text, train on the chunks, and build a <code>Tokenizer</code> with the bytes as their own ids); encode; then print the three parts the docstring lists, each token as its own bytes decoded with <code>errors="replace"</code>.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p><code>bytes_to_unicode</code>: the kept bytes from three <code>range</code>s, put in a set; a counter that starts at 0; one loop over <code>range(256)</code> with an <code>if</code> and <code>else</code>; a dict. <code>load_gpt2</code>: <code>json.loads</code> of <code>Path.read_text(encoding="utf-8")</code>; the map from <code>bytes_to_unicode</code>; a comprehension of 256 lookups for the byte ids; the merges from <code>read_text(...).split("\n")</code>, without the first line and without empty lines, each split on its one space into two strings and looked up; then <code>Tokenizer(...)</code>. <code>main</code>: an <code>ArgumentParser</code> with a mutually exclusive group that is required, holding <code>TEXT</code> (a positional with <code>nargs="?"</code>, which a group allows) and <code>--file</code>; <code>--train</code> and <code>--vocab-size</code> outside the group; <code>parse_args(argv)</code>. One <code>rich.text.Text</code>, with one <code>append</code> per token whose style alternates on the token's position; then the ids joined by spaces; then the count line, where the characters are <code>len(text)</code> and the bytes the length of its UTF-8. Make <code>bytes_to_unicode</code>'s five tests green first, then <code>test_load_gpt2_the_docstring_example</code>, then the program.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>A kettle's settings, from a JSON file or from a file of <code>key = value</code> lines with a header, chosen by two arguments of which exactly one must be given. It writes its own two small files first, next to itself.</p>
+<pre class="code" data-lang="python" data-file="kettle_settings.py" data-check="run"><code>"""Load a kettle's settings from a JSON file or from a file of "key = value" lines."""
+
+import argparse
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class Settings:
+    name: str
+    litres: float
+    keep_warm: bool
+
+
+def from_json(path):
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return Settings(data["name"], data["litres"], data["keep_warm"])
+
+
+def from_lines(path):
+    lines = Path(path).read_text(encoding="utf-8").split("\n")
+    print("  the file splits into", lines)
+    values = {}
+    for line in lines[1:]:  # the first line is a header, not a setting
+        if not line:
+            continue  # the empty piece after the last newline
+        key, value = line.split(" = ")
+        values[key] = value
+    return Settings(values["name"], float(values["litres"]), values["keep_warm"] == "yes")
+
+
+# Two small files of our own, written next to this program.
+HERE = Path(__file__).parent
+(HERE / "kettle.json").write_text('{"name": "Küche", "litres": 1.7, "keep_warm": true}', encoding="utf-8")
+(HERE / "kettle.txt").write_text("#settings: 1\nname = Küche\nlitres = 1.7\nkeep_warm = yes\n", encoding="utf-8")
+
+parser = argparse.ArgumentParser(prog="kettle")
+source = parser.add_mutually_exclusive_group(required=True)
+source.add_argument("--json", metavar="PATH", help="read the settings from a JSON file")
+source.add_argument("--lines", metavar="PATH", help='read "key = value" lines')
+
+for argv in (["--json", str(HERE / "kettle.json")], ["--lines", str(HERE / "kettle.txt")]):
+    args = parser.parse_args(argv)
+    settings = from_json(args.json) if args.json else from_lines(args.lines)
+    print(argv[0], "-&gt;", settings)
+
+for argv in ([], ["--json", "a.json", "--lines", "b.txt"]):
+    try:
+        parser.parse_args(argv)
+    except SystemExit as stop:  # argparse prints its usage message to stderr, then exits
+        print(argv, "-&gt; exit status", stop.code)
+</code></pre>
+<pre class="output" data-for="kettle_settings.py"><code>--json -&gt; Settings(name='Küche', litres=1.7, keep_warm=True)
+  the file splits into ['#settings: 1', 'name = Küche', 'litres = 1.7', 'keep_warm = yes', '']
+--lines -&gt; Settings(name='Küche', litres=1.7, keep_warm=True)
+[] -&gt; exit status 2
+['--json', 'a.json', '--lines', 'b.txt'] -&gt; exit status 2
+</code></pre>
+<p>Look at what <code>split("\n")</code> gives for a file whose last line ends with a newline: an empty string at the end, which is not a setting. The two refused command lines also print argparse's usage and its reason to stderr (<em>one of the arguments --json --lines is required</em>, and <em>not allowed with argument --json</em>) before the exit status 2 that <code>test_the_program_wants_exactly_one_of_text_and_file</code> expects of your program. Chapter 4's <a href="04-gpt2s-tokenizer.html#colour-in-rich-one-piece-at-a-time">Colour in rich, one piece at a time</a> covers the other half of <code>main</code>.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li><code>bytes_to_unicode()[0]</code> is <code>"\x00"</code>: the leftover bytes kept their own characters. Only the 188 printable ones do.</li>
+<li><code>test_bytes_to_unicode_every_character_is_printable_and_not_a_space</code> fails with <em>byte 173</em>: byte 173, a soft hyphen, is not printable, so it is not kept. The kept ranges are 33 to 126, 161 to 172 and 174 to 255.</li>
+<li><code>token_bytes(0)</code> is <code>b"\x00"</code> instead of <code>b"!"</code>: the byte ids are <code>range(256)</code>, which is only right for a tokenizer you trained.</li>
+<li><code>KeyError: '#version:'</code>: the header line went in as a merge. <code>ValueError: not enough values to unpack</code>: the empty string after the last newline did.</li>
+<li>Your <code>Tokenizer</code> raises its "id that does not exist yet" error: a merge line was skipped or read twice, so every rank after it is off by one.</li>
+<li>The test set passes but <code>test_ids_match_gpt2_on_random_text</code> finds a rare character: a byte above 127 maps to the wrong character, so a token string from the files never matches. Check <code>bytes_to_unicode</code> against its tests again.</li>
+<li><code>ValueError: mutually exclusive arguments must be optional</code> when the program starts: <code>TEXT</code> went into the group without <code>nargs="?"</code>.</li>
+<li>A token that holds a square bracket vanishes from the coloured line: it went through rich markup, which read the brackets as a style. Append text pieces to a <code>Text</code> instead (chapter 4).</li>
+<li>The <code>--train</code> test cannot find the ids: something is printed after the count line, or the ids are not the line just before it.</li>
+</ul>
+<p><strong>Done when.</strong> <code>test_gpt2.py</code> is all green, and the program prints the coloured tokens, the ids and the count for <code>"Grüße aus München! 你好"</code>. Both halves of "Done when" now pass.</p>
+<p><strong>Commit.</strong> <code>M5: GPT-2's tokenizer and the program</code></p>
+
+<h2>Milestone 6: apply_merges_fast</h2>
+<p><strong>Goal.</strong> <code>apply_merges_fast(ids, ranks)</code> gives the same answer as <code>apply_merges</code> in time proportional to n log n, with a heap of candidate pairs over a linked list of tokens kept in lists of positions. Then <code>Tokenizer.encode</code> uses it, and GPT-2 encodes a word of 50,000 letters in under two seconds.</p>
+<p><strong>Re-read.</strong> Chapter 5, all of it: <a href="05-heaps-and-linked-lists.html#why-the-slow-way-is-quadratic">Why the slow way is quadratic</a>, <a href="05-heaps-and-linked-lists.html#heaps-from-first-principles">Heaps from first principles</a>, <a href="05-heaps-and-linked-lists.html#heapq-and-how-tuples-compare">heapq, and how tuples compare</a>, <a href="05-heaps-and-linked-lists.html#entries-that-went-stale">Entries that went stale</a>, <a href="05-heaps-and-linked-lists.html#a-linked-list-in-two-lists">A linked list in two lists</a>, <a href="05-heaps-and-linked-lists.html#removing-from-the-middle-in-constant-time">Removing from the middle in constant time</a> and <a href="05-heaps-and-linked-lists.html#how-the-two-fit-together">How the two fit together</a>. The docstring of <code>apply_merges_fast</code> in <a href="../../../src/llm101/tokenizer/fast.py">fast.py</a>.</p>
+<p><strong>Turns green.</strong> <code>uv run pytest tests/m02/test_fast.py</code>, nine tests. The last one, <code>test_gpt2_encodes_a_long_word_in_two_seconds</code>, turns green only when <code>Tokenizer.encode</code> calls the fast function. Then run <code>uv run pytest tests/m02</code>: <code>test_bpe.py</code> and <code>test_gpt2.py</code> must stay green.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_apply_merges_fast_overlapping_occurrences_go_left_first</code>, especially <code>[97, 97, 97, 97]</code> with the two ranks, which must end as <code>[257]</code>. Work it by hand: which entries are on the heap at the start, which comes off first, and which entries are no longer true after that first merge? Then read <code>test_apply_merges_fast_agrees_with_apply_merges</code>: its failing case, if it finds one, uses only the ids 0, 1 and 2 and is short enough to work on paper. Last, the message of the 100,000-letter test.</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Never move a token. Keep them in a list by their starting position, and keep two more lists: for each position, the position of the token on its left and of the token on its right. A merge then keeps the left token's position, gives it the new id, and takes the right token out by linking its neighbours to each other. Put on a heap one entry for each neighbouring pair that has a rank: the rank first, then the position of the pair's left token, so that the top is always the lowest rank and, among equal ranks, the leftmost, which is <code>merge_pair</code>'s order. Pop an entry and check that it is still true: the left position is still a token, it still has a right neighbour, and the two tokens there still make a pair with exactly that rank. If not, it went stale; skip it. If it is, merge, and push entries for the two new pairs the merge made, with its left neighbour and with its right neighbour, if they have ranks. When the heap is empty, walk the links from the first position and collect the tokens.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A list of tokens copied from the ids, and two lists of positions, one for the left neighbour and one for the right, with a value that means "none" (and a way to tell that a position has been merged away: a list of flags, or a mark in one of the link lists). The heap: a list of (rank, position) tuples from one loop over the neighbouring pairs that have a rank, then <code>heapify</code>. One <code>while</code> loop over the heap. Inside it: <code>heappop</code>; the checks that skip a stale entry, with <code>continue</code>; the merge, which is one assignment of the new id and a few changes of links; and up to two pushes. Position 0 is never merged away, because a merge always keeps its left token, so the final walk starts there. Make the four examples of <code>apply_merges</code> green first, then the overlapping ones, then hypothesis, then speed. When <code>test_fast.py</code> is green except for its last test, change the one line in <code>Tokenizer.encode</code>.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>Simplifying a line. A walking route is a list of points, and you want fewer of them without losing its shape. Again and again, remove the point that matters least: the one whose triangle with its two neighbours has the smallest area, because a point on a straight stretch makes almost no triangle. This is Visvalingam's algorithm. It needs exactly this milestone's two structures: a heap, to find the smallest area at once, and a linked list of neighbours in two lists, so that removing a point is two link changes. After a removal, the two neighbours have new triangles, so their old heap entries go stale; a version number per point recognises them.</p>
+<pre class="code" data-lang="python" data-file="simplify_line.py" data-check="run"><code>"""Simplify a walking route: remove, again and again, the point that matters least.
+
+A point matters as much as the area of the triangle it makes with its two neighbours: a point on
+a straight stretch makes almost no triangle, a sharp corner makes a big one. This is Visvalingam's
+algorithm. The two ends are never removed.
+"""
+
+import heapq
+
+route = [(0, 0), (1, 0.1), (2, -0.1), (3, 5), (4, 6), (5, 7), (6, 8.1), (7, 2), (8, 0), (9, 0)]
+KEEP = 5  # stop when this many points are left
+
+n = len(route)
+# prev[0] is -1 and nxt[n - 1] is n, "none" at the two ends. Neither is ever read: the ends are
+# never removed, and area() is only asked about the points between them.
+prev = [i - 1 for i in range(n)]  # prev[i]: the point before i on the line
+nxt = [i + 1 for i in range(n)]  # nxt[i]: the point after i
+removed = [False] * n
+version = [0] * n  # bumped each time a point's area changes; older heap entries are stale
+
+
+def area(i):
+    """The area of the triangle that point i makes with its current neighbours."""
+    (ax, ay), (bx, by), (cx, cy) = route[prev[i]], route[i], route[nxt[i]]
+    return abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
+
+
+heap = [(area(i), i, 0) for i in range(1, n - 1)]  # (area, point, version): no entry for the ends
+heapq.heapify(heap)
+
+left = n
+while left &gt; KEEP:
+    a, i, v = heapq.heappop(heap)
+    if removed[i] or v != version[i]:
+        print(f"  skip a stale entry for {route[i]}")
+        continue  # stale: the point is gone, or its area changed after this entry was pushed
+    print(f"remove {route[i]}, area {a:.2f}")
+    removed[i] = True
+    left -= 1
+    before, after = prev[i], nxt[i]
+    nxt[before] = after  # unlink i: its two neighbours now point at each other
+    prev[after] = before
+    for j in (before, after):  # their triangles have changed; the ends have none
+        if 0 &lt; j &lt; n - 1:
+            version[j] += 1
+            heapq.heappush(heap, (area(j), j, version[j]))
+
+kept = []
+i = 0
+while i &lt; n:  # walk the links from the first point
+    kept.append(route[i])
+    i = nxt[i]
+print(kept)
+print(len(heap), "entries still on the heap, some of them stale")
+</code></pre>
+<pre class="output" data-for="simplify_line.py"><code>remove (4, 6), area 0.00
+  skip a stale entry for (5, 7)
+remove (5, 7), area 0.10
+remove (1, 0.1), area 0.15
+remove (8, 0), area 1.00
+  skip a stale entry for (3, 5)
+  skip a stale entry for (7, 2)
+  skip a stale entry for (2, -0.1)
+  skip a stale entry for (6, 8.1)
+  skip a stale entry for (3, 5)
+remove (7, 2), area 5.10
+[(0, 0), (2, -0.1), (3, 5), (6, 8.1), (9, 0)]
+4 entries still on the heap, some of them stale
+</code></pre>
+<p>(4, 6) goes first: it lies on the straight line from (3, 5) to (5, 7), so its triangle has no area at all. Removing it changes the triangle of (5, 7), whose old entry is then skipped as stale before its new one comes off. The heap still holds entries at the end, for points that are gone or whose areas changed; nothing has to clean them up. Your <code>apply_merges_fast</code> differs in three ways. It merges two neighbours into one new token instead of removing a point, it checks that an entry is still true by looking at the tokens themselves instead of keeping a version number, and among equal ranks the leftmost position must win, which is why the position is the second item of its entries.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li>hypothesis finds a case like <code>ids=[0, 0, 0]</code> with <code>{(0, 0): 0}</code>, and your answer has two new tokens where <code>[256, 0]</code> has one: the entry for positions 1 and 2 was used after position 1 had been merged away into position 0. A stale entry was not recognised.</li>
+<li>A token appears twice, or a merged-away token comes back, in the final walk: the right token was not unlinked from both sides, so a link still points at it.</li>
+<li>A wrong answer that only shows up near the ends of the list: "no neighbour" was written as <code>-1</code>, which Python reads as a perfectly good index, the last item. Nothing raises an error; the code quietly reads the token at the far end.</li>
+<li>The speed test fails with <em>does each merge look at every pair again?</em>: something inside the loop is proportional to n, such as a scan of the list, a <code>del</code> or <code>pop</code> on a Python list, or building the heap again.</li>
+<li>The tests hang: the loop pushes an entry for a pair that it will never merge and never mark stale, so it pops and pushes for ever.</li>
+<li><em>fast.py finds the answer itself</em>: <code>apply_merges</code> is called in <code>fast.py</code>, even as a check.</li>
+<li><code>test_fast.py</code> is green except <code>test_gpt2_encodes_a_long_word_in_two_seconds</code>: <code>Tokenizer.encode</code> still calls <code>apply_merges</code>.</li>
+<li><code>test_apply_merges_fast_does_not_change_its_input</code> fails: the merges were written into <code>ids</code> itself instead of a copy.</li>
+<li><code>ImportError: cannot import name ... from partially initialized module 'llm101.tokenizer.bpe' (most likely due to a circular import)</code>, or the same with <code>fast</code>: once <code>Tokenizer</code> uses <code>apply_merges_fast</code>, <code>bpe.py</code> imports <code>fast.py</code>, so <code>fast.py</code> may not import anything from <code>bpe.py</code>: each would wait for the other to finish. That is why <code>Pair</code>, which both need, lives in <code>train.py</code>; import it from there.</li>
+</ul>
+<p><strong>Done when.</strong> <code>uv run pytest tests/m02</code> is green from end to end.</p>
+<p><strong>Commit.</strong> <code>M6: apply_merges_fast green</code></p>
+
+<h2>Milestone 7: the Experiment</h2>
+<p><strong>Goal.</strong> <a href="../../../modules/02-tokenizer/BENCH.md">BENCH.md</a> answers its question: how many GPT-2 tokens the same sentence takes in six languages and scripts, how much faster tiktoken is than your encoder, and what <code>apply_merges_fast</code> saves over <code>apply_merges</code> when the chunks are short. A prediction written first, measurements made with your own tokenizer and your own harness from Module 1, and two sentences of explanation.</p>
+<p><strong>Re-read.</strong> Chapter 6: <a href="06-tokens-as-cost.html#characters-per-token">Characters per token</a>, <a href="06-tokens-as-cost.html#tokens-and-latency">Tokens and latency</a>, <a href="06-tokens-as-cost.html#measuring-a-tokenizer-s-speed">Measuring a tokenizer's speed</a> and <a href="06-tokens-as-cost.html#why-tiktoken-is-fast">Why tiktoken is fast</a>. The template in BENCH.md. Your own <code>time_calls</code> and <code>summarise</code> in <code>src/llm101/bench/</code>.</p>
+<p><strong>Turns green.</strong> No test. The Experiment is done when every cell of BENCH.md is filled, and git shows that the prediction came first, because you committed it before you measured.</p>
+<p><strong>The hint ladder.</strong></p>
+
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the question in BENCH.md and its three prediction lines, and fill them in now, each with a number and a reason, before you read on. Commit them on their own: <code>M7: prediction</code>. Then read the two measurement tables and list what each column needs: three counts per sentence for the first, and n, two percentiles and two rates for each of the second's four lines.</p>
+</details>
+
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Measurement 1: for each sentence, its characters, its UTF-8 bytes and its tokens with your <code>load_gpt2()</code>, and the tokens divided by the English sentence's. Measurement 2: get <code>argparse</code>'s source once, outside anything you time. Build your tokenizer and tiktoken's encoding once, tiktoken's from <code>data/gpt2/</code> as the tests' <code>conftest.py</code> does, never from the network, and check that the two give the same ids. Those are the first two lines of the table. The last two time only the merging: split the text with your <code>pretokenize</code> and turn every chunk into its byte ids before any clock starts, then time one pass over all the chunks with <code>apply_merges</code>, and one with <code>apply_merges_fast</code>, both with the ranks your tokenizer keeps, and check that the two passes give the same ids. Time each line with your <code>time_calls</code>, at least 20 recorded calls after 2 warm-up calls, and summarise each. Characters per second is the length of the text divided by the p50, in seconds.</p>
+</details>
+
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>One script in <code>scratch/</code>. A loop over the six sentences that prints four numbers per sentence. For the speed: four functions with no arguments, or four lambdas. Two encode the text, with your tokenizer and with tiktoken. Two take a list of chunks, each already a list of byte ids, made once before any timing, and merge every chunk with one of the two merge functions and your tokenizer's ranks. Where your tokenizer keeps its ranks is your design: it is your class. Then <code>time_calls(fn, n=20, warmup=2)</code>, <code>summarise</code>, and the numbers copied into the table. The optional long word is the same script with one chunk of 1,000 to 8,000 letters and the two merge functions called directly.</p>
+</details>
+
+<details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
+<p>Predict, then measure, on something else: building one long string from many short pieces with <code>+=</code> in a loop, against <code>"".join</code>. The prediction is written at the top before the first run, the data is made outside anything timed, the two ways are checked to agree, warm-up runs are left out, and the median of several runs is the number. Doubling the input tests the reason behind the prediction, not only its number.</p>
+<pre class="code" data-lang="python" data-file="join_or_add.py" data-check="run"><code>"""Predict, then measure: build one long string from many short pieces, with += and with join.
+
+Prediction, written before the first run: += copies the whole string so far at every step, so
+its time should quadruple each time the number of pieces doubles, and at 400,000 pieces join
+should be at least 50 times faster.
+"""
+
+import statistics
+import time
+
+
+def with_add(pieces):
+    text = ""
+    for piece in pieces:
+        text += piece
+    return text
+
+
+def with_join(pieces):
+    return "".join(pieces)
+
+
+def median_ms(how, pieces, runs=7, warmup=2):
+    times_ns = []
+    for _ in range(warmup + runs):
+        start = time.perf_counter_ns()
+        how(pieces)
+        times_ns.append(time.perf_counter_ns() - start)
+    return statistics.median(times_ns[warmup:]) / 1e6  # the warm-up runs are left out
+
+
+print(f"{'pieces':&gt;8} {'+=':&gt;9} {'join':&gt;9} {'ratio':&gt;6}")
+for n in (100_000, 200_000, 400_000):
+    pieces = [f"w{i % 97} " for i in range(n)]  # made outside anything timed
+    assert with_add(pieces) == with_join(pieces)  # first, the two must agree
+    add, join = median_ms(with_add, pieces), median_ms(with_join, pieces)
+    print(f"{n:8,} {add:7.2f}ms {join:7.2f}ms {add / join:6.1f}")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>  pieces        +=      join  ratio
+ 100,000    2.06ms    0.25ms    8.1
+ 200,000    4.69ms    0.56ms    8.4
+ 400,000    8.69ms    1.06ms    8.2
+</code></pre>
+<p>The prediction was wrong twice, and that is the useful result. <code>+=</code> doubles when the pieces double, like <code>join</code>, instead of quadrupling, and the ratio stays near 8 instead of growing past 50. The reason is in the interpreter: when nothing else refers to the string, CPython can grow it in place instead of copying it, so the loop is close to linear. That is a detail of CPython, not a promise of the language, which is why PEP 8 still recommends <code>join</code>. Your M7 has the same shape: a prediction with a reason, a measurement, and two sentences on why the numbers came out as they did.</p>
+</details>
+
+<p><strong>Common bugs.</strong></p>
+<ul>
+<li>The text is read or built inside the timed function: you timed <code>inspect.getsource</code>, not the encoder.</li>
+<li>tiktoken built with <code>tiktoken.get_encoding("gpt2")</code>: that fetches files from the network. Build it from <code>data/gpt2/</code>, as <code>conftest.py</code> does.</li>
+<li>tiktoken's first call is much slower than the rest: no warm-up calls, so the first one paid for setting things up.</li>
+<li>The two encoders, or the two merging passes, do not give the same ids, and you timed them anyway: a fast wrong answer is not a measurement.</li>
+<li>The two merging lines give identical timings to the last digit: check that they call different functions.</li>
+<li>Bytes counted as characters, or the other way round, in the first table: <code>len</code> of the string and <code>len</code> of its UTF-8 differ for every script but English and Python.</li>
+<li>Numbers taken on battery, or with a video playing: plug in and close what you can (<a href="../../../docs/setup.md">docs/setup.md</a>, "Measuring on this Mac").</li>
+<li>A prediction edited after the run: the commit before the measurement is what makes it a prediction.</li>
+</ul>
+<p><strong>Done when.</strong> BENCH.md is complete, its headline number is in the Measurements table of the top-level <a href="../../../README.md">README</a>, and the module's five lines are in log.md.</p>
+<p><strong>Commit.</strong> Two: <code>M7: prediction</code> before you measure, and <code>M7: the Experiment</code> after.</p>
+
+<h2>When you are stuck</h2>
+<ol>
+<li>Re-read the test that fails, and the docstring of the function in the stub.</li>
+<li>Reproduce the smallest version of the problem in <code>scratch/</code>.</li>
+<li>Open one more rung of the ladder above, or ask Claude for it, and say which rung you are on.</li>
+<li>Only once the tests are green, ask for a review.</li>
+</ol>
+<p>Tools for step 2:</p>
+<ul>
+<li><code>uv run pytest tests/m02 -x -vv -k NAME</code> runs the tests whose names match and prints as much as it can about the first failure. <code>uv run pytest --lf</code> runs only the tests that failed last time.</li>
+<li><code>breakpoint()</code> on a line of your function stops the test there with the debugger prompt: <code>p name</code> prints a variable, <code>n</code> runs the next line, <code>c</code> carries on, <code>q</code> quits.</li>
+<li>A hypothesis failure prints a <strong>failing test case</strong>: the smallest input it found that breaks your code, such as <code>text='\x80'</code>. hypothesis also saves it in the <code>.hypothesis/</code> folder and tries it first on the next run, so it keeps failing until it is fixed. Copy it into a scratch file and print what your code does with it, step by step.</li>
+<li><strong>Look at tokens as bytes.</strong> A list of ids says little; <code>[tokenizer.token_bytes(i) for i in ids]</code> shows where each token begins and ends. For GPT-2, put it beside the oracle's answer for the same text: build tiktoken from <code>data/gpt2/</code> in a scratch file, as <code>conftest.py</code> does, and print <code>decode_single_token_bytes</code> of each of its ids. The first position where the two lists differ is where to look.</li>
+</ul>
+
+<div class="callout trap"><span class="label">Trap</span><p>Do not make a test pass by bending your code around one failing case: an <code>if</code> for the text <code>'\x80'</code>. hypothesis will find the next one, and the review will find the <code>if</code>. A failing case is a clue to the rule your code gets wrong.</p></div>
+
+<p>For <code>train_bpe</code>, <code>apply_merges</code> and <code>apply_merges_fast</code>, a table on paper often beats a print statement: one row per round, or per heap entry popped, and one column for each thing your code knows at that step.</p>
+
+<h2>Make it yours</h2>
+<p>Only after "Done when" passes. These are the README's stretch goals:</p>
+<ol>
+<li><strong>A cache of chunks.</strong> GPT-2's own encoder keeps a dict from each chunk it has seen to its ids. Add one to <code>Tokenizer</code>, and measure what it saves on a long English text with your harness.</li>
+<li><strong>Training that updates its counts.</strong> <code>train_bpe</code> counts every pair again after each merge. Update only the counts that a merge changes, and measure the speed-up on 2,000 merges.</li>
+<li><strong><code>utf8_decode</code> by hand</strong>, with Python's <code>errors="replace"</code> behaviour: one "�" for each maximal piece of a broken sequence. Check it against <code>bytes.decode</code> with hypothesis.</li>
+<li><strong>Unigram segmentation</strong> (goal.md's stretch): split a word into vocabulary pieces so that the sum of their log-probabilities is highest, with dynamic programming. It is Word Break with scores.</li>
+</ol>
+
+<h2>The review and the log</h2>
+<p>When "Done when" passes and the last milestone is committed:</p>
+<ol>
+<li>Ask Claude for the review of the whole module (<a href="../../../CLAUDE.md">CLAUDE.md</a>, "What a review contains"). You state the time and space of <code>train_bpe</code>, <code>apply_merges</code> and <code>apply_merges_fast</code> first, for a chunk of n bytes and m merges.</li>
+<li>Write its three questions and your answers into <a href="../../../log.md">log.md</a>.</li>
+<li>Write the module's five lines in log.md, in your own words: what surprised you, and the measurement in one line.</li>
+<li>Add <code>"m02"</code> to <code>done</code> under <code>[tool.llm101]</code> in <code>pyproject.toml</code>. From then on CI keeps your Module 2 tests green.</li>
+<li>Then comes the spec ritual for Module 3, the forward pass, which feeds your token ids to GPT-2 itself.</li>
+</ol>
+<p>The list it all has to pass is the README's <a href="../../../modules/02-tokenizer/README.md">Done when</a>; tick its boxes there.</p>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>vLLM tokenizes every prompt, with the model's Hugging Face tokenizer, before the scheduler sees it, and turns the generated ids back into text a few at a time while it streams. Because a token can end in the middle of a character, its incremental detokenizer (in <code>vllm/v1/engine/detokenizer.py</code>) holds back bytes that do not yet make a whole character instead of printing "�": the <code>errors="replace"</code> question of your <code>decode</code>, in a server. tiktoken does GPT-2's split and merges in Rust, and your tests have just checked every id you make against it.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>"€" is U+20AC. How many bytes does UTF-8 give it, and how many bits of the code point go into each byte?</p><details class="answer"><summary>Answer</summary><p>Three bytes, because 0x20AC lies between 0x800 and 0xFFFF. Sixteen bits are cut 4, 6, 6: four behind the first byte's <code>1110</code>, and six behind each <code>10</code>. That gives <code>e2 82 ac</code>.</p></details></div>
+<div class="q"><p>What do <code>count_pairs([7, 7, 7, 7, 7])</code> and <code>merge_pair([7, 7, 7, 7, 7], (7, 7), 9)</code> return?</p><details class="answer"><summary>Answer</summary><p><code>{(7, 7): 4}</code>, because every one of the four positions that has a next item starts a pair. And <code>[9, 9, 7]</code>: the scan merges positions 0 and 1, jumps to 2, merges 2 and 3, and copies the last 7.</p></details></div>
+<div class="q"><p><code>argparse</code>'s source ten times over has about 92,000 words and 2,600 distinct ones. Why does counting each distinct word once, weighed by its frequency, give the same merges as counting every word?</p><details class="answer"><summary>Answer</summary><p>Every copy of a word has the same pairs, and a merge changes every copy in the same way. So the pairs of a word seen 40 times are its pairs counted once, times 40, in every round. The totals are equal, the winners are equal, and the work per round falls roughly in the ratio of 92,000 to 2,600.</p></details></div>
+<div class="q"><p>A tokenizer has one merge, <code>(100, 32)</code>, "d" then a space. Why does it encode <code>"d d"</code> as <code>[100, 32, 100]</code> and never use the merge?</p><details class="answer"><summary>Answer</summary><p>GPT-2's split makes the chunks <code>"d"</code> and <code>" d"</code>: a word keeps the space in front of it. No chunk holds a "d" followed by a space, and merges never cross from one chunk into the next.</p></details></div>
+<div class="q"><p>In <code>apply_merges_fast</code>, the entry (rank 3, position 7) comes off the heap. What must be true before you merge, and what do you push afterwards?</p><details class="answer"><summary>Answer</summary><p>Position 7 must still hold a token, it must still have a right neighbour, and those two tokens must still make the pair whose rank is 3. Otherwise the entry is stale and you skip it. After the merge, push an entry for the new pair with the left neighbour and one for the new pair with the right neighbour, each only if it has a rank.</p></details></div>
+<div class="q"><p>Why is <code>-1</code> a dangerous way to say "no neighbour" in a Python list of positions?</p><details class="answer"><summary>Answer</summary><p>Because <code>tokens[-1]</code> is not an error: it is the last item. Code that forgets to check reads a real token from the far end and goes on with a wrong answer, silently. <code>None</code> fails loudly when used as an index, and a value such as n can be checked against the length.</p></details></div>
+<div class="q"><p>Why does M7's prediction get its own commit before the measurement?</p><details class="answer"><summary>Answer</summary><p>So that git can show it was written first. A prediction edited after the run is a description, and it cannot surprise you. The surprise, a number far from what you predicted, is what tells you that your picture of the machine was wrong.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Turn any text into UTF-8 bytes by hand, with shifts and masks.</li>
+<li>Count neighbouring pairs, merge a pair from the left, and train byte-pair merges on a body of text, counting each distinct chunk once.</li>
+<li>Split text the way GPT-2 does, encode it by replaying merges in the order of their rank, and decode ids back to the exact text.</li>
+<li>Load GPT-2's real tokenizer from its two files and match tiktoken's ids on any text.</li>
+<li>Merge in n log n with a heap of candidates over a linked list kept in lists of positions, and recognise the entries that went stale.</li>
+<li>Run an experiment the honest way: prediction first, then measurement, then explanation.</li>
+</ul>
+</main>
+</body>
+</html>

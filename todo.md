@@ -14,7 +14,8 @@ open the answers. In every drill block, redos come first, and every attempt gets
 
 ### Mon 16 Nov: day 1
 
-- [ ] Before block 1: `uv run pytest -q` ends with `201 failed, 5 passed`. The red is the module; the
+- [ ] Before block 1: `uv run pytest -q tests/m01 drills/00-diagnostic drills/01-arrays-hashing` ends
+      with `201 failed, 5 passed`. The red is the module; the
       five green tests read your code, and they stay green. `uv sync` and the pre-commit hook are
       already done in this clone (on a new clone, run `uv sync` and `tools/install-hooks.sh` first).
       Open the book with `uv run python tools/serve-book.py`, at http://localhost:8767.
@@ -106,8 +107,13 @@ open the answers. In every drill block, redos come first, and every attempt gets
 
 - [ ] Decide the first row of [docs/parking-lot.md](docs/parking-lot.md): the live tutor in the book.
 - [ ] Ask Claude for Module 1's katas.
-- [ ] Module 2's spec ritual. Claude drafts the spec, set 02 (six problems and a debugging drill) and
-      the book (one "write it" in each chapter).
+- [ ] Module 2's spec ritual. The draft is written ahead: the spec
+      ([modules/02-tokenizer/README.md](modules/02-tokenizer/README.md)), the stubs, the tests, set 02
+      (six problems, a debugging drill and six Write its) and the book. Settle its six decisions, write
+      them in log.md, and commit `Module 2: spec frozen`; Claude changes the material to match the same
+      morning. One sitting of about an hour: the README, the book's chapter 00 and chapter 7's "How the
+      drills work" and "Following links" first, then the twenty-minute ritual. Day 1's read block holds
+      chapter 01 alone.
 
 ## Before the module that needs it
 

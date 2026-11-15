@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03 · Encoding by rank — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 03</p>
+<h1>Encoding by rank</h1>
+<p class="lede">At the end of this chapter you can encode a word you have never seen with merges learned from other text, by hand and in the right order; turn ids back into text, broken characters included; say why the text is split into chunks first; read GPT-2's split pattern one alternative at a time; and test a round trip with hypothesis. Those are the ideas behind milestone M4.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: new text, old merges, and why the order of the merges decides the tokens.</li>
+<li>A table of ranks, and <code>.get(key, math.inf)</code> for what has no rank.</li>
+<li>Encoding a word by hand, round by round; decoding with <code>b"".join</code> and <code>errors=</code>, and the tokenizer's two tables.</li>
+<li>Why the text is split into chunks before any merge.</li>
+<li>Regular expressions from first principles, with <code>re</code>.</li>
+<li>Letters in every script with the <code>regex</code> package, and GPT-2's split pattern, piece by piece.</li>
+<li>Round trips, tested with hypothesis.</li>
+</ul>
+</div>
+
+<h2>The problem: new text, old merges</h2>
+<p><a href="02-pairs-and-merges.html">Chapter 2</a> trained merges on a tiny corpus. Here they are again, as a list in the order they were learned:</p>
+<pre class="code" data-lang="text"><code>merges = [(101, 97), (116, 256), (256, 116), (115, 258), (257, 115)]
+#          e a        t + ea      ea + t      s + eat     tea + s
+#          -&gt; 256     -&gt; 257      -&gt; 258      -&gt; 259      -&gt; 260
+</code></pre>
+<p>Now a user sends text the trainer never saw. There is no counting this time: the merges are fixed, and the only question is which to apply, in which order. That sounds like a detail, but different orders give different tokens. Take the made-up chunk "eatea", the bytes 101 97 116 101 97, and two ways to apply the same five merges:</p>
+<table>
+<thead><tr><th>Step</th><th>By position: the leftmost pair that has a merge</th><th>By rank: the pair learned earliest</th></tr></thead>
+<tbody>
+<tr><td>start</td><td>e a t e a</td><td>e a t e a</td></tr>
+<tr><td>1</td><td>(e, a) at the left: <strong>ea</strong> t e a</td><td>(e, a) is rank 0, everywhere: <strong>ea</strong> t <strong>ea</strong></td></tr>
+<tr><td>2</td><td>(ea, t) is now leftmost: <strong>eat</strong> e a</td><td>(t, ea) is rank 1, (ea, t) only rank 2: ea <strong>tea</strong></td></tr>
+<tr><td>3</td><td>(e, a) again: eat <strong>ea</strong></td><td>(ea, tea) has no merge: stop</td></tr>
+<tr><td>end</td><td>eat · ea, the ids 258 256</td><td>ea · tea, the ids 256 257</td></tr>
+</tbody>
+</table>
+<p>Same merges, same text, different tokens. The right one is <strong>by rank</strong>: apply the merge learned earliest among those that fit. Training applied merge 0 to every word, then merge 1, then merge 2, so on any word of the training text, replaying by rank gives exactly the tokens training ended with, the tokens the model learned from. Any other order hands the model splits it never saw, and ids that do not match GPT-2's.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A tokenizer is a pure function: the same text must give the same ids every time, on every machine, because the model learned what each id means from the ids that training produced. Everything a byte-pair tokenizer knows is its list of merges, in order. Encoding adds no knowledge; it replays the list faithfully: the same merges, in the same order, never across the boundaries that training respected.</p></div>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>Rank is <strong>precedence</strong>, as in arithmetic. In 2 + 3 × 4 you do the × first, wherever it stands, and get 14. A calculator that works strictly from the left gets 20. The rank of a merge is its precedence: the lowest rank goes first, wherever it stands in the word. <em>Where it breaks:</em> arithmetic has a handful of levels of precedence, and a BPE tokenizer has one level per merge, 50,000 for GPT-2. And when a rank wins, every occurrence of that pair in the chunk merges at once, from the left, where arithmetic does one operation at a time.</p></div>
+
+<h2>A table of ranks</h2>
+<p>Encoding asks again and again: "what is the rank of this pair?" Searching a list is slow; a dict answers at once. The tests build that dict from their merges, <code>RANKS = {pair: rank for rank, pair in enumerate(MERGES)}</code>, and for the tea merges it is:</p>
+<pre class="code" data-lang="text"><code>{(101, 97): 0, (116, 256): 1, (256, 116): 2, (115, 258): 3, (257, 115): 4}
+</code></pre>
+<p>Most pairs are not in it: <code>(116, 101)</code>, "t e", was never merged, and <code>ranks[(116, 101)]</code> raises <code>KeyError</code>. What you want is a rank that loses every comparison.</p>
+
+<div class="callout note"><span class="label">Python you need</span><p><strong><code>math.inf</code></strong> is a float that is greater than every other number, and equal to itself. <code>d.get(key, math.inf)</code> gives the value if the key is there, and infinity if it is not, so a missing key always loses a contest for the smallest.</p></div>
+
+<p>Here is the idea on a race, where not everyone finished. Each runner's finishing place is a rank, and a runner with no place should never be "the best":</p>
+
+<pre class="code" data-lang="python" data-file="finishing_places.py" data-check="run"><code>import math
+
+# Where each runner finished the race: 0 is the winner. Not everyone finished.
+places = {"Ines": 0, "Tom": 1, "Kofi": 2, "Mai": 3}
+
+print(places.get("Kofi", math.inf), places.get("Sam", math.inf))
+print(math.inf &gt; 1_000_000, math.inf == math.inf)
+
+group = ["Mai", "Sam", "Tom"]
+best = min(group, key=lambda name: places.get(name, math.inf))
+print("best of", group, "-&gt;", best)
+
+late_group = ["Sam", "Lea"]  # neither of them finished
+best = min(late_group, key=lambda name: places.get(name, math.inf))
+print("best of", late_group, "-&gt;", best, places.get(best, math.inf))
+</code></pre>
+<pre class="output" data-for="finishing_places.py"><code>2 inf
+True True
+best of ['Mai', 'Sam', 'Tom'] -&gt; Tom
+best of ['Sam', 'Lea'] -&gt; Sam inf
+</code></pre>
+<p>Of Mai, Sam and Tom, Tom finished best, and Sam counted as infinitely late. The last line is the one to remember: when <em>nobody</em> in the group has a place, every key is infinity, they all tie, and <code>min</code> returns the first. Sam is not a winner, and only the rank you get back says so.</p>
+<div class="callout trap"><span class="label">Trap</span><p><code>min</code> never says "none of these". Check the rank of what it returned: if it is infinity, nothing qualified, and for encoding that means there is nothing left to merge.</p></div>
+
+<h2>Encoding a word by hand</h2>
+<p>Now encode a word the trainer never saw, "tease", whose bytes are 116 101 97 115 101. The docstring of <code>apply_merges</code> gives the rule: among the neighbouring pairs, find the one with the lowest rank and replace every occurrence of it, from the left; stop when no neighbouring pair has a rank. On paper:</p>
+<table>
+<thead><tr><th>Round</th><th>Tokens</th><th>Neighbouring pairs and their ranks</th><th>Lowest</th><th>Becomes</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>116 101 97 115 101</td><td>(116, 101) –, (101, 97) <strong>0</strong>, (97, 115) –, (115, 101) –</td><td>(101, 97), rank 0</td><td>256</td></tr>
+<tr><td>2</td><td>116 256 115 101</td><td>(116, 256) <strong>1</strong>, (256, 115) –, (115, 101) –</td><td>(116, 256), rank 1</td><td>257</td></tr>
+<tr><td>3</td><td>257 115 101</td><td>(257, 115) <strong>4</strong>, (115, 101) –</td><td>(257, 115), rank 4</td><td>260</td></tr>
+<tr><td>4</td><td>260 101</td><td>(260, 101) –</td><td>none</td><td>stop</td></tr>
+</tbody>
+</table>
+<p>A dash is <code>math.inf</code>: no rank. "tease" becomes <code>[260, 101]</code>, "teas" and "e". In round 3 the lowest rank present was 4: ranks 2 and 3 were skipped because their pairs never appeared. The new id is always 256 plus the winning rank.</p>
+<p>Going through all the merges in order, 0, 1, 2, and applying each wherever it fits gives the same tokens (once a merge is done, no pair of a lower rank can appear, since a pair of rank r only holds ids made before it). But for GPT-2 that reads every chunk 50,000 times. Asking "which pair here has the lowest rank?" skips the merges that cannot apply, and chapter 5 answers that question faster still.</p>
+<div class="callout try"><span class="label">Try it</span><p>Encode "seats", the bytes 115 101 97 116 115, with the tea merges, on paper, with the same columns. How many rounds does it take, and which ids come out?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Round 1: (101, 97) rank 0 gives 115 256 116 115. Round 2: the pairs are (115, 256) –, (256, 116) 2 and (116, 115) –, so 258: 115 258 115. Round 3: (115, 258) rank 3 gives 259: 259 115. Round 4: (259, 115) has no rank, stop. Three merges and a stop: <code>[259, 115]</code>, "seat" followed by "s".</p></details>
+
+<h2>From ids back to text</h2>
+<p>Decoding is the easy direction: every token stands for some bytes, so join them in order with <code>b"".join(pieces)</code>, the bytes cousin of <code>"".join</code>, and decode the result as UTF-8.</p>
+<p>The catch: a token is a run of <em>bytes</em>, and nothing stops a run from ending in the middle of a character. Ask tiktoken for GPT-2's tokens of "你好" and you get four. Each character is three bytes, and the tokens cut them two and one:</p>
+<table>
+<thead><tr><th>Text</th><th>GPT-2 ids</th><th>The bytes of each token</th></tr></thead>
+<tbody>
+<tr><td>你好</td><td>19526, 254, 25001, 121</td><td><code>e4 bd</code> · <code>a0</code> · <code>e5 a5</code> · <code>bd</code></td></tr>
+<tr><td>🙂</td><td>8582, 25081</td><td><code>f0 9f</code> · <code>99 82</code></td></tr>
+<tr><td>Grüße</td><td>8642, 9116, 39683, 68</td><td><code>Gr</code> · <code>c3 bc</code> (ü) · <code>c3 9f</code> (ß) · <code>e</code></td></tr>
+</tbody>
+</table>
+<p>Joined, the pieces are perfect UTF-8. One piece on its own, or a list of ids that stops halfway, is not. <code>bytes.decode</code> has an <code>errors</code> argument for exactly that case:</p>
+
+<pre class="code" data-lang="python" data-file="broken_bytes.py" data-check="run"><code># GPT-2's four tokens for "你好", as bytes (seen through tiktoken). Each character is 3 bytes.
+pieces = [b"\xe4\xbd", b"\xa0", b"\xe5\xa5", b"\xbd"]
+
+whole = b"".join(pieces)
+print(whole, len(whole), whole.decode("utf-8"))
+
+first = pieces[0]  # a token that stops in the middle of a character
+print(repr(first.decode("utf-8", errors="replace")))
+print(repr(first.decode("utf-8", errors="ignore")))
+try:
+    first.decode("utf-8")  # errors="strict" is the default
+except UnicodeDecodeError as error:
+    print("strict:", error)
+
+broken = whole[:4] + b"!"  # one whole character, then the start of the next, then "!"
+print(repr(broken.decode("utf-8", errors="replace")))
+print(repr(broken.decode("utf-8", errors="ignore")))
+</code></pre>
+<pre class="output" data-for="broken_bytes.py"><code>b'\xe4\xbd\xa0\xe5\xa5\xbd' 6 你好
+'�'
+''
+strict: 'utf-8' codec can't decode bytes in position 0-1: unexpected end of data
+'你�!'
+'你!'
+</code></pre>
+<p>Three answers to bytes that are not a whole character:</p>
+<ul>
+<li><code>errors="strict"</code>, the default, raises <code>UnicodeDecodeError</code>: right when broken bytes mean a bug, wrong for a tokenizer, which meets them in normal use.</li>
+<li><code>errors="replace"</code> puts the replacement character <code>�</code> (U+FFFD) where the broken piece was, so you can see that something was lost, and where.</li>
+<li><code>errors="ignore"</code> drops the broken bytes without a trace: "你!" looks like good text.</li>
+</ul>
+<p>The docstring of <code>Tokenizer.decode</code> chooses <code>"replace"</code>, so <code>decode</code> never raises on valid ids. (<a href="01-bytes-and-utf8.html#when-bytes-are-not-a-whole-character">Chapter 1</a> shows how a decoder sees that a sequence is broken.) Mind the order of the steps: join all the bytes first, then decode once. Decoding token by token would turn "你好" into four <code>�</code>, although every byte was there.</p>
+<div class="callout trap"><span class="label">Trap</span><p><code>errors="ignore"</code> makes a round trip fail silently: the text comes back shorter and nothing complains. The <a href="#round-trips-and-hypothesis">round trips</a> at the end of the chapter catch exactly this.</p></div>
+
+<h3>The tokenizer's two tables</h3>
+<p>So far a byte's id has been the byte itself: "t" is 116 because its byte is 116. That is a choice, not a law. The docstring of <code>Tokenizer</code> takes the ids of the 256 single-byte tokens as a parameter, <code>byte_ids</code>: <code>byte_ids[b]</code> is the id of the token for byte b. A tokenizer you train passes <code>range(256)</code>, so byte b is id b. GPT-2 numbered its bytes another way: "!" is id 0 and the space is 220, for reasons <a href="04-gpt2s-tokenizer.html#ids-in-gpt-2-s-order">chapter 4</a> explains. Taking the numbering as a parameter lets one class serve both.</p>
+<p>The two directions read that numbering from opposite ends. <code>encode</code> starts from a byte and needs its id: that is <code>byte_ids</code> as it was given. <code>decode</code> starts from an id and needs its bytes: the same pairs read the other way, so one table is the other turned round. The Write it at the end of this chapter, <code>invert_table</code>, practises exactly that turning round, on a table of its own. <code>test_tokenizer_encode_goes_through_byte_ids</code> numbers the bytes backwards, so that a tokenizer which quietly assumes "id b is byte b" fails it.</p>
+<p>A table can only be turned round if it is fair: "the numbers 0 to 255 in some order", as the docstring puts it, each id used by exactly one byte. Picture a row of eight cinema seats renumbered after a refit. The seat that was number 0 may now be number 3, and that is fine, as long as every number from 0 to 7 is painted on exactly one seat. Two seats with the same number, a number missing, or a seat numbered 8, and the usher's chart no longer works. The simplest check: sort the new numbers, and compare them with 0 to 7.</p>
+
+<pre class="code" data-lang="python" data-file="seat_numbers.py" data-check="run"><code># A row of 8 seats, renumbered after a refit: renumbered[old] is the new number of the seat
+# that used to be number old. A fair renumbering uses each of 0 to 7 exactly once.
+renumberings = {
+    "fair": [3, 0, 7, 1, 6, 2, 5, 4],
+    "too few": [3, 0, 7, 1, 6, 2, 5],
+    "a repeat": [3, 0, 7, 1, 6, 2, 5, 5],
+    "out of range": [3, 0, 8, 1, 6, 2, 5, 4],
+    "nine seats": [3, 0, 7, 1, 6, 2, 5, 4, 7],
+}
+for name, renumbered in renumberings.items():
+    fair = sorted(renumbered) == list(range(8))
+    same_set = set(renumbered) == set(range(8))
+    print(f"{name:12}  sorted {sorted(renumbered)!s:27}  fair {fair!s:5}  same set {same_set}")
+</code></pre>
+<pre class="output" data-for="seat_numbers.py"><code>fair          sorted [0, 1, 2, 3, 4, 5, 6, 7]     fair True   same set True
+too few       sorted [0, 1, 2, 3, 5, 6, 7]        fair False  same set False
+a repeat      sorted [0, 1, 2, 3, 5, 5, 6, 7]     fair False  same set False
+out of range  sorted [0, 1, 2, 3, 4, 5, 6, 8]     fair False  same set False
+nine seats    sorted [0, 1, 2, 3, 4, 5, 6, 7, 7]  fair False  same set True
+</code></pre>
+<p>Sorted, a fair renumbering is exactly 0, 1, 2 and so on, so one comparison catches every way of being unfair. Comparing sets is not enough on its own: the nine numbers of the last row hold 7 twice, and their set is still 0 to 7, because a set forgets how often a number came. (<code>sorted</code> takes any iterable, a <code>range</code> included.) Mathematicians call a fair renumbering a <strong>permutation</strong>: the same numbers, shuffled.</p>
+<p>A <strong>special token</strong>, such as GPT-2's <code>&lt;|endoftext|&gt;</code>, is neither a byte nor a merge: it is known only to <code>decode</code>, and <code>encode</code> never produces one (<a href="04-gpt2s-tokenizer.html#the-token-that-no-merge-makes">chapter 4</a> says why). An id that belongs to no byte, no merge and no special token has no bytes to give, so <code>decode</code> and <code>token_bytes</code> raise <code>ValueError</code>.</p>
+
+<h2>Why split before merging</h2>
+<p>Encoding by rank works on one chunk of text at a time, and so far a chunk has been one word. Why cut the text up at all? Because BPE only counts, and real text is full of frequent pairs you do not want as tokens. The GPT-2 paper (2019) gives the example: without a split, BPE learns "dog.", "dog!" and "dog?" as separate tokens, spending vocabulary on one word with different punctuation. With the split, punctuation never shares a chunk with the letters before it, merges never cross chunks, and one token serves every case. From the oracle:</p>
+<table>
+<thead><tr><th>Text</th><th>Chunks</th><th>GPT-2 ids</th></tr></thead>
+<tbody>
+<tr><td>dog. dog! dog?</td><td>dog | . | ·dog | ! | ·dog | ?</td><td>9703, 13, 3290, 0, 3290, 30</td></tr>
+</tbody>
+</table>
+<p>A space is shown as ·. GPT-2's split keeps the space in front of a word with the word, so " dog" is token 3290 every time. (The first "dog" has no space in front, so it is another token, 9703.) The split also stops a token from holding the end of one word and the start of the next. The test <code>test_tokenizer_merges_never_cross_chunks</code> gives a tokenizer the single merge <code>(100, 32)</code>, "d" then space, and checks that "d d" stays three tokens: the chunks are "d" and " d", and neither holds a "d" followed by a space.</p>
+<p>So encoding is two layers: split the text into chunks, then encode each chunk on its own, by rank, and put the results one after another, as the docstring of <code>Tokenizer.encode</code> says. Training used the same split, so encoding respects the same boundaries. That leaves one question: what exactly is a chunk? It needs a rule that says where a word, a number or a run of punctuation begins and ends, in any script, and where the spaces go. GPT-2 writes that rule as one regular expression, and the rest of this chapter builds it, from the first character class to the whole pattern.</p>
+
+<h2>Regular expressions from first principles</h2>
+<p>A <strong>regular expression</strong> is a small description of a shape of text, such as "one or more letters", which Python's <code>re</code> module uses to find the stretches of text with that shape.</p>
+<div class="callout note"><span class="label">Python you need</span><p><strong>Raw strings.</strong> In <code>"\n"</code> Python turns the backslash and the n into one newline character before <code>re</code> ever sees them. In a raw string, <code>r"\s"</code>, the backslash stays, and <code>re</code> gets to read <code>\s</code> itself. Write every pattern as a raw string.</p></div>
+<ul>
+<li><strong>A character class</strong>, in square brackets, matches one character from a set: <code>[a-z]</code> is any lower-case letter from a to z, <code>[0-9]</code> any digit. A <code>^</code> just inside the bracket turns it round: <code>[^a-z ]</code> is any character <em>except</em> those. <code>\s</code> is any white space (space, tab, newline) and <code>\S</code> anything else.</li>
+<li><strong><code>+</code></strong> after a piece means "one or more of it, as many as possible", and <strong><code>?</code></strong> means "one or none".</li>
+<li><code>re.findall(pattern, text)</code> slides along the text from the left and returns every match, in order, each starting where the last one ended. <code>re.fullmatch(pattern, text)</code> asks whether the <em>whole</em> text has the shape, and returns a match object or <code>None</code>.</li>
+</ul>
+
+<pre class="code" data-lang="python" data-file="first_patterns.py" data-check="run"><code>import re
+
+text = "Tea at 4, cake at 5. Colour or color?"
+
+print(re.findall(r"[a-z]+", text))  # runs of lower-case letters
+print(re.findall(r"[A-Za-z]+", text))  # either case
+print(re.findall(r"[0-9]", text))  # one digit at a time
+print(re.findall(r"[Cc]olou?r", text))  # u? : one u, or none
+print(re.findall(r"\S+", text))  # runs of anything that is not white space
+print(re.findall(r"[^a-z ]+", text))  # runs of anything but lower case and the space
+
+print(re.fullmatch(r"[a-z]+", "cake"))  # the whole string must match
+print(re.fullmatch(r"[a-z]+", "cake!"))
+</code></pre>
+<pre class="output" data-for="first_patterns.py"><code>['ea', 'at', 'cake', 'at', 'olour', 'or', 'color']
+['Tea', 'at', 'cake', 'at', 'Colour', 'or', 'color']
+['4', '5']
+['Colour', 'color']
+['Tea', 'at', '4,', 'cake', 'at', '5.', 'Colour', 'or', 'color?']
+['T', '4,', '5.', 'C', '?']
+&lt;re.Match object; span=(0, 4), match='cake'&gt;
+None
+</code></pre>
+<p>In the first line "Tea" gave <code>'ea'</code> and "Colour" gave <code>'olour'</code>: a capital is not in <code>[a-z]</code>, and a pattern does exactly what it says. <code>+</code> is greedy, which is why "cake" is one match and not four. The last two lines are checking, not finding: "cake!" does not fit <code>[a-z]+</code> from end to end. Three more pieces, and you can read GPT-2's pattern:</p>
+<ul>
+<li><strong>Alternation</strong>, <code>A|B</code>: try A here; only if A fails, try B. The first alternative that matches <em>wins</em>, even if a later one would have matched more.</li>
+<li><strong>A group</strong>, <code>(?:...)</code>, makes several pieces into one, so that <code>+</code> or <code>?</code> applies to all of them: <code>(?:ha)+</code> is "ha" once or more. Plain brackets <code>(...)</code> group too, but they also <em>capture</em>, which changes what <code>findall</code> returns.</li>
+<li><strong>A negative lookahead</strong>, <code>(?!X)</code>, matches no characters at all. It is a check: "at this point, what comes next is not X".</li>
+</ul>
+
+<pre class="code" data-lang="python" data-file="choices_and_lookahead.py" data-check="run"><code>import re
+
+print(re.findall(r"cat|category", "category"))  # the first alternative that matches wins
+print(re.findall(r"category|cat", "category"))
+
+print(re.findall(r"(?:ha)+", "haha, hahaha!"))  # a group that repeats, captured as a whole
+print(re.findall(r"(ha)+", "haha, hahaha!"))  # a capturing group: findall returns the group
+
+print(re.findall(r"[a-z]+(?!\?)", "tea? cake"))  # not followed by "?"... after backtracking
+print(re.findall(r"[a-z]+(?![a-z?])", "tea? cake"))  # nor by another letter
+</code></pre>
+<pre class="output" data-for="choices_and_lookahead.py"><code>['cat']
+['category']
+['haha', 'hahaha']
+['ha', 'ha']
+['te', 'cake']
+['cake']
+</code></pre>
+<p>Line 1: at position 0, <code>cat</code> matches, so <code>category</code> is never tried. Swap them and the longer word wins: the order of the alternatives is part of the meaning. Lines 3 and 4 differ only in <code>?:</code>. With a capturing group, <code>findall</code> returns what the <em>group</em> matched, and a repeated group remembers only its last turn.</p>
+<p>Lines 5 and 6 show the machine at work. In "tea?", <code>[a-z]+</code> first takes all of "tea", and the lookahead sees "?" and fails. The engine does not give up: it <strong>backtracks</strong>, gives back one letter, and tries "te". The next character is now "a", so the lookahead passes, and "te" is a match. Line 6 also refuses a letter next, and "tea" is skipped entirely. That backtracking is how <code>\s+(?!\S)</code> in GPT-2's pattern works, below.</p>
+<div class="callout trap"><span class="label">Trap</span><p>Once a pattern has a capturing group, <code>findall</code> returns the groups, not the whole matches. If <code>findall</code> gives you fragments, look for plain brackets and make them <code>(?:...)</code>.</p></div>
+<div class="callout try"><span class="label">Try it</span><p>Predict <code>re.findall(r"o+(?!h)", "ooh oo")</code> before you run it. Then predict <code>re.findall(r"tea|teas", "teas tea")</code>, and the same with the alternatives swapped.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>['o', 'oo']</code>. At position 0, "oo" is followed by "h", so the engine backtracks to "o", which is followed by "o": a match. At position 1 a single "o" is followed by "h", and there is nothing shorter to try. The final "oo" is followed by the end of the text, which is not "h". Then <code>['tea', 'tea']</code>: <code>tea</code> wins at position 0 and leaves the "s" behind, matched by neither. Swapped: <code>['teas', 'tea']</code>.</p></details>
+
+<h2>Letters in every script: the regex package</h2>
+<p>GPT-2 needs "any letter, in any script", and Unicode has a name for it: <code>\p{L}</code>, the <strong>property</strong> "letter". <code>\p{N}</code> is the property "number": digits, and numerals such as ½ and Ⅻ. Python's own <code>re</code> knows neither. <code>[a-z]</code> stops at the end of the English alphabet, so in "Grüße" it finds only "r" and "e". <code>\w</code>, the nearest thing <code>re</code> has, is Unicode-aware, but it lumps letters, digits and the underscore together, which GPT-2's pattern must tell apart. And <code>re</code> refuses <code>\p{L}</code> outright: on Python 3.13, <code>re.compile(r"\p{L}")</code> raises <code>re.PatternError: bad escape \p at position 0</code> (<a href="09-appendix.html#the-errors-of-this-module">the appendix</a> lists it with this module's other errors). The <code>regex</code> package has the same functions as <code>re</code> and knows Unicode properties. It is a dependency of this module, and your <code>pretokenize</code> needs it:</p>
+
+<pre class="code" data-lang="python" data-file="letters_everywhere.py" data-check="run"><code>import regex
+
+text = "Grüße, 你好! नमस्ते 42 ½ Ⅻ ٣ snake_case"
+
+print(regex.findall(r"\p{L}+", text))  # letters, in any script
+print(regex.findall(r"\p{N}+", text))  # digits and other numerals, in any script
+print(regex.findall(r"[^\s\p{L}\p{N}]+", text))  # neither space, nor letter, nor numeral
+</code></pre>
+<pre class="output" data-for="letters_everywhere.py"><code>['Grüße', '你好', 'नमस', 'त', 'snake', 'case']
+['42', '½', 'Ⅻ', '٣']
+[',', '!', '्', 'े', '_']
+</code></pre>
+<p>½, the Roman numeral Ⅻ and the Arabic-Indic digit ٣ (three) are numbers. A property can go inside a character class: <code>[^\s\p{L}\p{N}]</code> is "neither white space, nor letter, nor number". The Hindi word नमस्ते ("namaste") came out in pieces, and two of its characters turned up with the punctuation: ् (the virama) and े (the vowel sign e) are <strong>marks</strong>, which combine with the letter before them, not letters. So GPT-2's pattern cuts Hindi words at their marks, and no merge can join them back: one more way in which text outside English pays for GPT-2's choices. <a href="06-tokens-as-cost.html#the-problem-the-same-sentence-different-bills">Chapter 6</a> counts what other scripts cost in tokens.</p>
+
+<h2>GPT-2's split pattern, piece by piece</h2>
+<p>The pattern is given in <code>src/llm101/tokenizer/bpe.py</code> as <code>GPT2_PATTERN</code>, copied from OpenAI's encoder of 2019. Print it, then try each alternative <em>on its own</em> on a sample made for it:</p>
+
+<pre class="code" data-lang="python" data-file="gpt2_alternatives.py" data-check="run"><code>import regex
+
+from llm101.tokenizer.bpe import GPT2_PATTERN
+
+print(GPT2_PATTERN)
+print(len(GPT2_PATTERN.split("|")), "alternatives")
+
+samples = [
+    (r"'s|'t|'re|'ve|'m|'ll|'d", "it's we'll they'd IT'S"),
+    (r" ?\p{L}+", "Hello wörld  你好"),
+    (r" ?\p{N}+", "in 2026, ½ of 12"),
+    (r" ?[^\s\p{L}\p{N}]+", "Wait... what?! :-)"),
+    (r"\s+(?!\S)", "a   b\n\nc  "),
+    (r"\s+", "a   b"),
+]
+for alternative, sample in samples:  # one alternative at a time, never the whole pattern
+    print(f"{alternative:24} on {sample!r:26} -&gt; {regex.findall(alternative, sample)}")
+</code></pre>
+<pre class="output" data-for="gpt2_alternatives.py"><code>'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+
+12 alternatives
+'s|'t|'re|'ve|'m|'ll|'d  on "it's we'll they'd IT'S"   -&gt; ["'s", "'ll", "'d"]
+ ?\p{L}+                 on 'Hello wörld  你好'          -&gt; ['Hello', ' wörld', ' 你好']
+ ?\p{N}+                 on 'in 2026, ½ of 12'         -&gt; [' 2026', ' ½', ' 12']
+ ?[^\s\p{L}\p{N}]+       on 'Wait... what?! :-)'       -&gt; ['...', '?!', ' :-)']
+\s+(?!\S)                on 'a   b\n\nc  '             -&gt; ['  ', '\n', '  ']
+\s+                      on 'a   b'                    -&gt; ['   ']
+</code></pre>
+<p>(<code>GPT2_PATTERN.split("|")</code> is the string method: it cuts the text of the pattern at each bar, to count the pieces.) In the order the engine tries them:</p>
+<ol>
+<li><strong>The contractions</strong>, <code>'s|'t|'re|'ve|'m|'ll|'d</code>: an apostrophe and one of seven English endings. They come first, so they win over the punctuation rule. They are lower case, and nothing in the pattern ignores case, so the "'S" of "IT'S" is not one.</li>
+<li><strong>A word</strong>, <code> ?\p{L}+</code>: an optional space, then letters in any script. This is why " wörld" is one chunk. In "  你好", <code> ?</code> takes only one space, the one next to the word.</li>
+<li><strong>A number</strong>, <code> ?\p{N}+</code>: the same, for numerals.</li>
+<li><strong>Everything else</strong>, <code> ?[^\s\p{L}\p{N}]+</code>: an optional space, then punctuation, symbols, emoji, and the marks of the last section.</li>
+<li><strong>Trailing white space</strong>, <code>\s+(?!\S)</code>: white space <em>not</em> followed by a non-space. In "a   b", three spaces are followed by "b", so the engine backtracks to two, which are followed by a space: "  " matches, and the third space is left for " b". At the end of "c  " nothing follows, and both spaces match.</li>
+<li><strong>Any other white space</strong>, <code>\s+</code>: whatever rule 5 left, such as one space or newline right before a word.</li>
+</ol>
+<p>Put together, that is how the whole pattern cuts text. These splits are the ones that <code>tests/m02/test_bpe.py</code> asks your <code>pretokenize</code> to reproduce; a space is shown as ·:</p>
+<table>
+<thead><tr><th>Text</th><th>Chunks</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Hello world</td><td>Hello | ·world</td><td>a word keeps its space</td></tr>
+<tr><td>I'm 42!</td><td>I | 'm | ·42 | !</td><td>a contraction; a number with its space</td></tr>
+<tr><td>can't won't</td><td>can | 't | ·won | 't</td><td>"'t" is a contraction, so "can" stands alone</td></tr>
+<tr><td>Grüße, 你好!</td><td>Grüße | , | ·你好 | !</td><td>letters in any script</td></tr>
+<tr><td>2,048 tokens</td><td>2 | , | 048 | ·tokens</td><td>the comma is not a number</td></tr>
+<tr><td>a···b</td><td>a | ·· | ·b</td><td>trailing white space gives one space back to the word</td></tr>
+<tr><td>end··</td><td>end | ··</td><td>white space at the end</td></tr>
+<tr><td>x\ty</td><td>x | \t | y</td><td>a tab is white space, but only a space joins a word</td></tr>
+<tr><td>½ Ⅻ</td><td>½ | ·Ⅻ</td><td>numerals that are not digits</td></tr>
+</tbody>
+</table>
+<p>And from the oracle, three spellings of one word:</p>
+<table>
+<thead><tr><th>Text</th><th>Chunks</th><th>GPT-2 ids</th><th>The bytes of each token</th></tr></thead>
+<tbody>
+<tr><td>it's</td><td>it | 's</td><td>270, 338</td><td><code>it</code> · <code>'s</code></td></tr>
+<tr><td>IT'S</td><td>IT | ' | S</td><td>2043, 6, 50</td><td><code>IT</code> · <code>'</code> · <code>S</code></td></tr>
+<tr><td>it’s (curly ’, U+2019)</td><td>it | ’ | s</td><td>270, 447, 247, 82</td><td><code>it</code> · <code>e2 80</code> · <code>99</code> · <code>s</code></td></tr>
+</tbody>
+</table>
+<p>Upper-case contractions fall through to the punctuation rule, and so does the curly apostrophe, because the contractions are written with the straight one. The curly ’ is one chunk but three bytes, <code>e2 80 99</code>, and GPT-2's merges cut it into two tokens, as they cut 你 <a href="#from-ids-back-to-text">earlier</a>: three chunks, four tokens.</p>
+<div class="callout try"><span class="label">Try it</span><p>Split <code>"one\n\ntwo"</code> by hand with the six rules, in order, at each position. Then check your answer against the test <code>test_pretokenize_splits_like_gpt2</code>.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>["one", "\n", "\n", "two"]</code>. "one" is a word. At the first newline, rules 1 to 4 fail; rule 5 takes "\n\n", sees "t" next and fails, backtracks to "\n", sees "\n" next (white space) and matches. At the second newline, rule 5 sees "t" next and has nothing shorter to try, so rule 6 takes it. Then "two", with no space in front.</p></details>
+
+<h2>Round trips and hypothesis</h2>
+<p>The first half of this module's "Done when" is <em>round trips are exact on arbitrary Unicode</em>. A <strong>round trip</strong> goes somewhere and comes back: encode a text, decode the ids, and you must have the text you started with, for every text. You cannot write every text by hand. <strong>Hypothesis</strong> (met in Module 1) generates them, aimed at the edges, and when one fails it shrinks it to the smallest text that still fails. Here it is on two round trips that are not a tokenizer's: JSON, and ASCII with <code>errors="ignore"</code>, which loses data on purpose:</p>
+
+<pre class="code" data-lang="python" data-file="round_trips.py" data-check="error"><code>import json
+
+from hypothesis import given
+from hypothesis import strategies as st
+
+
+@given(st.text())
+def test_json_round_trip(text):
+    assert json.loads(json.dumps(text)) == text
+
+
+@given(st.text())
+def test_ascii_round_trip(text):
+    squeezed = text.encode("ascii", errors="ignore")  # drops what ASCII cannot hold
+    assert squeezed.decode("ascii") == text
+
+
+test_json_round_trip()
+print("json: every text came back")
+test_ascii_round_trip()
+print("ascii: every text came back")
+</code></pre>
+<pre class="output" data-for="round_trips.py"><code>json: every text came back
+Traceback (most recent call last):
+  ...
+AssertionError
+Failing test case: test_ascii_round_trip(
+    text='\x80',
+)
+</code></pre>
+<p>A function decorated with <code>@given</code> can be called with no arguments: hypothesis calls it with generated values, a hundred by default, which is how this script runs without pytest. JSON brought every text back. The ASCII trip failed, and hypothesis shrank the failure to <code>'\x80'</code>, the first character ASCII cannot hold. A failing case of one character tells you what is wrong.</p>
+<p><code>st.text()</code> never makes the lone <strong>surrogates</strong> of <a href="01-bytes-and-utf8.html#surrogates-and-text-that-is-not-text">chapter 1</a>, such as <code>"\ud800"</code>, which have no UTF-8 bytes, while <code>st.characters()</code> on its own can, which is why <code>test_round_trips_with_bytes_in_another_order</code> asks for <code>st.characters(codec="utf-8")</code>.</p>
+<div class="callout trap"><span class="label">Trap</span><p>A round trip that passes on "Hello world" proves little. The cases that break tokenizers are a character split across two tokens, white space at the end, and characters that are not letters. When hypothesis finds one, add the shrunk case as a plain test of its own, so it stays fixed.</p></div>
+
+<div class="callout try"><span class="label">Write it</span><p><strong>Turn a lookup table around.</strong> Open <a href="../../../drills/02-heaps-lists/warmups/invert_table.py"><code>drills/02-heaps-lists/warmups/invert_table.py</code></a> and read its docstring: given a dict, return a new dict that maps each value back to its key, and raise <code>ValueError</code>, naming the value, if two keys share one. From the empty stub, in ten minutes, the book closed. It gets one ledger row (set <code>02w</code>) and no redos.</p></div>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_invert_table.py
+</code></pre>
+<details class="hint"><summary>Rung 1: where to look</summary><p>Read the four tests, especially <code>test_a_shared_value_is_refused_and_named</code> and <code>test_the_table_you_were_given_is_not_changed</code>, and the docstring once more. Then re-read <a href="#the-tokenizer-s-two-tables">the tokenizer's two tables</a>: what must be true of a table for it to turn round? The Python docs page "Mapping Types — dict" lists the ways to go through a dict.</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>GPT-2's original encoder (<code>src/encoder.py</code> in the <code>openai/gpt-2</code> repository) splits the text with this same pattern, then applies the merges to each chunk by rank. It also keeps a dict from each chunk it has already encoded to its tokens, because real text repeats its chunks, and a lookup is far cheaper than merging again: stretch goal 1 of <a href="../../../modules/02-tokenizer/README.md">the module</a>. In serving, vLLM tokenizes each prompt with the model's Hugging Face tokenizer before it schedules the request, so a request's length in tokens, which decides its cost and its place in a batch, comes from an encoder like yours. A server that streams its answer token by token also meets <a href="#from-ids-back-to-text">broken characters</a>, since one token's bytes can end halfway through a character.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>With the merges <code>{(98, 99): 0, (97, 98): 1}</code>, what does the chunk "abc" (97 98 99) become by rank, and what would "the leftmost pair that has a merge" give instead?</p><details class="answer"><summary>Answer</summary><p>By rank: (98, 99) has rank 0, so "bc" merges first: <code>[97, 256]</code>, and then (97, 256) has no rank. By position: (97, 98) is leftmost, giving <code>[257, 99]</code>. Different tokens from the same merges; the rank is the right one, because it replays the order in which training learned them.</p></details></div>
+<div class="q"><p>In <code>finishing_places.py</code>, why <code>places.get(name, math.inf)</code> rather than <code>places[name]</code>? And in a group where nobody finished, what does <code>min</code> return, and how can you tell it is not a real winner?</p><details class="answer"><summary>Answer</summary><p><code>places["Sam"]</code> raises <code>KeyError</code>, since Sam has no place; infinity instead loses every comparison with a real place. When nobody finished, every key is infinity, they all tie, and <code>min</code> returns the first name of the group. Only its key says the truth: a place of infinity means nobody qualified.</p></details></div>
+<div class="q"><p>Encode "eats" (101 97 116 115) with the tea merges.</p><details class="answer"><summary>Answer</summary><p>Round 1: (101, 97) rank 0 gives 256 116 115. Round 2: (256, 116) rank 2 gives 258 115. Round 3: (258, 115) has no rank, stop. <code>[258, 115]</code>, "eat" and "s".</p></details></div>
+<div class="q"><p>A list of ids ends with a token whose bytes are <code>e4 bd</code>, the first two bytes of 你. What does decoding with <code>errors="replace"</code> put there, and why is <code>"ignore"</code> worse?</p><details class="answer"><summary>Answer</summary><p>One replacement character, <code>�</code>. <code>"ignore"</code> would drop the two bytes without a trace, so the text would look complete when a character is missing; "replace" shows that something was lost, and where.</p></details></div>
+<div class="q"><p>What does <code>re.findall(r"in|ink", "inky inn")</code> return, and why?</p><details class="answer"><summary>Answer</summary><p><code>['in', 'in']</code>. At each position the first alternative that matches wins, so "in" is taken from "inky" and "ink" is never tried. The "ky" is left over, and "inn" gives "in" and a leftover "n".</p></details></div>
+<div class="q"><p>How does GPT-2's pattern split "IT'S", and how does it split "it's"? Which rule makes the difference?</p><details class="answer"><summary>Answer</summary><p>"IT'S": "IT", "'", "S". "it's": "it", "'s". The contractions alternative is written in lower case, so "'S" does not match it, and the apostrophe falls through to the punctuation rule <code> ?[^\s\p{L}\p{N}]+</code>.</p></details></div>
+<div class="q"><p>Why does "a   b" (three spaces) split into "a", "  " and " b", and not "a", "   " and "b"?</p><details class="answer"><summary>Answer</summary><p>The rule <code>\s+(?!\S)</code> takes white space that is not followed by a non-space. Three spaces are followed by "b", so it backtracks to two, which are followed by a space. The third space is then taken by <code> ?\p{L}+</code> together with "b", because a word keeps one space in front of it.</p></details></div>
+<div class="q"><p>Why does the Done-when test never send your tokenizer the string <code>"\ud800"</code>, and why would it fail if it did?</p><details class="answer"><summary>Answer</summary><p><code>st.text()</code> draws its characters from <code>st.characters(codec="utf-8")</code>, which leaves out lone surrogates. Encoding needs the UTF-8 bytes of the text, and a lone surrogate has none: <code>"\ud800".encode("utf-8")</code> raises <code>UnicodeEncodeError</code>.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Explain why new text is encoded by replaying the merges in rank order, with an example where position order gives different tokens.</li>
+<li>Look up ranks in a dict with <code>.get(pair, math.inf)</code>, and know what <code>min</code> returns when nothing has a rank.</li>
+<li>Encode a word by hand, round by round, and decode ids with <code>b"".join</code> and the right <code>errors=</code>.</li>
+<li>Say why a tokenizer takes its byte ids as a parameter, why decoding needs that table turned round, and check that a list holds 0 to n − 1 in some order.</li>
+<li>Say why text is split before merging.</li>
+<li>Read and write regular expressions with classes, <code>+</code>, <code>?</code>, alternation, <code>(?:...)</code> and <code>(?!...)</code>, and say when the engine backtracks.</li>
+<li>Use the <code>regex</code> package for <code>\p{L}</code> and <code>\p{N}</code>, say what each alternative of GPT-2's pattern takes, and why "IT'S" splits differently from "it's".</li>
+<li>Test a round trip with hypothesis, and read the case it shrinks to.</li>
+</ul>
+</main>
+</body>
+</html>

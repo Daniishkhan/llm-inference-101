@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>05 · Heaps and linked lists — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 05</p>
+<h1>Heaps and linked lists</h1>
+<p class="lede">At the end of this chapter you can say why scanning for the smallest item again and again grows with the square of the input, sift an item up and down a heap by hand, recognise heap entries that went stale in two ways, and remove an item from the middle of a list in constant time with two lists of indices. Milestone M6 puts the two structures together.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: one long chunk takes <code>apply_merges</code> seconds.</li>
+<li>Why scanning again and again is quadratic, measured on the M5.</li>
+<li>Inside a heap's push and pop: sift up, sift down, and what each costs.</li>
+<li>How tuples compare, item by item.</li>
+<li>Stale entries, recognised by a version number or by re-checking their facts, and when each is enough.</li>
+<li>A linked list kept in two lists of indices, and removing from its middle in constant time.</li>
+<li>How a heap and a linked list fit together, and why merging one pair at a time gives the round-by-round answer.</li>
+</ul>
+</div>
+
+<p>This chapter builds on chapter 7's pattern sections, which you read in the days before this one: <a href="07-drills.html#following-links-a-chain-of-nodes">Following links</a> (a chain of nodes) and <a href="07-drills.html#a-heap-as-a-to-do-list">A heap as a to-do list</a> (a heap's shape, and <code>heapq</code>). It does not teach them again.</p>
+
+<h2>The problem: one long word takes seconds</h2>
+<p><code>apply_merges</code>, Milestone M4, works one round at a time: look at every neighbouring pair of the chunk, find the one with the lowest rank, merge it everywhere, repeat. For a word of six letters that is nothing. But GPT-2's split pattern keeps a run of letters together as one chunk, however long it is, and a server must take whatever a user sends: a page of English pasted with its spaces stripped out, a hashtag of forty words run together, a key of 50,000 random letters. What makes such a chunk slow is variety. Each round merges one kind of pair, so the number of rounds grows with the number of different pairs that have a rank, and a long run of varied letters keeps making new ones: counted with GPT-2's merges for this chapter, 8,000 random lower-case letters need 827 rounds. A run of one letter repeated, or a DNA string of four letters, makes few kinds of pair and is done in a few dozen rounds at most, however long it is. <code>apply_merges_fast</code>'s docstring in <a href="../../../src/llm101/tokenizer/fast.py">src/llm101/tokenizer/fast.py</a> puts a number on it: 20,000 letters with no space take one to two seconds. Its test gives you 100,000 letters and two seconds, and <code>test_gpt2_encodes_a_long_word_in_two_seconds</code> gives GPT-2's tokenizer 50,000.</p>
+<p>The slow way is not wrong; it repeats itself. Every round it looks at every pair to ask "which is learned earliest?", though most pairs have not changed since the last round. This chapter builds the two structures that stop the repetition: a <strong>heap</strong>, which finds the smallest without looking at everything, and a <strong>linked list</strong>, which changes in the middle without moving the rest.</p>
+
+<h2>Why the slow way is quadratic</h2>
+<p>Take a simpler task with the same shape, and measure it. You have a list of numbers, and you remove the smallest one, again and again, until the list is empty. With no other structure, the only way to find the smallest is to look at every number:</p>
+
+<pre class="code" data-lang="python" data-file="scan_growth.py" data-check="run"><code>import random
+import time
+
+
+def empty_by_scanning(values: list[int]) -&gt; int:
+    """Remove the smallest value again and again, finding it each time by looking at every value.
+    Returns how many values were looked at."""
+    looked = 0
+    while values:
+        best = 0
+        for i in range(1, len(values)):
+            if values[i] &lt; values[best]:
+                best = i
+        looked += len(values)
+        del values[best]
+    return looked
+
+
+rng = random.Random(0)
+for n in [1_000, 2_000, 4_000, 8_000]:
+    values = [rng.randrange(1_000_000) for _ in range(n)]
+    start = time.perf_counter_ns()
+    looked = empty_by_scanning(values)
+    elapsed = time.perf_counter_ns() - start
+    print(f"n = {n:&gt;5,}: {looked:&gt;10,} looks, {elapsed / 1e6:7.1f} ms")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>n = 1,000:    500,500 looks,     7.9 ms
+n = 2,000:  2,001,000 looks,    31.7 ms
+n = 4,000:  8,002,000 looks,   125.6 ms
+n = 8,000: 32,004,000 looks,   505.4 ms
+</code></pre>
+
+<p>Each time n doubles, the time multiplies by four. Picture the looks as a staircase of rows: the first round looks at n numbers, the next at n &minus; 1, then n &minus; 2, down to 1. Stacked, the rows make a triangle about n wide and n tall, half of an n by n square: n &times; (n + 1) / 2 looks, 500,500 for n = 1,000. Work that grows with the square of the input is called <strong>quadratic</strong>, written O(n<sup>2</sup>). At 8,000 numbers it takes half a second; at 100,000 it would take about 156 times as long, more than a minute.</p>
+<p><code>apply_merges</code> has nearly the same shape. A round looks at every pair, about n of them, and a long chunk needs many rounds: each round merges one kind of pair, and a longer chunk holds more kinds. The rounds grow with n, though more slowly than n itself, because a longer chunk repeats more of its kinds: on random letters and GPT-2's merges, 2,000 letters need about 450 rounds and 8,000 about 830. So each doubling of the length costs nearly three times as long, not quite four. Close enough to n<sup>2</sup> that the cure is the same.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A plain list knows nothing about the order of its items, so "which is the smallest?" can only be answered by looking at all of them, every time it is asked. To answer it faster you must keep some order as you go, and pay a little on every change to keep it. The trick is to keep as little order as answers the question: a sorted list keeps too much, and putting one new item in its place moves half the list.</p></div>
+
+<h2>Heaps from first principles</h2>
+<p>A heap keeps exactly enough order to know where the smallest item is. Chapter 7's <a href="07-drills.html#a-heap-as-a-to-do-list">A heap as a to-do list</a> gave you its shape: an ordinary list read as a tree, row after row, with one rule, that no item is smaller than its parent, so the smallest is at index 0. You used it through <code>heapq</code>. This section opens up the two operations you called, push and pop, because Milestone M6 leans on what each one costs. Here is a heap of six items, as a tree and as the list that holds it:</p>
+
+<pre class="grid-figure">            2                 row 0: index 0
+          /   \
+        5       3             row 1: indexes 1 and 2
+       / \     /
+      9   6   4               row 2: indexes 3, 4 and 5
+
+  list   [ 2,  5,  3,  9,  6,  4 ]
+  index    0   1   2   3   4   5
+</pre>
+
+<p>The children of index i are at 2i + 1 and 2i + 2, and its parent at (i &minus; 1) // 2; no links are stored, the index is the link. What matters below is the height. Each row holds twice as many items as the one above it, so a tree of n items has about log<sub>2</sub> n rows: 13 rows for 8,000 items, 17 for 100,000. Push and pop each walk one path between the top and the bottom row, and never more.</p>
+
+<h3>Sift up: adding an item</h3>
+<p>To add an item, put it at the end of the list, the next free place in the bottom row. Only one rule can now be broken: the new item may be smaller than its parent. If it is, swap them, and ask again one row up, until it is no smaller than its parent or reaches the top. This is <strong>sift up</strong>. Adding 1 to the heap above:</p>
+
+<pre class="grid-figure">  append 1 at index 6          1 &lt; parent 3: swap           1 &lt; parent 2: swap
+        2                            2                            1
+      /   \                        /   \                        /   \
+    5       3                    5       1                    5       2
+   / \     / \                  / \     / \                  / \     / \
+  9   6   4   1                9   6   4   3                9   6   4   3
+</pre>
+
+<p>Each step goes up one row, so an addition costs at most about log<sub>2</sub> n swaps. Here is sift up in code, printing every swap:</p>
+
+<pre class="code" data-lang="python" data-file="climb.py" data-check="run"><code>def climb(heap: list[int], value: int) -&gt; None:
+    """Put value at the end of the heap, then swap it with its parent while it is smaller."""
+    heap.append(value)
+    i = len(heap) - 1
+    while i &gt; 0:
+        parent = (i - 1) // 2
+        if heap[parent] &lt;= heap[i]:
+            break
+        print(f"  {heap[i]} at {i} is smaller than its parent {heap[parent]} at {parent}: swap")
+        heap[i], heap[parent] = heap[parent], heap[i]
+        i = parent
+    print(f"  settled at {i}: {heap}")
+
+
+heap = [2, 5, 3, 9, 6, 4]
+for i in range(len(heap)):
+    children = [c for c in (2 * i + 1, 2 * i + 2) if c &lt; len(heap)]
+    print(f"index {i}: {heap[i]}, children at {children}")
+
+print("push 1")
+climb(heap, 1)
+print("push 7")
+climb(heap, 7)
+</code></pre>
+<pre class="output" data-for="climb.py"><code>index 0: 2, children at [1, 2]
+index 1: 5, children at [3, 4]
+index 2: 3, children at [5]
+index 3: 9, children at []
+index 4: 6, children at []
+index 5: 4, children at []
+push 1
+  1 at 6 is smaller than its parent 3 at 2: swap
+  1 at 2 is smaller than its parent 2 at 0: swap
+  settled at 0: [1, 5, 2, 9, 6, 4, 3]
+push 7
+  7 at 7 is smaller than its parent 9 at 3: swap
+  settled at 3: [1, 5, 2, 7, 6, 4, 3, 9]
+</code></pre>
+
+<h3>Sift down: taking the smallest</h3>
+<p>The smallest item is at index 0. Taking it leaves a hole at the top, and the list cannot have a hole. So move the <em>last</em> item into the top place, which keeps the rows full, and repair downwards: if the moved item is larger than either child, swap it with the <em>smaller</em> child (the smaller one, so that the new parent is no larger than the other child), and ask again one row down. This is <strong>sift down</strong>. Taking the 1 from <code>[1, 5, 2, 9, 6, 4, 3]</code>:</p>
+
+<pre class="grid-figure">  take 1, move 3 to the top     3 &gt; smaller child 2: swap     3 &lt;= its child 4: stop
+        3                             2                             2
+      /   \                         /   \                         /   \
+    5       2                     5       3                     5       3
+   / \     /                     / \     /                     / \     /
+  9   6   4                     9   6   4                     9   6   4
+</pre>
+
+<p>One row per step again: about log<sub>2</sub> n swaps. Emptying a heap of 8,000 items is about 8,000 &times; 13 steps, against the 32 million looks of <code>scan_growth.py</code>.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Continue <code>climb.py</code>: after pushing 1 and 7, push 0 and then 8. Before you run it, draw the tree and predict each swap and the final list.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>0 goes in at index 8, whose parent is 3 (the 7): swap; then index 3's parent is 1 (the 5): swap; then the 1 at index 0: swap. The list is <code>[0, 1, 2, 5, 6, 4, 3, 9, 7]</code>. 8 goes in at index 9, whose parent is index 4, the 6: no swap, and the list ends <code>..., 9, 7, 8]</code>.</p></details>
+
+<h2>heapq, and how tuples compare</h2>
+<p><code>heapq</code>, which chapter 7 introduced (<a href="07-drills.html#a-heap-as-a-to-do-list">A heap as a to-do list</a>), does exactly these two walks, in C: <code>heappush</code> is <code>climb</code>, and <code>heappop</code> is the sift down above. You will not write either yourself. What you do choose is what goes on the heap, and on a heap of candidates that is almost always a tuple, so it pays to know exactly how two tuples compare.</p>
+<p>heapq compares items with <code>&lt;</code>, and Python compares two tuples <strong>item by item</strong>, like words in a dictionary: it looks at the first items, and if they differ, they decide and the rest are never looked at. Only when the first items are equal does it look at the second items, and so on along the tuple. If one tuple runs out first with everything equal so far, the shorter is smaller: <code>(3,) &lt; (3, "anything")</code> is <code>True</code>. So the first item of an entry is its main key, and each later item breaks the ties left by the ones before it. A heap of <code>(rank, position)</code> entries pops the lowest rank first and, among equal ranks, the lowest position.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Strings compare by their characters, not by what they mean: <code>sorted(["10:15", "09:40", "9:05"])</code> gives <code>['09:40', '10:15', '9:05']</code>, because the character "9" comes after "1". Times kept as strings must be written with the same number of digits, "09:05", or kept as numbers, such as minutes since midnight.</p></div>
+
+<h2>Entries that went stale</h2>
+<p>A heap is good at its top and bad at its middle. To change an item in the middle, you must first find it, and nothing about a heap's order says where it is: finding it is a scan of the whole list, the very cost a heap exists to avoid.</p>
+<p>Here is where that bites. A courier's van has a heap of deliveries, <code>(time, parcel)</code>, and pops the earliest each time. Then a customer phones and moves their parcel from 09:40 to 12:30. The old entry is somewhere in the heap. Rather than dig it out, push a new entry for the new time and leave the old one where it is. It is now <strong>stale</strong>: it describes something that is no longer true. When it reaches the top, recognise it and throw it away. This is <strong>lazy deletion</strong>: you never remove a stale entry, you only refuse to act on it.</p>
+<p>There are two ways to recognise it. The first needs one more fact per parcel: give each booking a <strong>version number</strong>, keep the current version of each parcel in a dict, and put the version into the entry. An entry whose version is not the parcel's current one is stale:</p>
+
+<pre class="code" data-lang="python" data-file="deliveries.py" data-check="run"><code>import heapq
+
+schedule: list[tuple[str, str, int]] = []  # (time, parcel, version)
+current: dict[str, int] = {}  # parcel -&gt; the version that counts
+
+
+def book(parcel: str, time: str) -&gt; None:
+    """Book a parcel for a time, or move it: the new entry gets the next version number."""
+    current[parcel] = current.get(parcel, 0) + 1
+    heapq.heappush(schedule, (time, parcel, current[parcel]))
+
+
+book("parcel A", "10:15")
+book("parcel B", "09:40")
+book("parcel C", "11:00")
+book("parcel B", "12:30")  # the customer asked for later
+book("parcel A", "09:05")  # and this one earlier
+print(len(schedule), "entries for", len(current), "parcels")
+
+while schedule:
+    time, parcel, version = heapq.heappop(schedule)
+    if version != current[parcel]:
+        print(f"{time}  {parcel} v{version}: stale, skipped")
+        continue
+    print(f"{time}  {parcel} v{version}: deliver")
+</code></pre>
+<pre class="output" data-for="deliveries.py"><code>5 entries for 3 parcels
+09:05  parcel A v2: deliver
+09:40  parcel B v1: stale, skipped
+10:15  parcel A v1: stale, skipped
+11:00  parcel C v1: deliver
+12:30  parcel B v2: deliver
+</code></pre>
+
+<p>Five entries for three parcels: two are stale and nobody removed them. Parcel B's first entry, 09:40, reached the top before its real one; the van checked its version, found 1 where the current version is 2, and skipped it. Every change costs one push, log<sub>2</sub> n steps, and every stale entry costs one pop when it surfaces. The price is room: the heap holds one entry per booking ever made, not one per parcel. That is usually a good trade, since each entry is pushed once and popped at most once.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A kitchen's rail of order tickets, the oldest at the front. When a table changes its order, the waiter does not hunt along the rail for the old ticket: they hang a new one at the back, and the cook, before cooking any ticket, checks it against the till. A ticket that disagrees with the till goes in the bin. <em>Where it breaks:</em> a cook can see the whole rail and could pull the old ticket at a glance. A heap shows you only its top; the old entry is somewhere in the list, and finding it is the scan you were avoiding. And on a heap the dead tickets stay until they reach the front, so the heap is longer than the orders it stands for.</p></div>
+
+<h3>Checking the facts instead</h3>
+<p>A version number is one way to tell. The other adds nothing to the entry: compare what the entry recorded with the state as it is now. The entry for parcel B says 09:40; parcel B is now booked for 12:30; they disagree, so the entry is stale. The booking is the truth, and an entry is only a claim about it, checked when the entry comes off the heap. The same van, with no version anywhere, and with parcel C moved away and back again:</p>
+
+<pre class="code" data-lang="python" data-file="deliveries_by_time.py" data-check="run"><code>import heapq
+
+schedule: list[tuple[str, str]] = []  # (time, parcel): no version
+booked: dict[str, str] = {}  # parcel -&gt; the time it is booked for now
+
+
+def book(parcel: str, time: str) -&gt; None:
+    """Book a parcel for a time, or move it. The entry records the time it was booked for."""
+    booked[parcel] = time
+    heapq.heappush(schedule, (time, parcel))
+
+
+book("parcel A", "10:15")
+book("parcel B", "09:40")
+book("parcel C", "11:00")
+book("parcel B", "12:30")  # the customer asked for later
+book("parcel A", "09:05")  # and this one earlier
+book("parcel C", "08:30")  # C is moved earlier...
+book("parcel C", "11:00")  # ...and back: two entries now say (11:00, parcel C)
+print(len(schedule), "entries for", len(booked), "parcels")
+
+while schedule:
+    time, parcel = heapq.heappop(schedule)
+    if booked.get(parcel) != time:
+        print(f"{time}  {parcel}: booked for {booked.get(parcel)}, stale, skipped")
+        continue
+    print(f"{time}  {parcel}: deliver")
+    del booked[parcel]  # delivered: the parcel has no booking any more
+</code></pre>
+<pre class="output" data-for="deliveries_by_time.py"><code>7 entries for 3 parcels
+08:30  parcel C: booked for 11:00, stale, skipped
+09:05  parcel A: deliver
+09:40  parcel B: booked for 12:30, stale, skipped
+10:15  parcel A: booked for None, stale, skipped
+11:00  parcel C: deliver
+11:00  parcel C: booked for None, stale, skipped
+12:30  parcel B: deliver
+</code></pre>
+
+<p>Seven entries for three parcels, and each parcel delivered once. Parcel C's two moves left two entries that say exactly the same thing, (11:00, parcel C), and both agree with the booking. The first one off the heap is delivered, and delivering deletes the booking, so its twin finds no booking at all and fails the check. Parcel A's old 10:15 entry fails the same way: by the time it surfaces, A has been delivered.</p>
+
+<h3>When the facts are enough</h3>
+<p>Re-checking an entry's own facts is enough when two things hold.</p>
+<ul>
+<li><strong>The entry carries every fact that decides whether it still counts</strong>, and what it carries finds the current state to compare with. A booking is a time; the entry holds the time; the parcel's name finds the booking.</li>
+<li><strong>Acting on an entry changes those facts</strong>, so that an identical twin left on the heap fails its check afterwards. Here the delivery deletes the booking.</li>
+</ul>
+<p>A version number is needed when either fails. If what changed is not in the entry, or could only be compared by working it out again at some cost (a priority computed from many things, say), the entry's facts cannot settle it. If acting leaves the state as it was, an old entry that happens to say the same as the new one passes the check too, and the work is done twice. A version number depends on neither: every change gets a new one, so an entry counts only if it was the latest one pushed, whatever the state says now. It costs one more item in every entry and a dict of current versions.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>In <code>deliveries_by_time.py</code>, delete the line <code>del booked[parcel]</code>. Predict every line of the output, then run it. Would <code>deliveries.py</code> be fooled by the same moves of parcel C, to 08:30 and back to 11:00?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Parcel C is delivered twice at 11:00: both entries agree with its booking, and nothing changes the booking once it is delivered. Parcel A's 10:15 entry still fails, now with "booked for 09:05". <code>deliveries.py</code> would not be fooled: C's three bookings carry versions 1, 2 and 3, so its old 11:00 entry is version 1 against a current 3, and it is skipped whatever happens to the booking.</p></details>
+
+<h2>A linked list in two lists</h2>
+<p>The heap answers "which next?". The other half of the problem is the change itself. A merge replaces two neighbours with one, and in a Python list, <code>del</code> or a slice that removes an item in the middle shifts every item after it one place to the left. A <strong>linked list</strong> avoids the shift: each item records which item comes next, so the order lives in the links, not in positions.</p>
+
+<p>You built the textbook version in chapter 7's <a href="07-drills.html#following-links-a-chain-of-nodes">Following links</a>: a chain of <code>Stop</code> objects, each holding a name and a link to the next, walked from the head, with an insert or a removal done by changing one or two links once you hold the stop before the place. Here the same chain is kept without any objects at all.</p>
+<p>Put the items in an ordinary list, never changed, and keep the links in two more lists of indices: for each position, the index of the item in front and the index of the item behind, with &minus;1 for "nobody". In general these are called <code>prev</code> and <code>next</code>; here they are a queue at a post office, where people leave from anywhere in the line, and the lists are <code>ahead</code> and <code>behind</code>. A list with links both ways is <strong>doubly linked</strong>.</p>
+
+<pre class="code" data-lang="python" data-file="leaving_queue.py" data-check="run"><code>people = ["Ana", "Ben", "Cai", "Dee", "Eli", "Fay"]
+NOBODY = -1
+ahead = [i - 1 for i in range(len(people))]  # ahead[i]: who stands in front of i
+behind = [i + 1 for i in range(len(people))]  # behind[i]: who stands behind i
+behind[-1] = NOBODY
+first = 0
+
+
+def leave(i: int, first: int) -&gt; int:
+    """Take person i out of the queue by joining their two neighbours. Returns the new first."""
+    front, back = ahead[i], behind[i]
+    if front != NOBODY:
+        behind[front] = back
+    else:
+        first = back
+    if back != NOBODY:
+        ahead[back] = front
+    return first
+
+
+def queue(first: int) -&gt; list[str]:
+    names = []
+    i = first
+    while i != NOBODY:
+        names.append(people[i])
+        i = behind[i]
+    return names
+
+
+print(queue(first), ahead, behind)
+first = leave(3, first)  # Dee leaves from the middle
+print(queue(first), ahead, behind)
+first = leave(0, first)  # Ana leaves from the front
+first = leave(5, first)  # Fay leaves from the back
+print(queue(first), "first is", people[first])
+print(people)
+</code></pre>
+<pre class="output" data-for="leaving_queue.py"><code>['Ana', 'Ben', 'Cai', 'Dee', 'Eli', 'Fay'] [-1, 0, 1, 2, 3, 4] [1, 2, 3, 4, 5, -1]
+['Ana', 'Ben', 'Cai', 'Eli', 'Fay'] [-1, 0, 1, 2, 2, 4] [1, 2, 4, 4, 5, -1]
+['Ben', 'Cai', 'Eli'] first is Ben
+['Ana', 'Ben', 'Cai', 'Dee', 'Eli', 'Fay']
+</code></pre>
+
+<p>When Dee, at index 3, leaves, two numbers change: Cai's <code>behind</code> becomes 4, Eli, and Eli's <code>ahead</code> becomes 2, Cai. Dee's own entries still say 2 and 4, but no walk from the front reaches index 3 any more. The ends need care: when the first person leaves there is nobody in front to update, so <code>first</code> moves instead, and when the last leaves there is nobody behind. And <code>people</code> never changed: index 4 is Eli for ever. A position is a name that stays true however many people leave around it, which a heap entry can carry as a plain int.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Walk the queue from the back: write <code>queue_backwards(last)</code>, which follows <code>ahead</code> instead of <code>behind</code>. What must <code>leave</code> also keep up to date for that to work, and what goes wrong if it does not?</p></div>
+<details class="hint"><summary>A nudge</summary><p>The loop is <code>queue</code> with <code>ahead</code> and a start at the last person. <code>leave</code> must then track <code>last</code> as it tracks <code>first</code>: when the person leaving has nobody behind, <code>last</code> becomes their <code>front</code>. Forget it, and after Fay leaves, a backward walk still starts at index 5 and lists Fay, who has gone.</p></details>
+
+<h2>Removing from the middle in constant time</h2>
+<p><code>leave</code> did the same few steps whether the queue held six people or six million: two reads, at most two writes. Work that does not depend on n is <strong>constant time</strong>, O(1). A Python list's <code>del</code> in the middle is O(n): a list is one block of memory holding a reference to each item, side by side, and closing a gap means moving every reference after it one place down. Measure both, removing a thousand people from the middle of lines of three lengths:</p>
+
+<pre class="code" data-lang="python" data-file="middle_cost.py" data-check="run"><code>import time
+
+NOBODY = -1
+LEAVERS = 1_000
+
+for n in [10_000, 100_000, 1_000_000]:
+    # A Python list: del shifts everyone behind the gap one place forward.
+    line = list(range(n))
+    start = time.perf_counter_ns()
+    for _ in range(LEAVERS):
+        del line[len(line) // 2]
+    as_list = time.perf_counter_ns() - start
+
+    # Two lists of indices: a leaver changes two links, and nobody moves.
+    ahead = [i - 1 for i in range(n)]
+    behind = [i + 1 for i in range(n)]
+    behind[-1] = NOBODY
+    start = time.perf_counter_ns()
+    for i in range(n // 2, n // 2 + LEAVERS):
+        front, back = ahead[i], behind[i]
+        behind[front] = back
+        ahead[back] = front
+    as_links = time.perf_counter_ns() - start
+
+    print(
+        f"n = {n:&gt;9,}: del {as_list / LEAVERS:8,.0f} ns per leaver, "
+        f"links {as_links / LEAVERS:4,.0f} ns per leaver"
+    )
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>n =    10,000: del      628 ns per leaver, links   59 ns per leaver
+n =   100,000: del    6,336 ns per leaver, links   60 ns per leaver
+n = 1,000,000: del   62,588 ns per leaver, links   60 ns per leaver
+</code></pre>
+
+<p><code>del</code> grows ten times for each tenfold n: at a million it moves half a million references, 4 MB of memory, for every leaver. The links stay at 60 ns, about the cost of one turn of a Python loop with four list accesses, whatever n is. Even at 10,000, where the move is a fast block copy in C, the links win by ten times.</p>
+<p>Why ints rather than chapter 7's <code>Stop</code> objects? Both are O(1), but an object costs dozens of bytes and an attribute lookup per step, and an index can be stored anywhere, in a tuple on a heap, say, and still mean the same place later.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>O(1) removal needs the place in hand. If you must first <em>search</em> for the person who is leaving by walking the queue, the search is O(n) and the cheap removal saves nothing. A linked list pays off only when something else tells you where to act.</p></div>
+
+<h2>How the two fit together</h2>
+<p>Each structure covers the other's weakness. A heap tells you where to act next but cannot be changed in the middle; a linked list changes in the middle for nothing but cannot tell you where. Together they handle "act on the most urgent place in a row, again and again, where each action changes the row around it".</p>
+<p>In words, the picture is this. The row lives in a linked list kept in two lists of indices, so an action changes a few links and moves nothing. The <em>candidates</em>, every place where an action could happen, live in a heap, each entry carrying its priority and the index where it applies, so the most urgent is always on top. Each round pops the top and acts on the row there. The action changes the place's neighbours, so the candidates that described them are now wrong: they are stale. Leave them in the heap, as the van left its old bookings, and push fresh candidates for whatever the change created. When a stale entry reaches the top, check it against the row as it stands now, and skip it. A round then costs a few link changes and a few heap operations of log<sub>2</sub> n steps each, instead of a scan of the whole row.</p>
+<h3>Why one at a time gives the same answer</h3>
+<p>There is a question to settle before you trust the picture. <code>apply_merges</code> works in rounds: find the lowest rank among the pairs, merge every occurrence of that pair, left to right, then look again. The heap does something that sounds different. It handles one occurrence at a time, in the order of <code>(rank, position)</code> that tuples give: the lowest rank first and, among occurrences of the same rank, the leftmost first. Positions never change and the tokens that survive keep their order, so a smaller position is always further left. Why should the two give the same tokens?</p>
+<p>Because of one rule from the <code>Tokenizer</code> docstring: <strong>merge r may only use ids below 256 + r</strong>. Follow what a merge of rank r does. It makes the token 256 + r, and the only new pairs it creates are that token with its left neighbour and with its right neighbour. Both contain the id 256 + r. A merge of rank s that uses that id needs 256 + r to be below 256 + s, so s is greater than r. A merge of rank r can therefore create pairs of higher rank only: never one of rank r, and never one of a lower rank.</p>
+<p>Now watch the heap. While the lowest rank on top is r, nothing that happens can add a pair of rank r or below, so every occurrence of rank r that will ever exist is already in the row. The heap hands them over left to right, and none of a higher rank comes off until the last of them is done. That is the round of rank r, occurrence by occurrence. Where two occurrences overlap, as in three equal ids in a row, the left one goes first and takes the middle id with it; the right one is no longer there, and its entry is stale. That is <code>merge_pair</code>'s own rule, left to right with no overlap. Then the next rank comes to the top, which is the next round <code>apply_merges</code> would choose, and the argument repeats. Round by round or one at a time, the same occurrences are merged in the same order.</p>
+
+<p>So the picture is the shape of <code>apply_merges_fast</code>, and its docstring names the pieces: the tokens as a linked list, and a heap of the neighbouring pairs that have a rank. What makes an entry stale, and which of the two ways of telling fits, is the heart of Milestone 6, and the docstring and <a href="08-build-the-tokenizer.html#milestone-6-apply-merges-fast">its hint ladder in chapter 8</a> are where to work it out. The ladder's last rung is a complete program on a different problem built from exactly these two structures.</p>
+
+<p>One piece of the picture is worth practising on its own: popping past entries that no longer count.</p>
+
+<div class="callout try"><span class="label">Write it</span><p><strong>The next job off a heap, skipping the cancelled ones.</strong> Open <a href="../../../drills/02-heaps-lists/warmups/next_alive.py"><code>drills/02-heaps-lists/warmups/next_alive.py</code></a>, read its docstring, and write the body from the empty stub: about ten lines, ten minutes, the book closed. Jobs that were cancelled were left in the heap; return the first name that is still alive, dropping the dead ones on the way, or <code>None</code> if the heap runs out.</p>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_next_alive.py
+</code></pre>
+<p>Then one row in <code>ledger.md</code>, with the set written <code>02w</code>; a Write it has no redos.</p></div>
+<details class="hint"><summary>Stuck? Where to look</summary><p>Re-read "Entries that went stale": which line of <code>deliveries.py</code> decides that an entry does not count? Then read <code>test_it_keeps_the_heap_a_heap</code>: which heapq function may touch the list, so that it is still a heap afterwards?</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>Both structures are in the code you will read. vLLM loads each model's tokenizer from its Hugging Face files, and Hugging Face's tokenizers library merges the pieces of a word with a binary heap of candidate merges, the lowest rank on top, rather than rescanning every round. And vLLM V1 keeps the free blocks of its KV cache, the memory that holds each request's past tokens, in a doubly linked list, <code>FreeKVCacheBlockQueue</code> in <code>vllm/v1/core/kv_cache_utils.py</code>. Each block holds a link to the free block before it and to the one after it, and a placeholder block sits at each end, so that no block is ever a special case. A block that is freed joins the back, and a new request takes blocks from the front. When a request can reuse a block that the prefix cache still holds, that block leaves from the middle by relinking its two neighbours: constant time, no search, nothing shifted. Module 10 rebuilds that queue.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Scanning for the smallest of 1,000 numbers until the list is empty took 500,500 looks. How many for 3,000, and roughly how much longer will it take?</p><details class="answer"><summary>Answer</summary><p>3,000 &times; 3,001 / 2 = 4,501,500 looks, about nine times as many: three times the input, three squared the work. Expect about nine times the time, around 70 ms on the M5.</p></details></div>
+<div class="q"><p>Is <code>[1, 3, 2, 5, 4]</code> a heap? Is <code>[1, 3, 2, 1]</code>?</p><details class="answer"><summary>Answer</summary><p>The first is: 1 is no larger than 3 and 2, and 3 is no larger than its children 5 and 4. The second is not: index 3 holds 1, and its parent, index 1, holds 3, which is larger.</p></details></div>
+<div class="q"><p>Why does sift down swap with the <em>smaller</em> child?</p><details class="answer"><summary>Answer</summary><p>The child that moves up becomes the parent of the other child. Only the smaller of the two is no larger than the other, so only it keeps the heap property on both sides.</p></details></div>
+<div class="q"><p>What do <code>(2, "b", 9) &lt; (2, "b", 10)</code> and <code>("2", "b") &lt; ("10", "a")</code> give, and why?</p><details class="answer"><summary>Answer</summary><p><code>True</code>: the first two items are equal, so 9 against 10 decides. <code>False</code>: the strings "2" and "10" are compared character by character, and "2" comes after "1", so the second tuple is smaller.</p></details></div>
+<div class="q"><p>In <code>deliveries.py</code>, parcel B is moved three times after its first booking. How many entries for B are on the heap, and how many are stale?</p><details class="answer"><summary>Answer</summary><p>Four entries, versions 1 to 4; three are stale. Only the one whose version equals <code>current["parcel B"]</code>, 4, is delivered.</p></details></div>
+<div class="q"><p>In <code>deliveries_by_time.py</code>, parcel A is booked for 10:15, moved to 09:05, and moved back to 10:15. Which of its entries are delivered and which skipped, and why is no version number needed?</p><details class="answer"><summary>Answer</summary><p>Three entries: (09:05, A) and two of (10:15, A). The 09:05 entry disagrees with the booking, 10:15, and is skipped. The first 10:15 entry agrees and is delivered, and the delivery deletes the booking, so the second finds none and is skipped. The facts decide everything here, and acting changes them, so no version is needed.</p></details></div>
+<div class="q"><p>In <code>leaving_queue.py</code>, which numbers change when Cai (index 2) leaves the full queue, and why is it constant time?</p><details class="answer"><summary>Answer</summary><p><code>behind[1]</code>, Ben's, becomes 3, and <code>ahead[3]</code>, Dee's, becomes 1. Two reads and two writes, whatever the length of the queue: nobody else's entries are touched and nothing is shifted.</p></details></div>
+<div class="q"><p>Merge 44 has just made the token 300. Could the new pair (300, 97) have rank 10? And why does the answer matter for merging one occurrence at a time?</p><details class="answer"><summary>Answer</summary><p>No. Merge 10 may only use ids below 266, and 300 is not one. Any merge that uses 300 has a rank above 44. So a merge of rank 44 never creates a pair of rank 44 or below, and when rank 44 reaches the top of the heap, every pair of rank 44 there will ever be is already in the row: they come off left to right, which is <code>apply_merges</code>'s round of rank 44.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say why finding the smallest by scanning, round after round, is quadratic, and show it with measurements.</li>
+<li>Sift an item up and down a heap kept in a list, by hand, and say why each costs about log<sub>2</sub> n.</li>
+<li>Predict how two tuples compare, and keep times that sort as they should.</li>
+<li>Leave stale entries on a heap and recognise them by a version number or by re-checking their facts, and say when the facts are enough.</li>
+<li>Keep a doubly linked list in two lists of indices, and say why removing from its middle is O(1) where a Python list's <code>del</code> is O(n).</li>
+<li>Describe, in words, how a heap of candidates over a linked list replaces a scan per round, and why merging one occurrence at a time in (rank, position) order gives the same answer as merging round by round.</li>
+</ul>
+</main>
+</body>
+</html>

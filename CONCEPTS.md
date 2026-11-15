@@ -23,7 +23,7 @@ on; D00 is the diagnostic drill set; RAG is the optional module after the capsto
 | Prefix sums: a running total, and a dict of the totals seen so far | Subarray Sum Equals K; Range Sum Query | M1 drills (count_stretches) | M4 (top-p cutoff) | in progress |
 | Two pointers | Valid Palindrome; 3Sum; Merge Sorted Array | M13 (verifying drafts) | | planned |
 | Sliding window | Longest Substring Without Repeating Characters; Sliding Window Maximum | M4 (repetition penalty) | M12, M19 (rate metrics) | planned |
-| Stack | Valid Parentheses; Daily Temperatures | D00 (balanced brackets) | M13 (JSON nesting) | in progress |
+| Stack | Valid Parentheses; Evaluate Reverse Polish Notation | D00 (balanced brackets) | M13 (JSON nesting) | in progress |
 | Binary search, and binary search on the answer | Binary Search; Koko Eating Bananas; Search in Rotated Sorted Array | M4 (top-p cutoff) | M15 (tuning), M19 (hash ring) | planned |
 | Linked lists, singly and doubly linked, with dummy head and tail | Reverse Linked List; Merge Two Sorted Lists; LRU Cache | M2 (merging in place) | M10 (free blocks), M11 (LRU) | planned |
 | Trees, tries and radix trees | Implement Trie; Longest Common Prefix; Word Search II | M11 (radix prefix cache) | M13 (vocabulary trie) | planned |
@@ -32,7 +32,7 @@ on; D00 is the diagnostic drill set; RAG is the optional module after the capsto
 | Greedy | Jump Game; Gas Station | M9 (token-budget admission) | M12 | planned |
 | Graphs: BFS, DFS, topological order, shortest paths | Number of Islands; Course Schedule; Network Delay Time | M13 (state machines) | RAG (HNSW) | planned |
 | Dynamic programming | Climbing Stairs; Word Break; Edit Distance | M2 stretch (Unigram segmentation) | output checks | planned |
-| Bit manipulation | Number of 1 Bits; Reverse Bits | M16 (int4 packing) | | planned |
+| Bit manipulation: shifts and masks | Number of 1 Bits; Reverse Bits | M2 (UTF-8 by hand) | M16 (int4 packing) | planned |
 | Dynamic arrays and amortised cost; ring buffers | | M5 (the cache grows) | M10 | planned |
 | Queues and state machines | | M7 (the request lifecycle) | M9, M13 | planned |
 | Consistent hashing; a token bucket | | M19 | | planned |
@@ -46,6 +46,7 @@ on; D00 is the diagnostic drill set; RAG is the optional module after the capsto
 | Latency as a distribution: p50, p95, p99, tails | M1 | M8, M12 (TTFT and ITL), M15, M19 | in progress |
 | Throughput, and the trade-off with latency | M1 | M8, M9, M15 | in progress |
 | Bytes and UTF-8; byte-pair encoding; tokens as cost | M2 | M3, M11, M13 | planned |
+| Pre-tokenization with a regular expression; special tokens; reproducing a tokenizer against an oracle (tiktoken) | M2 | M3 (ids into embeddings), M7 (token accounting), M13 (masks over tokens) | planned |
 | Embeddings, attention, MLP, layer norm, logits | M3 | M5, M6, Phase 2 | planned |
 | Attention cost grows with the square of the sequence length | M3 | M5, M12 | planned |
 | Decoding strategies: greedy, temperature, top-k, top-p, repetition penalty, seeds, stop strings | M4 | M7, M13 | planned |
@@ -84,6 +85,8 @@ on; D00 is the diagnostic drill set; RAG is the optional module after the capsto
 | pytest; hypothesis property tests and shrinking | M1 ([ch. 2](docs/book/01-measure/02-tails-and-percentiles.html)) | every module; M10 (random alloc and free) | in progress |
 | `dataclasses`, type hints | M1 | every module | in progress |
 | `bytes`, `str.encode`, `heapq` | M2 | M4, M12 | planned |
+| Regular expressions: `re`, and `regex` with `\p{L}` and `\p{N}` | M2 ([ch. 3](docs/book/02-tokenizer/03-encoding-by-rank.html)) | M13 (structured output from a regex) | planned |
+| `json` and `pathlib`; reading a file as UTF-8 | M2 ([ch. 4](docs/book/02-tokenizer/04-gpt2s-tokenizer.html)) | M3, M7 | planned |
 | numpy shapes, broadcasting, matrix multiplication; safetensors | M3 | M5, M6, M16 | planned |
 | PyTorch: tensors, devices, dtypes, inference without gradients; MPS on the Mac, CUDA on the rented GPU | M6 | Phase 2, Phase 3 | planned |
 | asyncio; FastAPI and uvicorn; httpx | M7 | M8, M9, M19 | planned |

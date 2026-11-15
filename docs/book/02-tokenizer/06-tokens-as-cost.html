@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>06 · Tokens as cost — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 06</p>
+<h1>Tokens as cost</h1>
+<p class="lede">At the end of this chapter you will be able to say why one sentence costs different numbers of tokens in different languages, turn a token count into a bill and into a wait, weigh a big vocabulary against a small one, and time a tokenizer honestly.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: one sentence in six languages, six token counts.</li>
+<li>Characters per token, measured on a text of your own.</li>
+<li>Paying per token: dollars per million, input against output.</li>
+<li>Tokens and latency: prefill, decode, the context window, the KV cache.</li>
+<li>How big a vocabulary should be.</li>
+<li>Measuring a tokenizer's speed, and why tiktoken is fast.</li>
+</ul>
+</div>
+
+<h2>The problem: the same sentence, different bills</h2>
+<p>A model is paid for, timed and limited in tokens. A service bills per token, a reply arrives one token at a time, and a context window holds so many tokens and no more. So the first question about a text is not how long it is, but how many tokens the tokenizer makes of it. Here is one sentence, <em>The train to the airport leaves every twenty minutes</em>, in six languages, counted by the oracle, and then one word of it, "airport", split into its tokens in five of them.</p>
+<p>The program's first lines build tiktoken's GPT-2 encoding from the two files in <code>data/gpt2/</code>. They are chapter 4's lines (<a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">tiktoken, the oracle</a>), unchanged: type them with the page open, and the rest from memory. This chapter has two programs that start this way, and this is the first. Copy the sentences rather than type them:</p>
+<pre class="code" data-lang="python" data-file="same_sentence.py" data-check="run"><code>import tiktoken
+from tiktoken.load import data_gym_to_mergeable_bpe_ranks
+from tiktoken_ext.openai_public import r50k_pat_str
+
+from llm101.tokenizer.gpt2 import MERGES_PATH, VOCAB_PATH
+
+ranks = data_gym_to_mergeable_bpe_ranks(
+    vocab_bpe_file=str(MERGES_PATH), encoder_json_file=str(VOCAB_PATH)
+)
+gpt2 = tiktoken.Encoding(
+    name="gpt2-from-data",
+    pat_str=r50k_pat_str,
+    mergeable_ranks=ranks,
+    special_tokens={"&lt;|endoftext|&gt;": 50256},
+)
+
+sentences = {
+    "English": "The train to the airport leaves every twenty minutes.",
+    "French": "Le train pour l'aéroport part toutes les vingt minutes.",
+    "Greek": "Το τρένο για το αεροδρόμιο φεύγει κάθε είκοσι λεπτά.",
+    "Russian": "Поезд в аэропорт отправляется каждые двадцать минут.",
+    "Korean": "공항으로 가는 기차는 20분마다 출발합니다.",
+    "Japanese": "空港行きの電車は二十分ごとに出ます。",
+}
+
+english = len(gpt2.encode_ordinary(sentences["English"]))
+print("language  characters  bytes  tokens  against English")
+for language, sentence in sentences.items():
+    characters = len(sentence)
+    size = len(sentence.encode("utf-8"))
+    tokens = len(gpt2.encode_ordinary(sentence))
+    print(f"{language:8} {characters:11} {size:6} {tokens:7} {tokens / english:16.1f}")
+
+print()
+for word in [" airport", " aéroport", " αεροδρόμιο", " аэропорт", " 공항"]:
+    ids = gpt2.encode_ordinary(word)
+    size = len(word.encode("utf-8"))
+    print(f"{word!r}: bytes {size}, tokens {len(ids)}")
+    print("   ", [gpt2.decode_single_token_bytes(i) for i in ids])
+</code></pre>
+<pre class="output" data-for="same_sentence.py"><code>language  characters  bytes  tokens  against English
+English           53     53      10              1.0
+French            55     56      19              1.9
+Greek             52     95      58              5.8
+Russian           52     97      58              5.8
+Korean            24     58      50              5.0
+Japanese          18     54      30              3.0
+
+' airport': bytes 8, tokens 1
+    [b' airport']
+' aéroport': bytes 10, tokens 4
+    [b' a', b'\xc3\xa9', b'ro', b'port']
+' αεροδρόμιο': bytes 21, tokens 12
+    [b' \xce\xb1', b'\xce\xb5', b'\xcf\x81', b'\xce\xbf', b'\xce', b'\xb4', b'\xcf\x81', b'\xcf', b'\x8c', b'\xce\xbc', b'\xce\xb9', b'\xce\xbf']
+' аэропорт': bytes 17, tokens 10
+    [b' \xd0', b'\xb0', b'\xd1', b'\x8d', b'\xd1\x80', b'\xd0\xbe\xd0', b'\xbf', b'\xd0\xbe', b'\xd1\x80', b'\xd1\x82']
+' 공항': bytes 7, tokens 6
+    [b' ', b'\xea', b'\xb3', b'\xb5', b'\xed\x95', b'\xad']
+</code></pre>
+<p>The six sentences are about the same length in characters, except Korean and Japanese, which pack a word into one or two characters. Yet Greek and Russian take 58 tokens to English's 10. A service that bills per token bills almost six times as much to read the Russian sentence, and a model that writes it takes almost six times as many steps.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A model does a fixed amount of work for each token: one row of its embedding table in, one pass through every layer, and, when it writes, one score for every token of the vocabulary out. It never sees characters or words. So whatever costs money, time or memory in an engine is counted in tokens, and the tokenizer decides how many there are before the model sees anything.</p></div>
+
+<p>Two things make the difference, and you have met both. The first is <strong>bytes per character</strong>. UTF-8 spends one byte on an English letter, two on a Greek or Cyrillic one, three on a Korean or Japanese character (<a href="01-bytes-and-utf8.html#how-many-bytes-a-script-takes">chapter 1</a>). Before a single merge, the Russian sentence is 97 bytes to English's 53.</p>
+<p>The second is <strong>which merges were learned</strong>. GPT-2's merges were learned from its training text, a large collection of web pages that is overwhelmingly English. The pairs most frequent in English were merged first, and whole English words became single tokens. Pairs of Cyrillic or Greek bytes were rare, so few of them earned a merge. The second half of the output shows it, one word in each script. " airport", with its space, is one token. " aéroport" is four: é is two bytes, and the pieces around it are English fragments. The Greek and Russian words fall apart into tokens of one or two bytes, and the Korean one into the space, three single bytes and two more pieces. Those words take more tokens than they have characters.</p>
+<p>Look at <code>b'\xce'</code> then <code>b'\xb4'</code> in the Greek word, and <code>b'\xd0\xbe\xd0'</code> in the Russian one. Those tokens end in the middle of a character: a merge knows only bytes, so nothing stops it from joining the end of one character to the start of the next. That is why a token decoded on its own can show "�" (<a href="01-bytes-and-utf8.html#when-bytes-are-not-a-whole-character">chapter 1</a>).</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A parcel service that charges per box. Its packer has boxes made to measure for the common objects of one country: a kettle goes in one box. An object from elsewhere has no box of its own, so it is cut into pieces, each in a small standard box, and the same kettle made abroad ships in six boxes at six times the price. <em>Where it breaks:</em> a packer could learn new boxes as orders come in, but a tokenizer's merges are fixed at training, and every text is packed with them for ever. And the model's work per box is not quite constant: late in a long text, each token's attention looks back over more tokens, so a late token costs a little more than an early one.</p></div>
+
+<p><a href="../../../modules/02-tokenizer/BENCH.md">BENCH.md</a>'s Experiment asks the same question of six other sentences, Hindi among them, counted with your own tokenizer. This chapter leaves them alone: the prediction is yours to make from the two reasons above.</p>
+
+<h2>Characters per token</h2>
+<p>A number people quote is <strong>characters per token</strong>: a text's length in characters divided by its number of tokens. For English prose and GPT-2 it is often given as about four. Here it is on three texts written for this chapter: a paragraph of plain prose about a lighthouse keeper, the same paragraph in capitals, and a line of phone numbers and times (<code>Call 0161 496 0738 or 0161 496 0912 before 17:45 on 03/11/2026.</code>). From the oracle, counted with the encoding of <code>same_sentence.py</code>:</p>
+<table>
+<thead><tr><th>Text</th><th>Characters</th><th>Tokens</th><th>Characters per token</th></tr></thead>
+<tbody>
+<tr><td>The paragraph</td><td>656</td><td>145</td><td>4.52</td></tr>
+<tr><td>The same, in capitals</td><td>656</td><td>226</td><td>2.90</td></tr>
+<tr><td>Phone numbers and times</td><td>63</td><td>26</td><td>2.42</td></tr>
+</tbody>
+</table>
+<p>4.52 on the paragraph: a little better than four, because it is plain prose of common words, and most of them, with their leading space, are single tokens. In capitals it takes 226 tokens against 145, because capitalised words were rare in the training text and few were merged. The numbers are worse still, at 2.42: the split puts each run of digits in a chunk of its own, and most runs of four digits, even <code>" 2026"</code>, take two tokens.</p>
+<p>So the ratio belongs to a text and a tokenizer together, not to a language. Four is a fair first guess for English prose with GPT-2; for code, numbers, capitals or another script, measure. The sentences of the first program give 5.3 for English and 0.9 for Russian.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Add three texts of your own to the <code>sentences</code> dict of <code>same_sentence.py</code>: a paragraph you wrote, the same paragraph with <code>.upper()</code>, and a line of Python. Before you run it, predict which of the three has the most characters per token and which the fewest.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Plain prose of common words usually comes out highest, at four or more characters per token, and capitals lower, near three: the same pattern as the table. A line of Python lands near the capitals: four lines tried for this chapter gave between 2.45 and 3.19. Common words such as <code> return</code> are single tokens with their space, but names, brackets, dots and runs of spaces each cost tokens of their own. The column "against English" stops meaning much for these rows: divide the characters by the tokens yourself.</p></details>
+
+<div class="callout trap"><span class="label">Trap</span><p>Every model family has its own tokenizer, and counts do not carry over. A budget worked out with GPT-2's tokenizer is wrong for a model with another vocabulary, sometimes badly for languages other than English. Count with the tokenizer of the model you will call.</p></div>
+
+<h2>Paying per token</h2>
+<p>Services that run models price them in <strong>dollars per million tokens</strong>, with two prices: one for <strong>input tokens</strong> (the prompt you send) and one for <strong>output tokens</strong> (the reply). The output price is usually the higher, and the next section shows why: the prompt is read in one go, while each output token is a step of its own.</p>
+<p>Take two example prices, invented for this chapter and not those of any real service: <strong>$0.40 per million input tokens</strong> and <strong>$1.60 per million output tokens</strong>. A request sends 1,500 tokens and gets 300 back. Each part costs its tokens times its price, divided by a million:</p>
+<table>
+<thead><tr><th>Part</th><th>Tokens</th><th>Example price per million</th><th>Arithmetic</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td>Input</td><td>1,500</td><td>$0.40</td><td>1,500 × 0.40 / 1,000,000</td><td>$0.00060</td></tr>
+<tr><td>Output</td><td>300</td><td>$1.60</td><td>300 × 1.60 / 1,000,000</td><td>$0.00048</td></tr>
+<tr><td>The request</td><td></td><td></td><td>0.00060 + 0.00048</td><td>$0.00108</td></tr>
+</tbody>
+</table>
+<p>About a tenth of a cent, and $1,080 for a million such requests. The reply is a sixth of the tokens and almost half of the bill.</p>
+<p>Now suppose the same conversation were in Russian, and the first program's ratio of 5.8 held throughout (one sentence is not a law, but it is the right size for GPT-2). The request becomes 8,700 tokens in and 1,740 out, and every line of the table grows by the same factor: the same conversation, model and prices, and a bill almost six times as large, decided before the model saw a word.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>A job summarises 10,000 documents of 20,000 tokens each, with a 500-token summary for each. At the example prices, what does it cost, and which part of the bill is bigger?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Per document, input 20,000 × 0.40 / 1,000,000 = $0.008 and output 500 × 1.60 / 1,000,000 = $0.0008: $0.0088. For 10,000 documents, $88, of which $80 is input. With a long prompt and a short reply, the input dominates, although each output token costs four times as much.</p></details>
+
+<h2>Tokens and latency</h2>
+<p>Time is the other cost of a token. An engine handles a request in two phases:</p>
+<ul>
+<li><strong>Prefill.</strong> The engine has every token of the prompt, so it runs them through the model together, in parallel. A thousand-token prompt takes far less than a thousand times as long as a one-token prompt. Prefill ends with the first token of the reply, so it sets the <strong>time to first token</strong>.</li>
+<li><strong>Decode.</strong> Each further token depends on the one before, so the model makes them one at a time: one <strong>step</strong>, a full pass through the model, per output token. A 300-token reply is 300 steps, and the length of a step is the <strong>time per output token</strong>.</li>
+</ul>
+<p>With example timings, invented for the arithmetic, of 50 ms of prefill and 20 ms per step: the English reply of 300 tokens takes 50 + 300 × 20 = 6,050 ms, and the Russian one of 1,740 tokens 50 + 1,740 × 20 = 34,850 ms. Six seconds against thirty-five, for the same answer.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>Reading a letter and writing the reply. You take in a page at a glance, so a long letter reads almost as fast as a short one; but you write the reply a word at a time, rereading what you have so far before each next word. <em>Where it breaks:</em> a model would really reread the whole conversation at every step, unless it kept what it had already worked out about each token. That store is the KV cache.</p></div>
+
+<p>Two limits are in tokens too. A model's <strong>context window</strong> is the most tokens it can hold, prompt and reply together; GPT-2's is 1,024, which holds the English sentence 102 times (1,024 // 10) and the Russian one 17 times (1,024 // 58). And the <strong>KV cache</strong>, where the engine keeps every layer's keys and values for every token so far, grows by a fixed amount per token: 128 KiB for a model shaped like Llama 3.1 8B (<a href="../01-measure/06-boxes-and-arrays.html">Module 1, chapter 6</a>). At that size the English sentence holds 1.25 MiB of cache and the Russian one 7.25 MiB. Module 5 builds the cache. A longer tokenization means more steps, more memory, and fewer requests on the same GPU at once.</p>
+
+<h2>How big should a vocabulary be?</h2>
+<p>Why not learn more merges, so that every word of every language gets a token? Because each token in the vocabulary costs something too. You can see both sides with GPT-2's files: keep only the first <em>m</em> merges, which is the tokenizer that training would have produced had it stopped after <em>m</em> rounds, and count the tokens of one text. GPT-2's ids follow the order its merges were learned, so the tokenizer of the first <em>m</em> merges is the oracle built from only the ranks below 256 + <em>m</em>: the 256 bytes and those merges. The table also sizes the <strong>embedding table</strong>, which holds a row of numbers for every token of the vocabulary: 768 numbers per row in GPT-2 small. From the oracle, on one sentence of 175 characters (<em>In winter the storms came in from the west, and for weeks at a time the supply boat could not land, so he kept a shelf of tinned food for the nights when the generator failed.</em>):</p>
+<table>
+<thead><tr><th>Merges</th><th>Vocabulary</th><th>Tokens</th><th>Numbers in the table</th><th>MB as float32</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>256</td><td>175</td><td>196,608</td><td>0.8</td></tr>
+<tr><td>1,000</td><td>1,256</td><td>64</td><td>964,608</td><td>3.9</td></tr>
+<tr><td>5,000</td><td>5,256</td><td>49</td><td>4,036,608</td><td>16.1</td></tr>
+<tr><td>20,000</td><td>20,256</td><td>40</td><td>15,556,608</td><td>62.2</td></tr>
+<tr><td>50,000</td><td>50,256</td><td>40</td><td>38,596,608</td><td>154.4</td></tr>
+</tbody>
+</table>
+<p>With no merges every byte is a token: 175 for 175 characters. A thousand merges cut that to 64, five thousand to 49, twenty thousand to 40, and the last thirty thousand do nothing for this sentence: they serve rarer words and other scripts. Each merge helps less text than the one before, because the common pairs went first.</p>
+<p>The table, meanwhile, grows in a straight line. GPT-2's 50,257 tokens (256 bytes, 50,000 merges and <code>&lt;|endoftext|&gt;</code>) at 768 numbers each are about 38.6 million numbers, nearly a third of GPT-2 small's roughly 124 million parameters. And the vocabulary is paid for twice. At the input, the table is only a lookup by id. At the output, the model scores every token of the vocabulary at every step and turns the scores into probabilities with the <strong>softmax</strong>: for GPT-2, 50,257 scores of 768 multiplications each, about 38.6 million multiply-adds per token written. A rare token, seen a handful of times in training, also gets only a handful of chances to learn a good row.</p>
+<p>So a vocabulary's size is a trade: fewer tokens per text, and so fewer steps and less cache, against a bigger table and a bigger softmax at every step. GPT-2 chose 50,257. Several newer open models use vocabularies of more than 100,000 tokens.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Without running anything: how many tokens does the Korean sentence of the first program take with no merges, and with all of GPT-2's?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>With no merges, 58, its UTF-8 bytes; with all of them, 50, from the first program. Fifty thousand merges saved it 8 tokens, and saved the English sentence 43 (53 bytes down to 10).</p></details>
+
+<h2>Measuring a tokenizer's speed</h2>
+<p>A tokenizer's speed is quoted in <strong>characters per second</strong> (or bytes, or tokens: say which). Time it on a long text, because a short one measures mostly the cost of the call, and many times, because one timing lies (<a href="../01-measure/01-two-clocks.html">Module 1, chapter 1</a>): the first call can pay one-time costs, and any call can be slowed by something else on the machine. Report the median.</p>
+<p>The program makes a text of its own, about 96,000 characters of random words, times one call with <code>time.perf_counter_ns</code> around tiktoken's <code>encode_ordinary</code>, then 21 calls with the standard library's <code>timeit.repeat</code>. Its last lines time something else, for the next section: a Python loop that only adds up the text's bytes. It is the chapter's second program that starts with the oracle's lines; type those with the page open again. One run on the M5; yours will differ:</p>
+<pre class="code" data-lang="python" data-file="tokenizer_speed.py" data-check="run"><code>import random
+import statistics
+import time
+import timeit
+
+import tiktoken
+from tiktoken.load import data_gym_to_mergeable_bpe_ranks
+from tiktoken_ext.openai_public import r50k_pat_str
+
+from llm101.tokenizer.gpt2 import MERGES_PATH, VOCAB_PATH
+
+ranks = data_gym_to_mergeable_bpe_ranks(
+    vocab_bpe_file=str(MERGES_PATH), encoder_json_file=str(VOCAB_PATH)
+)
+gpt2 = tiktoken.Encoding(
+    name="gpt2-from-data",
+    pat_str=r50k_pat_str,
+    mergeable_ranks=ranks,
+    special_tokens={"&lt;|endoftext|&gt;": 50256},
+)
+
+
+def add_up_bytes(data):
+    total = 0
+    for byte in data:
+        total += byte
+    return total
+
+
+words = (
+    "the keeper climbed a hundred steps of lighthouse and wiped salt from great lens "
+    "wrote weather in ledger that nobody read, wind colour sea ships gulls rocks. "
+    "storms came west; supply boat could not land: tinned food, potatoes, candles!"
+).split()
+rng = random.Random(6)
+text = " ".join(rng.choice(words) for _ in range(16_000))
+data = text.encode("utf-8")
+print(f"{len(text):,} characters, {len(data):,} bytes, {len(gpt2.encode_ordinary(text)):,} tokens")
+
+start = time.perf_counter_ns()
+gpt2.encode_ordinary(text)
+once_ns = time.perf_counter_ns() - start
+print(f"one call:         {once_ns / 1e6:.2f} ms")
+
+runs_ns = timeit.repeat(
+    lambda: gpt2.encode_ordinary(text), timer=time.perf_counter_ns, number=1, repeat=21
+)
+median_ns = statistics.median(runs_ns)
+print(
+    f"21 calls: median  {median_ns / 1e6:.2f} ms, fastest {min(runs_ns) / 1e6:.2f} ms, "
+    f"slowest {max(runs_ns) / 1e6:.2f} ms"
+)
+print(f"{len(text) / (median_ns / 1e9) / 1e6:.1f} million characters per second")
+
+loop_ns = statistics.median(
+    timeit.repeat(lambda: add_up_bytes(data), timer=time.perf_counter_ns, number=1, repeat=21)
+)
+print(f"a Python loop that only adds up the bytes: {loop_ns / len(data):5.1f} ns per byte")
+print(f"tiktoken, the whole split and every merge: {median_ns / len(data):5.1f} ns per byte")
+</code></pre>
+<pre class="output"><code>96,553 characters, 96,553 bytes, 19,683 tokens
+one call:         1.81 ms
+21 calls: median  1.82 ms, fastest 1.80 ms, slowest 2.18 ms
+53.0 million characters per second
+a Python loop that only adds up the bytes:   8.6 ns per byte
+tiktoken, the whole split and every merge:  18.9 ns per byte
+</code></pre>
+<div class="callout note"><span class="label">Python you need</span><p><code>timeit.repeat(work, timer=time.perf_counter_ns, number=1, repeat=21)</code> calls <code>work()</code> 21 times and returns 21 durations, read from the clock you pass, here in nanoseconds; <code>number=1</code> means one call per duration. It switches the garbage collector off while it times. <code>statistics.median</code> is the middle value.</p></div>
+<p>Counting the tokens first was a warm-up call. The single call and the median agree to within a few per cent, because tiktoken has little to warm up. In this run the slowest of the 21 was about 20% above the median; run it a few times and the slowest call moves far more than the median does. About 53 million characters per second, on random English words.</p>
+<p><code>timeit</code> is fine for a look like this. The Experiment uses your harness instead, <code>time_calls</code> with warm-up and at least 20 recorded calls, then <code>summarise</code> for p50 and p95, on the text BENCH.md names: it records CPU time as well. Its table has four lines: your <code>load_gpt2()</code> tokenizer and tiktoken on the whole text, and then only the merging of every chunk, once with <code>apply_merges</code> and once with <code>apply_merges_fast</code>.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Characters per second depends on the text. Random words, code, Greek and one long word with no spaces give the same tokenizer different figures. Compare encoders only on the same text, and name it.</p></div>
+
+<h2>Why tiktoken is fast</h2>
+<p>tiktoken's Python package is a thin layer over a library written in <strong>Rust</strong>, a language compiled to machine code before it runs, as C is. One call to <code>encode_ordinary</code> crosses from Python into Rust, and the whole job happens there: the split, by a regular expression engine written in Rust, and the merges of every chunk. It is numpy's bargain (<a href="../01-measure/06-boxes-and-arrays.html#what-numpy-does-instead">Module 1, chapter 6</a>): one call, much work in compiled code, no bytecode per step, and each byte of the text kept as one byte.</p>
+<p>Python keeps the same bytes less compactly. A <code>bytes</code> object is one byte per byte, plus 33 bytes of header. Turn it into a list of ids and each item is a <strong>pointer</strong>, an 8-byte address of an int object: <code>sys.getsizeof</code> of the list of the program's 96,553 byte values divided by its length is 8.0. The int objects themselves cost almost nothing more, because CPython keeps one shared object for each of the ints from &minus;5 to 256, for the whole run: every 101 in the list is the same object, as <code>id()</code> shows, and the whole list points at only 27 objects, one for each different byte in the text. The real price is not the memory but the steps. Every item read, every addition and every comparison is several bytecode instructions, each fetched and dispatched by the interpreter.</p>
+<p>The last two lines of <code>tokenizer_speed.py</code> put a number on that: the cheapest thing Python can do with a text, one addition per byte in a loop, costs about 8.6 ns per byte. tiktoken does the whole tokenization, the split and every merge, for about twice that. A Python encoder does far more per byte than one addition: it makes a list of ids, builds a tuple for each pair of neighbours and looks it up in a dict of ranks, and each of those steps goes through the interpreter. In Rust the same steps are a few machine instructions each. That is where the time goes in principle. How it adds up on a real text, how much faster tiktoken is than your encoder and what <code>apply_merges_fast</code> saves over <code>apply_merges</code> when the chunks are short, is the Experiment's to measure; this section gives you the material for a prediction, not its answer.</p>
+
+<div class="callout try"><span class="label">Write it</span><p><strong>How much of a conversation fits in a context window?</strong> A chat's history is a list of messages, oldest first, each with its count of tokens, and the model can see so many tokens and no more. Return how many of the newest messages it keeps, by the rule in the docstring. Open <a href="../../../drills/02-heaps-lists/warmups/messages_that_fit.py"><code>drills/02-heaps-lists/warmups/messages_that_fit.py</code></a>, read its docstring, and write the body from the empty stub: about ten lines, ten minutes, the book closed.</p>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_messages_that_fit.py
+</code></pre>
+<p>Then one row in <code>ledger.md</code>, with the set written <code>02w</code>; a Write it has no redos.</p></div>
+<details class="hint"><summary>Rung 1: where to look</summary><p>The stub's docstring, with its four examples, and the context window in <a href="#tokens-and-latency">Tokens and latency</a>. Then read <code>test_it_stops_at_the_first_message_that_does_not_fit</code> and its comment: which message stops the count, and why is the 5 not kept?</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>vLLM counts in tokens, with the model's own tokenizer (its Hugging Face tokenizer, by default). Its OpenAI-compatible server reports in each response's <code>usage</code> field the <code>prompt_tokens</code> and <code>completion_tokens</code> (and their sum, <code>total_tokens</code>): the two numbers a bill per million multiplies by its two prices. Its limits are in tokens too. The model's maximum length (<code>--max-model-len</code>) is the context window, prompt and reply together, and a request whose prompt does not fit is refused with an error. The batch's token budget (<code>--max-num-batched-tokens</code>) caps how many tokens one step of the scheduler may process across all its requests; Module 9 builds a scheduler with such a budget. A tokenizer that makes 58 tokens where another makes 10 spends that budget, and the KV cache behind it, almost six times as fast.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>The English and Russian sentences have 53 and 52 characters and take 10 and 58 tokens. Give the two reasons, each with a number from the first program.</p><details class="answer"><summary>Answer</summary><p>Bytes per character: Cyrillic letters take two bytes, so 97 bytes against 53. Merges: GPT-2's were learned from mostly English text, so English's 53 bytes shrink to 10 tokens and Russian's 97 only to 58.</p></details></div>
+<div class="q"><p>Roughly how many GPT-2 tokens is 12,000 characters of ordinary English prose, and when would you distrust the estimate?</p><details class="answer"><summary>Answer</summary><p>At four to four and a half characters per token, about 2,700 to 3,000. Distrust it for code, numbers, capitals, names or another script, or for a model with another tokenizer: then count.</p></details></div>
+<div class="q"><p>At the example prices ($0.40 and $1.60 per million), what does a request with a 4,000-token prompt and a 1,000-token reply cost?</p><details class="answer"><summary>Answer</summary><p>4,000 × 0.40 / 1,000,000 = $0.0016 plus 1,000 × 1.60 / 1,000,000 = $0.0016: $0.0032. A fifth of the tokens, half the bill.</p></details></div>
+<div class="q"><p>Which makes a reply take longer to finish, doubling the prompt or doubling the reply? Why?</p><details class="answer"><summary>Answer</summary><p>Doubling the reply. The prompt is processed in parallel during prefill, while every reply token is a decode step of its own. A longer prompt lengthens the time to first token and the cache, but adds no steps.</p></details></div>
+<div class="q"><p>A vocabulary of 128,000 tokens with 4,096 numbers per row: how many numbers is the embedding table, and how many bytes in bf16 (2 bytes per number)?</p><details class="answer"><summary>Answer</summary><p>128,000 × 4,096 = 524,288,000 numbers; at 2 bytes each, about 1.05 GB. And the softmax scores 128,000 tokens at every step.</p></details></div>
+<div class="q"><p>Why does a tokenizer benchmark need a warm-up, many calls and the median, and why must it name its text?</p><details class="answer"><summary>Answer</summary><p>The first call can pay one-time costs and any call can be slowed by something else, so one timing can be far from typical; the median of many shrugs off the odd slow call. Speed depends on the text's chunks and their merges, so a figure without its text cannot be compared.</p></details></div>
+<div class="q"><p>Why is tiktoken fast? Name two things a Python encoder pays for at every step that tiktoken does not.</p><details class="answer"><summary>Answer</summary><p>Its split and merges run in compiled Rust, inside one call from Python, with the text's bytes kept as bytes. A Python encoder pays the interpreter for every step: several bytecode instructions for each list read, each tuple it builds and each dict lookup. And its ids are 8-byte pointers to int objects rather than the bytes themselves.</p></details></div>
+<div class="q"><p>A list of 96,553 byte values takes about 8 bytes per item. Why not 28, the size of an int?</p><details class="answer"><summary>Answer</summary><p>A list holds pointers, 8 bytes each, not the ints themselves. And CPython keeps one shared object for each int from &minus;5 to 256, so every 101 in the list points at the same object and the list adds no new ints at all.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Explain why one sentence takes different token counts in different languages: bytes per character, and the text the merges came from.</li>
+<li>Measure characters per token on your own text, and say what it does not tell you.</li>
+<li>Work out a bill from prices per million input and output tokens.</li>
+<li>Say what a longer tokenization does to decode steps, the context window and the KV cache.</li>
+<li>Weigh a bigger vocabulary against a smaller one.</li>
+<li>Time a tokenizer with a warm-up, many runs and the median, and say where its time goes: compiled code against the interpreter, bytes against a list of pointers.</li>
+</ul>
+</main>
+</body>
+</html>

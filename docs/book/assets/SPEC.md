@@ -199,3 +199,110 @@ docstrings are part of the spec); the tests are in `tests/m01/`.
 Do not define any of these names in an example: `time_calls`, `summarise`, `quickselect`, `percentile`,
 `histogram`, `render_report`, `slowest_lines`, `Timings`, `Report`, nor the drill names. Do not write a
 `main` that times a function many times and prints a report.
+
+---
+
+## Module 2: Tokenizer
+
+Book title: **Tokenizer**. Files in `docs/book/02-tokenizer/`. The spec is
+`modules/02-tokenizer/README.md`; the contract is the stubs in `src/llm101/tokenizer/` (their
+docstrings are part of the spec); the tests are in `tests/m02/`; the drills are set 02 in
+`drills/02-heaps-lists/`, and each concept chapter's **Write it** is in its `warmups/` folder.
+
+| File | Chapter | Feeds | Write it |
+|---|---|---|---|
+| `index.html` | the book's front page | | |
+| `00-start-here.html` | 00 Start here | the week | |
+| `01-bytes-and-utf8.html` | 01 Bytes and UTF-8 | M1 `utf8_encode` | `count_characters` |
+| `02-pairs-and-merges.html` | 02 Pairs and merges | M2 `count_pairs`, `merge_pair`; M3 `train_bpe` | `busiest_hour` |
+| `03-encoding-by-rank.html` | 03 Encoding by rank | M4 `pretokenize`, `apply_merges`, `Tokenizer` | `invert_table` |
+| `04-gpt2s-tokenizer.html` | 04 GPT-2's tokenizer | M5 `bytes_to_unicode`, `load_gpt2`, `main` | `read_palette` |
+| `05-heaps-and-linked-lists.html` | 05 Heaps and linked lists | M6 `apply_merges_fast` | `next_alive` |
+| `06-tokens-as-cost.html` | 06 Tokens as cost | M7 the Experiment | `messages_that_fit` |
+| `07-drills.html` | 07 Drills | set 02 | |
+| `08-build-the-tokenizer.html` | 08 Build the tokenizer | M1 to M7 | |
+| `09-appendix.html` | 09 Appendix | | |
+
+### The h2 headings of each chapter
+
+Fixed in advance, so that chapters link to each other's sections by anchor (the slug rule above). A
+chapter may add `h3`s under them, and may add an `h2` only where this list says "and others".
+
+- **00**: What you will build: a tokenizer · The rule: you type every line · Done when · The six
+  days · First-time setup · A tour of the repository · How to read this book · How to get unstuck ·
+  Check yourself · What you can do now
+- **01**: The problem: a model reads numbers · Characters and code points · Bytes in Python · Bits,
+  shifts and masks · The UTF-8 table · Reading UTF-8 by hand · Surrogates, and text that is not text ·
+  When bytes are not a whole character · How many bytes a script takes · Check yourself · What you
+  can do now
+- **02**: The problem: 256 tokens are too few · Counting with a dict · Neighbours in a list · Ties,
+  and choosing with a key · Byte-pair encoding by hand · Overlapping pairs · Count each word once ·
+  What training gives you · Check yourself · What you can do now
+- **03**: The problem: new text, old merges · A table of ranks · Encoding a word by hand · From ids
+  back to text · Why split before merging · Regular expressions from first principles · Letters in
+  every script: the regex package · GPT-2's split pattern, piece by piece · Round trips and
+  hypothesis · Check yourself · What you can do now
+- **04**: The problem: two files and 50,257 ids · A first look at the files · Why the files are full of
+  Ġ · Reading JSON and lines of text · Ids in GPT-2's order · The token that no merge makes · tiktoken,
+  the oracle · A program with exclusive arguments · Colour in rich, one piece at a time · Check
+  yourself · What you can do now
+- **05**: The problem: one long word takes seconds · Why the slow way is quadratic · Heaps from first
+  principles · heapq, and how tuples compare · Entries that went stale · A linked list in two lists ·
+  Removing from the middle in constant time · How the two fit together · Check yourself · What you
+  can do now
+- **06**: The problem: the same sentence, different bills · Characters per token · Paying per token ·
+  Tokens and latency · How big should a vocabulary be? · Measuring a tokenizer's speed · Why
+  tiktoken is fast · Check yourself · What you can do now
+- **07**: How the drills work · The order of this module · Following links: a chain of nodes ·
+  Walking two chains at once · A heap as a to-do list · The smallest of many · Set 02: heaps and
+  linked lists · The debugging drill · Check yourself · What you can do now. Under "Set 02", one `h3`
+  per drill: `reverse_list`, `merge_two_lists`, `days_to_wait`, `k_largest`, `merge_sorted_runs`,
+  `longest_draw`; under "The debugging drill", one `h3`: `print_queue`.
+- **08**: The spec, restated · Setup: read the red · Milestone 1: utf8_encode · Milestone 2:
+  count_pairs and merge_pair · Milestone 3: train_bpe · Milestone 4: pretokenize, apply_merges and
+  Tokenizer · Milestone 5: bytes_to_unicode, load_gpt2 and main · Milestone 6: apply_merges_fast ·
+  Milestone 7: the Experiment · When you are stuck · Make it yours · The review and the log · Check
+  yourself · What you can do now
+- **09**: Reading a traceback · The errors of this module · Cheat sheets · Glossary · What Module 3
+  brings · Check yourself · What you can do now
+
+### What a chapter may use
+
+- Book programs run with the project's Python in an empty folder (book-check). They may import the
+  given names of the contract, which are data and not functions: `from llm101.tokenizer.gpt2 import
+  VOCAB_PATH, MERGES_PATH` reads GPT-2's real files from `data/gpt2/`. They may build tiktoken's GPT-2
+  encoding from those two files to *look at* tokens, as `tests/m02/conftest.py` does, never from the
+  network. They may never call a contract function or a drill: those are stubs and raise.
+- `GPT2_PATTERN` may be printed and taken apart one alternative at a time; no example calls
+  `findall`, `finditer` or `split` with the whole pattern (that call is `pretokenize`). Tables may
+  show how the pattern splits sample strings.
+- Numbers about GPT-2 (ids, token counts) come from running the oracle, and the chapter says so.
+- **The oracle's setup is taught once**, in chapter 4's "tiktoken, the oracle". Chapters 1 to 3 show
+  the oracle's answers as tables ("From the oracle") instead of programs. A later program that needs
+  the setup says that its first lines may be typed with the page open; no chapter has more than two
+  such programs.
+- **Each idea is taught in one place.** Chapter 7's pattern sections are read before chapter 5
+  (block 5 of the day before each drill), so chapter 5 builds on them and does not teach a heap's
+  shape, `heapq` or a chain of nodes again. The book has one "In a real engine" box on vLLM's free
+  block queue (chapter 5).
+
+### Mechanisms
+
+| Mechanism | Teach it with | Never |
+|---|---|---|
+| Code points, bytes, UTF-8 | `ord`, `chr`, `len` of a str against `len` of its bytes; `bytes` and `bytearray` literals, indexing that gives an int, `hex()`, `f"{b:08b}"`; `str.encode` and `bytes.decode` used to *look*; shifts and masks on a different problem (an RGB colour packed into one int and taken apart, flags in a permissions byte); the UTF-8 table as boxes of bits; *decoding* one character by hand, bytes to code point, in a table | any code that turns a code point or a string into UTF-8 bytes with shifts and masks, for any number of bytes (that is `utf8_encode`); counting characters in UTF-8 bytes in code (that is the Write it `count_characters`) |
+| Counting and choosing | `dict.get`, `collections.Counter` on the words of a text; neighbours with `zip(xs, xs[1:])` on a different question (day-to-day changes in temperature); `max` and `min` with a key that is a tuple, to break ties (students by score, then name); `str.replace` to show the left-to-right, no-overlap rule on strings ("aaa".replace("aa", "X")) | a function or loop that counts the neighbouring pairs of a sequence, or replaces a pair of neighbours with one item, on ids, letters or words (that is `count_pairs` and `merge_pair`); the busiest hour (the Write it) |
+| Training BPE | by hand, in prose and tables: a corpus of a few words, round by round (counts, the winner, the new token); why each distinct word is counted once and weighed by its frequency, shown with `Counter` on a text | a training loop in code, on any data (that is `train_bpe`) |
+| Encoding by rank, decoding | a dict of ranks and `.get(pair, math.inf)`; encoding one word by hand in a table, round by round; `bytes.decode` with `errors="strict"`, `"replace"` and `"ignore"` on broken bytes; `b"".join` | a loop that repeatedly finds the lowest-ranked pair and merges it (that is `apply_merges`); a class or function that turns text into ids or ids into text through merges (that is `Tokenizer`); inverting a dict in code (the Write it `invert_table`) |
+| Regular expressions | `re.findall` and `re.fullmatch`; character classes, `+`, `?`, alternation (the first alternative that matches wins), groups and `(?:...)`, the lookahead `(?!...)`; `re.compile(r"\p{L}")` failing in `re` (an `error` block), and `regex` with `\p{L}` and `\p{N}`; each alternative of GPT-2's pattern on its own, on sample strings | a call of `findall`, `finditer` or `split` with the whole of GPT-2's pattern (that is `pretokenize`) |
+| Property tests of a round trip | hypothesis `st.text()` and `st.characters(codec="utf-8")`; a round trip of something else (`json.dumps` and `json.loads`, `base64`) | a round-trip test of a tokenizer |
+| GPT-2's files | `head` and `wc -l` on the real files (shell blocks); `json.loads` and `Path.read_text(encoding="utf-8")` on a small JSON of your own and then on `vocab.json`, looking up a few tokens; `str.split("\n")` and its empty last piece; the idea of a byte-to-character map, in words and a table of a few rows, with the rule stated as the docstring's three ranges (`str.isprintable()` may explain why the ranges have gaps, for a byte or two, never as a test over all 256) | code that builds GPT-2's map from 256 bytes to printable characters, or a predicate over all 256 bytes that picks the ones it keeps (that is `bytes_to_unicode`); parsing `merges.txt` into pairs of ids, or anything that builds a tokenizer from the two files (that is `load_gpt2`); reading a JSON palette into hex codes (the Write it `read_palette`) |
+| tiktoken | building GPT-2's encoding from `data/gpt2/` and calling `encode_ordinary`, `decode_single_token_bytes` and `decode` to look at tokens | counting the tokens of the six sentences in `modules/02-tokenizer/BENCH.md`, or timing encoders on `argparse`'s source (that is the M7 Experiment) |
+| argparse, rich | a mutually exclusive group on a different program (a temperature converter that takes `--celsius` or `--fahrenheit`); `rich.text.Text` with `append(text, style=...)` and background styles on a different problem (marking the numbers in a log line) | a `main` that tokenizes a text and prints its tokens on alternating colours, its ids or its count (that is `main`) |
+| Heaps | `heapq` on a different problem (a hospital's triage queue, events in a simulation by time); a heap drawn as a tree in a list, parent `(i - 1) // 2`; tuples compared item by item; stale entries recognised by a version number (a delivery whose time was changed) | the drills (`k_largest`, `merge_sorted_runs`), and popping past entries that are no longer in a set (the Write it `next_alive`); a heap of pairs of neighbours, or any merge of neighbouring items driven by a heap (that is `apply_merges_fast`); the fault of the debugging drill `print_queue` (unorderable items reached when priorities tie) or its fix, anywhere in the book before chapter 7's rungs |
+| Linked lists | `Node` objects with `next`: build, walk, insert at the front, remove the node after a given one (chapter 7); a list kept in two lists of indices, `prev` and `next`, on a different problem (people leaving a queue, a playlist with songs removed) (chapter 5) | reversing a linked list or merging two sorted ones (the drills `reverse_list`, `merge_two_lists`); merging two neighbours of a linked list into one item (part of `apply_merges_fast`) |
+| Heap over a linked list | in words in chapter 5 ("How the two fit together"); as a complete program only in rung 4 of Milestone 6, on a different problem: simplifying a line by removing, again and again, the point whose triangle with its neighbours has the smallest area (Visvalingam's algorithm). It removes points; it never merges two items into a new one | a program that merges neighbouring pairs by rank or by any priority |
+| Cost and speed | prices in dollars per million tokens, input against output; tokens per character on sentences of your own (not BENCH.md's); `time.perf_counter_ns` around a call (the harness is the reader's, and it is a stub while the book is written) | how many of the newest messages fit in a window (the Write it `messages_that_fit`); the M7 Experiment itself, and any claim about which of `apply_merges` and `apply_merges_fast` is faster on ordinary text |
+
+Do not define any guarded name in an example (`pyproject.toml`, `[tool.llm101] guarded`), and do not
+write a `main` that tokenizes a text and prints its tokens.

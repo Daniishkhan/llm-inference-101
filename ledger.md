@@ -14,6 +14,8 @@ Every drill you attempt gets a row, on the day. The rules are in
   A redo that falls on a Sunday moves to the Monday.
 - **Katas**: a finished function of a done module, typed again cold, gets a row too. Write the set as
   `kata m01`.
+- **Debugging drills and Write its** (from set 02) get one row and no redos. A debugging drill's
+  Pattern column holds what the fault was; a Write it's set is written `02w`.
 
 | Date | Set | Problem | Pattern | Minutes | Rungs | Lookups | Runs | Result | Redo +2 d | Redo +7 d |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -29,6 +31,19 @@ Every drill you attempt gets a row, on the day. The rules are in
 | | 01 | longest_streak | | | | | | | | |
 | | 01 | count_stretches | | | | | | | | |
 | | 01 | free_slots | | | | | | | | |
+| | 02 | reverse_list | | | | | | | | |
+| | 02 | merge_two_lists | | | | | | | | |
+| | 02 | days_to_wait | | | | | | | | |
+| | 02 | k_largest | | | | | | | | |
+| | 02 | merge_sorted_runs | | | | | | | | |
+| | 02 | longest_draw | | | | | | | | |
+| | 02 | print_queue (debugging) | | | | | | | — | — |
+| | 02w | count_characters | | | | | | | — | — |
+| | 02w | busiest_hour | | | | | | | — | — |
+| | 02w | invert_table | | | | | | | — | — |
+| | 02w | read_palette | | | | | | | — | — |
+| | 02w | next_alive | | | | | | | — | — |
+| | 02w | messages_that_fit | | | | | | | — | — |
 
 ## Readiness, each Saturday
 
@@ -39,3 +54,4 @@ at least five of the ten had a time box of 30 minutes or longer.
 | Week ending | Green inside the time box with no rungs (of 10) | Median minutes | Redos green on the first run |
 |---|---|---|---|
 | Sat 21 Nov 2026 | | | |
+| Sat 28 Nov 2026 | | | |

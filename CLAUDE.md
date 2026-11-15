@@ -149,6 +149,13 @@ Saturday's mock rotates between three kinds (docs/methodology.md):
   `src/llm101/bench/__main__.py`. Also off limits: every function in `drills/` (`encode`,
   `top_endpoints`, `pair_with_sum`, `is_balanced`, `merge`, `MovingAverage`, `group_anagrams`,
   `longest_streak`, `sort_colours`, `count_stretches`, `tidy_path`, `free_slots`).
+- **Next module, written ahead**: Module 2, Tokenizer ([modules/02-tokenizer/README.md](modules/02-tokenizer/README.md),
+  book `docs/book/02-tokenizer/`), a draft until its spec ritual. Its contract is off limits in the same
+  way: `utf8_encode`, `count_pairs`, `merge_pair`, `train_bpe`, `pretokenize`, `apply_merges`,
+  `Tokenizer`, `bytes_to_unicode`, `load_gpt2`, `apply_merges_fast`, and `main` in
+  `src/llm101/tokenizer/__main__.py`; so are set 02 (`reverse_list`, `merge_two_lists`, `k_largest`,
+  `merge_sorted_runs`, `days_to_wait`, `longest_draw`), the debugging drill `print_queue` and the Write
+  its in `drills/02-heaps-lists/warmups/`.
 - **Language**: Python 3.13, managed with uv. **Tests**: pytest and hypothesis (`uv run pytest <path>`).
   **Lint and format**: ruff, checked by the pre-commit hook (`tools/install-hooks.sh`). Claude never runs
   `ruff --fix`, `ruff format` or any other rewriting tool on `src/` or `drills/`.

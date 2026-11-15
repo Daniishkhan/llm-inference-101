@@ -120,7 +120,8 @@ in a test function.*
 - [ ] `uv run pytest tests/m01` is green from end to end.
 - [ ] `uv run python -m llm101.bench --profile` prints the table, the histogram and the slowest lines.
 - [ ] [BENCH.md](BENCH.md) has its Experiment: a prediction written before the run, the measurement, and
-      two sentences on why.
+      two sentences on why. Its headline number is in the Measurements table of the top-level
+      [README](../../README.md), as chapter 8 asks.
 - [ ] One commit per milestone (M1 to M7), each through the pre-commit hook, and one more for M7's
       prediction, made before its measurement.
 - [ ] A review of the whole module has been run, and its three questions are answered in

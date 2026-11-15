@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>01 · Bytes and UTF-8 — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 01</p>
+<h1>Bytes and UTF-8</h1>
+<p class="lede">At the end of this chapter you will be able to say why GPT-2's tokenizer starts from bytes, take a number apart with shifts and masks, read the UTF-8 table, decode a character from its bytes by hand, and say what to do when a list of bytes stops in the middle of a character. Milestone M1, <code>utf8_encode</code>, is that table read the other way.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: a model reads numbers, and the numbers must never run out.</li>
+<li>Characters and code points: <code>ord</code>, <code>chr</code>, and what <code>len</code> of a string counts.</li>
+<li>Bytes in Python: <code>bytes</code>, <code>bytearray</code>, and a byte in hex and in binary.</li>
+<li>Bits, shifts and masks, on a colour packed into one number, in whole bytes and in fields narrower than a byte.</li>
+<li>The UTF-8 table, and one character read from its bytes by hand.</li>
+<li>Surrogates, broken bytes, and a character cut in half.</li>
+<li>How many bytes each script takes.</li>
+</ul>
+</div>
+
+<h2>The problem: a model reads numbers</h2>
+<p>A language model is arithmetic. Its first step takes a whole number, an <strong>id</strong>, and looks up the row with that number in a table of learned values (Module 3 builds the table). So something has to turn text into a list of ids from a fixed range, and the model's ids back into text at the end. That is the <strong>tokenizer</strong>, and its numbers are <strong>token ids</strong>. What should one id stand for?</p>
+<ul>
+<li><strong>A word?</strong> Then there is always a word missing from the table: a name, a typo, a word from a language it left out. The tokenizer must answer "unknown", and the model never sees what was there.</li>
+<li><strong>A character?</strong> Unicode has room for over a million, and adds more every year. The table would be mostly rows never seen in training, and next year's emoji would still be unknown.</li>
+<li><strong>A byte?</strong> Every stored text is already a list of bytes, and a byte has 256 possible values. A table of 256 rows covers every text in every script, now and later. Nothing is ever unknown.</li>
+</ul>
+<p>GPT-2's tokenizer starts from the bytes, and then learns to glue frequent runs of them together (chapter 2), so that a common word is one token instead of five. Here is what it makes of one sentence, <code>Tea is ready 🫖</code>. The table comes from the <strong>oracle</strong>: tiktoken's GPT-2 encoding, built from the two files in <code>data/gpt2/</code>, the same files you load yourself in M5. The tests check your ids against it, and <a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">chapter 4</a> shows you how to build it. Each token's bytes are written as Python prints a <code>bytes</code> value, which the next sections explain.</p>
+<p><strong>From the oracle</strong>: <code>Tea is ready 🫖</code> in GPT-2's tokens.</p>
+<table>
+<thead><tr><th>Token</th><th>Id</th><th>Its bytes</th><th>What they are</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>49770</td><td><code>b'Tea'</code></td><td>a whole word</td></tr>
+<tr><td>2</td><td>318</td><td><code>b' is'</code></td><td>a word with the space in front of it</td></tr>
+<tr><td>3</td><td>3492</td><td><code>b' ready'</code></td><td>the same</td></tr>
+<tr><td>4</td><td>12520</td><td><code>b' \xf0\x9f'</code></td><td>a space and the first two bytes of the teapot</td></tr>
+<tr><td>5</td><td>104</td><td><code>b'\xab'</code></td><td>the teapot's third byte</td></tr>
+<tr><td>6</td><td>244</td><td><code>b'\x96'</code></td><td>the teapot's fourth byte</td></tr>
+</tbody>
+</table>
+<p>The sentence became six ids, each standing for a run of bytes. <code>Tea</code>, <code> is</code> and <code> ready</code> are one token each, with the space in front of the word. The teapot is one character and three tokens, and none of the three is a character: a space and two bytes, then one byte, then one byte. Joined, they are the teapot again, and decoding the six ids gives back the sentence exactly. The oracle's vocabulary has 50,257 tokens: the 256 single bytes, 50,000 runs that training glued together, and one special token, <code>&lt;|endoftext|&gt;</code>.</p>
+<div class="callout principle"><span class="label">First principle</span><p>Memory, files and network messages hold only <strong>bytes</strong>. A byte is eight <strong>bits</strong>, eight switches that are each off (0) or on (1), so it has 2<sup>8</sup> = 256 values, 0 to 255. Text is not a separate kind of thing inside the machine. It is bytes plus an agreement about what they mean: an <strong>encoding</strong>. The agreement almost every file, web page and protocol uses today is <strong>UTF-8</strong>, and it is the one GPT-2's tokenizer reads.</p></div>
+
+<h2>Characters and code points</h2>
+<p>Before bytes come numbers. Unicode gives every character a number, its <strong>code point</strong>, written in hexadecimal after <code>U+</code>: the euro sign is U+20AC. <code>ord</code> gives the code point of a one-character string, and <code>chr</code> goes the other way.</p>
+<div class="callout note"><span class="label">Python you need</span><p><strong>f-string formats.</strong> After the colon in <code>{value:spec}</code> comes how to write the value. <code>:&gt;6</code> pads to six characters, right-aligned. <code>:04X</code> writes an int in hexadecimal, capital letters, padded with zeros to four digits. <code>:08b</code> writes it in binary, padded to eight digits. <code>:,</code> puts commas between thousands. Literals come in the same bases: <code>0x20AC</code> and <code>8364</code> are the same int.</p></div>
+<pre class="code" data-lang="python" data-file="code_points.py" data-check="run"><code>import unicodedata
+
+for character in ["A", "é", "€", "你", "🙂"]:
+    code_point = ord(character)
+    print(f"{character}  {code_point:&gt;6}  U+{code_point:04X}  {unicodedata.name(character)}")
+
+print(chr(65), chr(0x20AC), chr(128578))
+print(f"the last code point: {0x10FFFF:,}, so there are {0x10FFFF + 1:,}")
+
+word = "café"
+same_look = "café"  # e, then a combining acute accent
+print(word, same_look, len(word), len(same_look), word == same_look)
+
+namaste = "नमस्ते"
+print(len(namaste), [f"U+{ord(c):04X}" for c in namaste])
+</code></pre>
+<pre class="output" data-for="code_points.py"><code>A      65  U+0041  LATIN CAPITAL LETTER A
+é     233  U+00E9  LATIN SMALL LETTER E WITH ACUTE
+€    8364  U+20AC  EURO SIGN
+你   20320  U+4F60  CJK UNIFIED IDEOGRAPH-4F60
+🙂  128578  U+1F642  SLIGHTLY SMILING FACE
+A € 🙂
+the last code point: 1,114,111, so there are 1,114,112
+café cafe&#x301; 4 5 False
+6 ['U+0928', 'U+092E', 'U+0938', 'U+094D', 'U+0924', 'U+0947']
+</code></pre>
+<p>Code points run from 0 to 0x10FFFF: 1,114,112 places, of which about 150,000 hold a character in Unicode 15.1, the version Python 3.13 knows. The first 128 are the old ASCII table, so <code>A</code> is 65 in both.</p>
+<p>The last two lines are the surprise. A <code>str</code> is a sequence of code points, and <code>len</code> counts code points, not what you see. The second café spells é as a plain <code>e</code> followed by a <strong>combining</strong> accent, U+0301, which the screen draws on the letter before it: same look, different string. The Hindi greeting नमस्ते reads as three syllables and is six code points, one of them (U+094D) a mark that joins स and त into one cluster. A tokenizer never sees letters. It sees code points, and then their bytes.</p>
+<div class="callout analogy"><span class="label">Analogy</span><p>Unicode is a vast <strong>catalogue</strong> with a numbered entry for every character: entry 8364 is the euro sign. It says nothing about how a number is written down; that is the encoding's job. <em>Where it breaks:</em> a catalogue entry is a thing you can pick up on its own. A code point is sometimes only part of what you see: an accent, a joining mark, or half of a flag, which is two code points side by side.</p></div>
+<div class="callout try"><span class="label">Try it</span><p>Predict <code>len</code> of <code>"naïve"</code>, <code>"🇬🇧"</code>, <code>"👍🏽"</code> and <code>"é"</code>. Then add a line to <code>code_points.py</code> that prints them.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>5, 2, 2 and 2. The ï of "naïve" is one code point here, U+00EF. A flag is two "regional indicator" code points, G and B. The thumb with a skin tone is the thumb followed by a skin-tone modifier. And <code>"é"</code> is the e and its combining accent.</p></details>
+
+<h2>Bytes in Python</h2>
+<p>A code point can be as large as 1,114,111, and a byte holds at most 255. Python keeps the two apart: <code>str</code> is a sequence of code points, <code>bytes</code> a sequence of whole numbers from 0 to 255. To get bytes to look at, this section calls <code>str.encode("utf-8")</code>, Python's own encoder. Milestone M1 may not call it, because M1 <em>is</em> an encoder.</p>
+<pre class="code" data-lang="python" data-file="bytes_and_bytearray.py" data-check="run"><code>data = "café".encode("utf-8")  # Python's encoder, used here only to look
+print(data, type(data).__name__)
+print(len("café"), "characters,", len(data), "bytes")
+print(data[0], data[3], data[-1])  # one byte: an int from 0 to 255
+print(data[1:3])  # a slice of bytes: bytes again
+print(list(data))
+print(data.hex(" "))
+print(hex(data[3]), bin(data[3]), f"{data[3]:08b}")
+
+print(bytes([84, 101, 97]))  # bytes from a list of ints
+print(b"\x54\x65\x61" == b"Tea")
+
+pot = bytearray(b"tea")  # a bytearray can change; bytes cannot
+pot[0] = ord("s")
+pot.append(0x21)
+print(pot, bytes(pot))
+
+try:
+    data[0] = 67
+except TypeError as error:
+    print("TypeError:", error)
+</code></pre>
+<pre class="output" data-for="bytes_and_bytearray.py"><code>b'caf\xc3\xa9' bytes
+4 characters, 5 bytes
+99 195 169
+b'af'
+[99, 97, 102, 195, 169]
+63 61 66 c3 a9
+0xc3 0b11000011 11000011
+b'Tea'
+True
+bytearray(b'sea!') b'sea!'
+TypeError: 'bytes' object does not support item assignment
+</code></pre>
+<p>Where a byte is a printable ASCII character, Python prints the character; any other byte prints as <code>\x</code> and two hex digits. So <code>b'caf\xc3\xa9'</code> is five bytes, and C3 A9 is the é. <strong>Indexing gives an int</strong> (<code>data[0]</code> is 99, the code of <code>c</code>); <strong>slicing gives bytes</strong>. <code>.hex(" ")</code> prints the bytes as most tools do, and <code>:08b</code> shows that C3, 195, is <code>11000011</code>. <code>bytes([84, 101, 97])</code> builds bytes from ints. A <code>bytes</code> value cannot change, like a <code>str</code>; a <strong><code>bytearray</code></strong> is the same sequence of ints, but you can assign to it and append to it, like a list.</p>
+<div class="callout trap"><span class="label">Trap</span><p><code>data[0] == b"c"</code> is <code>False</code>, and Python does not warn you: <code>data[0]</code> is the int 99, and an int never equals a <code>bytes</code> value. Compare an int with an int, <code>data[0] == ord("c")</code>, or a slice with bytes, <code>data[0:1] == b"c"</code>. A <code>for</code> loop over bytes gives you ints, too.</p></div>
+
+<h2>Bits, shifts and masks</h2>
+<p>UTF-8 packs a code point into bytes a few bits at a time, so you need to handle the bits inside a number. Picture a byte as a row of eight light switches, worth 128, 64, 32, 16, 8, 4, 2 and 1 from left to right. Its value is the sum of the switches that are on: <code>11000011</code> is 128 + 64 + 2 + 1 = 195. Four switches make one hex digit (0 to F), so a byte is two hex digits: <code>1100</code> is C, <code>0011</code> is 3, and 195 is 0xC3.</p>
+<ul>
+<li><strong>Shift left</strong>, <code>x &lt;&lt; n</code>, slides every bit n places left, with zeros coming in on the right. Each place doubles: <code>1 &lt;&lt; 3</code> is 8.</li>
+<li><strong>Shift right</strong>, <code>x &gt;&gt; n</code>, slides them right; the n bits that fall off the end are lost.</li>
+<li><strong>And</strong>, <code>x &amp; m</code>, keeps a bit only where both have it. With a <strong>mask</strong>, a number chosen for its pattern of ones, it keeps the bits under the ones and clears the rest: <code>x &amp; 0xFF</code> keeps the lowest eight bits.</li>
+<li><strong>Or</strong>, <code>x | m</code>, switches on the mask's bits and leaves the others alone.</li>
+</ul>
+<p>A screen colour is three bytes, red, green and blue, often kept side by side in one int: orange is <code>0xFF8800</code>. Taking it apart and putting one together is all shifts and masks:</p>
+<pre class="code" data-lang="python" data-file="rgb_colour.py" data-check="run"><code>print(1 &lt;&lt; 3, 0b1011 &gt;&gt; 1, bin(0b1011 &gt;&gt; 1))  # left doubles, right halves
+print(f"{0b10110110 &amp; 0b00001111:08b}")  # a mask keeps the bits where it has a 1
+
+orange = 0xFF8800  # red FF, green 88, blue 00: three bytes in one int
+print(orange, hex(orange), f"{orange:024b}")
+
+red = (orange &gt;&gt; 16) &amp; 0xFF  # move the red byte to the bottom, keep 8 bits
+green = (orange &gt;&gt; 8) &amp; 0xFF
+blue = orange &amp; 0xFF
+print(red, green, blue)
+
+teal = (0 &lt;&lt; 16) | (128 &lt;&lt; 8) | 128  # put three bytes back into one int
+print(f"#{teal:06X}", teal)
+
+# A field need not be a whole byte. RGB565 keeps a colour in 16 bits: red 5, green 6, blue 5.
+print(bin((1 &lt;&lt; 5) - 1), bin((1 &lt;&lt; 6) - 1))  # a mask of n ones is (1 &lt;&lt; n) - 1
+pixel = 0xFC40  # orange again, in 16 bits
+print(f"{pixel:016b}")
+red5 = (pixel &gt;&gt; 11) &amp; ((1 &lt;&lt; 5) - 1)  # slide past green's 6 bits and blue's 5
+green6 = (pixel &gt;&gt; 5) &amp; ((1 &lt;&lt; 6) - 1)  # slide past blue's 5
+blue5 = pixel &amp; ((1 &lt;&lt; 5) - 1)
+print(red5, green6, blue5)
+
+print(1 &lt;&lt; 5 - 1, (1 &lt;&lt; 5) - 1)  # the trap: - is worked out before &lt;&lt;
+</code></pre>
+<pre class="output" data-for="rgb_colour.py"><code>8 5 0b101
+00000110
+16746496 0xff8800 111111111000100000000000
+255 136 0
+#008080 32896
+0b11111 0b111111
+1111110001000000
+31 34 0
+16 31
+</code></pre>
+<p>To read green, shift right by 8 so that green lands in the lowest eight places, then mask with <code>0xFF</code> to drop the red that came along above it. Putting a colour together is the same backwards: shift each byte up to its place and <code>|</code> them together. The three places do not overlap, so <code>|</code> never mixes them.</p>
+<p>The second half drops the byte boundaries. Small screens often keep a colour in 16 bits, as <strong>RGB565</strong>: five bits of red at the top, six of green in the middle, five of blue at the bottom. Written out, orange is <code>11111 100010 00000</code>. The fields no longer line up with hex digits or bytes, so <code>0xFF</code> is the wrong mask; you need a mask with exactly as many ones as the field is wide. Here is how to make one. <code>1 &lt;&lt; 5</code> is <code>100000</code>, a one with five zeros after it, and one less than that is <code>11111</code>, the way 1,000 − 1 is 999 on a counter that rolls back. So <strong>a mask of n ones is <code>(1 &lt;&lt; n) - 1</code></strong>: 31 for five bits, 63 for six. The shifts are counted the same way: red sits above 6 + 5 = 11 bits of other fields, so it is shifted right by 11. Red reads 31, the most five bits can hold: full red. Green reads 34 of a possible 63, a little over half, as 0x88 (136 of 255) was.</p>
+<div class="callout trap"><span class="label">Trap</span><p>Python works out <code>+</code> and <code>-</code> before <code>&lt;&lt;</code> and <code>&gt;&gt;</code>, so <code>1 &lt;&lt; 5 - 1</code> is <code>1 &lt;&lt; 4</code>, 16, not the mask 31. Bracket every shift that sits next to arithmetic, and join bit fields with <code>|</code>. (<code>x &amp; m == v</code> does mean <code>(x &amp; m) == v</code> in Python, unlike in C, but write the brackets anyway.)</p></div>
+<p>A mask can also <em>test</em> bits. "Is this switch on?" is <code>&amp;</code> with a mask that has only that switch: the answer is 0 if it is off. "Do the top two switches read <code>01</code>?" is <code>&amp;</code> with <code>0b11000000</code>, which keeps those two and clears the other six, compared with <code>0b01000000</code>.</p>
+<div class="callout try"><span class="label">Try it</span><p>A file system keeps one byte per file. Its top two bits are the kind (<code>00</code> a file, <code>01</code> a folder, <code>10</code> a link), and its lowest three bits say who may read (4), write (2) and run (1) it. For <code>mode = 0b01000101</code>, print in <code>scratch/mode_byte.py</code>: whether it may be read; the byte with "write" switched on; its kind as a number from 0 to 3; and whether it may be both read and run. Predict each first.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>mode &amp; 0b100</code> is 4, not 0: it may be read. <code>mode | 0b010</code> is <code>0b01000111</code>. <code>(mode &gt;&gt; 6) &amp; 0b11</code> is 1, a folder: shift the kind to the bottom, keep two bits. <code>(mode &amp; 0b101) == 0b101</code> is <code>True</code>: the mask keeps the read and run switches, and the comparison asks that both be on. <code>mode &amp; 0b101</code> alone would be true if either were on.</p></details>
+
+<h2>The UTF-8 table</h2>
+<p>Now the encoding. A code point can need 21 bits (0x10FFFF is 21 binary digits), and a byte holds 8. Four bytes for every character would waste three of every four on English and break every program that expects one byte per ASCII letter. UTF-8 uses one to four bytes, as few as each code point needs, and leaves ASCII exactly as it was. Here are the bits of five characters, with Python's encoder used once more only to look:</p>
+<pre class="code" data-lang="python" data-file="utf8_bits.py" data-check="run"><code>for character in ["A", "é", "€", "你", "🙂"]:
+    data = character.encode("utf-8")  # Python's encoder, used only to look
+    bits = " ".join(f"{byte:08b}" for byte in data)
+    code = f"U+{ord(character):04X}"
+    print(f"{code:7}  {len(data)}  {bits:35}  {character}")
+</code></pre>
+<pre class="output" data-for="utf8_bits.py"><code>U+0041   1  01000001                             A
+U+00E9   2  11000011 10101001                    é
+U+20AC   3  11100010 10000010 10101100           €
+U+4F60   3  11100100 10111101 10100000           你
+U+1F642  4  11110000 10011111 10011001 10000010  🙂
+</code></pre>
+<p>Look at how each byte starts. A one-byte character starts with <code>0</code>. The first byte of a two-byte character starts with <code>110</code>, of three bytes <code>1110</code>, of four <code>11110</code>. Every byte after the first starts with <code>10</code>. Those leading bits are fixed; the bits after them, the <strong>payload</strong>, are the code point's bits. The whole rule, with an <code>x</code> for each payload bit:</p>
+<table>
+<thead><tr><th>Code points</th><th>Bytes</th><th>Byte 1</th><th>Byte 2</th><th>Byte 3</th><th>Byte 4</th><th>Payload bits</th></tr></thead>
+<tbody>
+<tr><td>U+0000 to U+007F</td><td>1</td><td><code>0xxxxxxx</code></td><td></td><td></td><td></td><td>7</td></tr>
+<tr><td>U+0080 to U+07FF</td><td>2</td><td><code>110xxxxx</code></td><td><code>10xxxxxx</code></td><td></td><td></td><td>5 + 6 = 11</td></tr>
+<tr><td>U+0800 to U+FFFF</td><td>3</td><td><code>1110xxxx</code></td><td><code>10xxxxxx</code></td><td><code>10xxxxxx</code></td><td></td><td>4 + 6 + 6 = 16</td></tr>
+<tr><td>U+10000 to U+10FFFF</td><td>4</td><td><code>11110xxx</code></td><td><code>10xxxxxx</code></td><td><code>10xxxxxx</code></td><td><code>10xxxxxx</code></td><td>3 + 6 + 6 + 6 = 21</td></tr>
+</tbody>
+</table>
+<p>The x boxes hold the code point written in binary with exactly as many bits as its row has boxes (7, 11, 16 or 21), with zeros in front, shared out over the boxes from left to right. Check it on é above: 0xE9 is eight bits, and written in eleven it is <code>00011 101001</code>, which are the boxes of <code>110<strong>00011</strong> 10<strong>101001</strong></code>. Without the zeros in front, the bits would land in the wrong boxes. The box counts set the ranges: 7 bits reach 0x7F, 11 reach 0x7FF, 16 reach 0xFFFF. So a byte that starts with <code>0</code> is a whole ASCII character; one that starts with <code>11</code> is the <strong>first byte</strong> of a longer character and says how long; one that starts with <code>10</code> is a <strong>continuation byte</strong>, and never starts anything.</p>
+<div class="callout analogy"><span class="label">Analogy</span><p>A UTF-8 character is a short train. The engine, the first byte, has a sign that says how many carriages follow: <code>110</code> for one, <code>1110</code> for two, <code>11110</code> for three. Every carriage carries the sign <code>10</code>, so nobody mistakes a carriage for an engine, and if you step onto the platform halfway along, you walk back past the carriages to find the engine. <em>Where it breaks:</em> a real engine carries no cargo. A UTF-8 engine carries some of the code point too, and fewer bits than a carriage: three to five, against six.</p></div>
+<p>That last property makes UTF-8 <strong>self-synchronising</strong>: from any byte you can tell whether a character starts there, without reading what came before. Some byte values never appear at all. <code>0xF5</code> to <code>0xFF</code> would start a code point above 0x10FFFF. <code>0xC0</code> and <code>0xC1</code> would start a two-byte spelling of a code point below 0x80, and UTF-8 allows only the <strong>shortest form</strong>.</p>
+
+<h2>Reading UTF-8 by hand</h2>
+<p>Take the bytes <code>E4 BD A0</code> and find the character with nothing but the table. Write each byte in binary, split off the prefix, keep the payload:</p>
+<table>
+<thead><tr><th>Byte</th><th>Bits</th><th>Prefix</th><th>The prefix says</th><th>Payload</th></tr></thead>
+<tbody>
+<tr><td><code>E4</code></td><td><code>11100100</code></td><td><code>1110</code></td><td>first byte of three</td><td><code>0100</code></td></tr>
+<tr><td><code>BD</code></td><td><code>10111101</code></td><td><code>10</code></td><td>continuation</td><td><code>111101</code></td></tr>
+<tr><td><code>A0</code></td><td><code>10100000</code></td><td><code>10</code></td><td>continuation</td><td><code>100000</code></td></tr>
+</tbody>
+</table>
+<p>Put the payloads side by side and regroup the sixteen bits into fours from the left, one hex digit per group:</p>
+<table>
+<thead><tr><th>Payloads joined</th><td colspan="4"><code>0100 111101 100000</code></td></tr></thead>
+<tbody>
+<tr><th>Regrouped in fours</th><td><code>0100</code></td><td><code>1111</code></td><td><code>0110</code></td><td><code>0000</code></td></tr>
+<tr><th>Hex digits</th><td>4</td><td>F</td><td>6</td><td>0</td></tr>
+</tbody>
+</table>
+<p>U+4F60 is 20,320, and <code>code_points.py</code> printed exactly that for 你. Decoding is: read the first byte's prefix for the length, strip every prefix, join what is left. <code>bytes.decode("utf-8")</code> does this, and checks every rule of the table on the way.</p>
+<p>The other direction, from a code point to its bytes, is M1, <code>utf8_encode</code>, and the docstring in <code>src/llm101/tokenizer/utf8.py</code> holds the same table.</p>
+
+<h2>Surrogates, and text that is not text</h2>
+<p>Not every code point is a character. The 2,048 from U+D800 to U+DFFF are <strong>surrogates</strong>, kept for UTF-16, an older encoding with two bytes per unit that reaches code points above U+FFFF by writing a <em>pair</em> of them. A surrogate alone is half of a pair, not a character, and UTF-8, which writes U+1F642 directly in four bytes, has no bytes for one. Python lets a <code>str</code> hold one anyway (a broken JSON escape can produce it), but its encoder refuses it, and the docstring of <code>utf8_encode</code> says yours must raise <code>ValueError</code>. The other direction has its own trouble: not every list of bytes is UTF-8.</p>
+<pre class="code" data-lang="python" data-file="not_text.py" data-check="run"><code>half = chr(0xD800)  # a surrogate: Python lets a str hold one
+print(len(half), hex(ord(half)))
+try:
+    half.encode("utf-8")
+except UnicodeEncodeError as error:
+    print("encode:", error.reason)
+
+for data in [b"\xff", b"\x80", b"\xe4\xbd", b"\xc0\xaf", b"\xed\xa0\x80"]:
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        print(f"{data!s:16} {error.reason}")
+</code></pre>
+<pre class="output" data-for="not_text.py"><code>1 0xd800
+encode: surrogates not allowed
+b'\xff'          invalid start byte
+b'\x80'          invalid start byte
+b'\xe4\xbd'      unexpected end of data
+b'\xc0\xaf'      invalid start byte
+b'\xed\xa0\x80'  invalid continuation byte
+</code></pre>
+<p>Each byte string breaks one rule. <code>FF</code> never appears in UTF-8. <code>80</code> is a continuation byte with no first byte. <code>E4 BD</code> promises three bytes and has two. <code>C0 AF</code> is an <strong>overlong</strong> spelling of <code>/</code>, refused because two spellings of one character let text slip past a check that looks for the short one. <code>ED A0 80</code> is the table applied blindly to U+D800. (<code>error.reason</code> is the short message; <code>!s</code> turns <code>data</code> into a <code>str</code> so that <code>:16</code> can pad it.)</p>
+<p>So there is a gap on each side. Every <code>str</code> has UTF-8 bytes except one that holds a lone surrogate, and many lists of bytes are the UTF-8 of no <code>str</code>. A byte-level tokenizer lives on the bytes side, which is why no text is unknown to it: whatever the text, its bytes are numbers from 0 to 255, and each is a token.</p>
+
+<h2>When bytes are not a whole character</h2>
+<p>The gap matters as soon as tokens come out one at a time. 水, "water", is the bytes <code>E6 B0 B4</code>. From the oracle: GPT-2 writes it as two tokens, ids 36365 and 112, which stand for <code>E6 B0</code> and <code>B4</code>. A model that has produced the first and not yet the second holds two bytes that are not a character. Decoding them on their own fails, as <code>E4 BD</code> did in <code>not_text.py</code>: "unexpected end of data". (<code>bytes.decode</code> can be told to do something other than raise; <a href="03-encoding-by-rank.html#from-ids-back-to-text">chapter 3</a> takes its <code>errors=</code> argument apart.) A program that streams a reply needs a decoder that waits instead:</p>
+<pre class="code" data-lang="python" data-file="half_a_character.py" data-check="run"><code>import codecs
+
+water = "水".encode("utf-8")
+first, last = water[:2], water[2:]  # where GPT-2's tokens cut it
+print(water, first, last)
+print("joined:", (first + last).decode("utf-8"))
+
+decoder = codecs.getincrementaldecoder("utf-8")()  # holds back an unfinished character
+for piece in [first, last, b" is water"]:
+    print(repr(decoder.decode(piece)))
+</code></pre>
+<pre class="output" data-for="half_a_character.py"><code>b'\xe6\xb0\xb4' b'\xe6\xb0' b'\xb4'
+joined: 水
+''
+'水'
+' is water'
+</code></pre>
+<p>An <strong>incremental decoder</strong> keeps unfinished bytes between calls. Given <code>E6 B0</code> it returns nothing yet, the empty string; given <code>B4</code> it returns the whole 水; given whole characters it passes them straight through. It can, because of the table: <code>E6</code> starts with <code>1110</code>, so it knows two more bytes are owed after it, and it waits for exactly that many.</p>
+
+<h2>How many bytes a script takes</h2>
+<p>The table also fixes how many bytes a text takes, and a byte-level tokenizer starts from that number. The same greeting in eight scripts:</p>
+<pre class="code" data-lang="python" data-file="bytes_per_script.py" data-check="run"><code>greetings = {
+    "English": "Good morning",
+    "German": "Guten Morgen",
+    "Greek": "Καλημέρα",
+    "Russian": "Доброе утро",
+    "Hindi": "सुप्रभात",
+    "Japanese": "おはよう",
+    "Chinese": "早上好",
+    "Emoji": "🌅",
+}
+
+print(f"{'script':9} {'chars':&gt;5} {'bytes':&gt;5} {'per char':&gt;8}  text")
+for script, text in greetings.items():
+    size = len(text.encode("utf-8"))
+    print(f"{script:9} {len(text):5} {size:5} {size / len(text):8.2f}  {text}")
+</code></pre>
+<pre class="output" data-for="bytes_per_script.py"><code>script    chars bytes per char  text
+English      12    12     1.00  Good morning
+German       12    12     1.00  Guten Morgen
+Greek         8    16     2.00  Καλημέρα
+Russian      11    21     1.91  Доброе утро
+Hindi         8    24     3.00  सुप्रभात
+Japanese      4    12     3.00  おはよう
+Chinese       3     9     3.00  早上好
+Emoji         1     4     4.00  🌅
+</code></pre>
+<p>Each script lives in one part of the code points, so its bytes per character come straight from a row of the table:</p>
+<table>
+<thead><tr><th>Bytes</th><th>Code points</th><th>What lives there</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>U+0000 to U+007F</td><td>ASCII: English letters, digits, space, punctuation, newline</td></tr>
+<tr><td>2</td><td>U+0080 to U+07FF</td><td>Accented Latin letters (é, ü, ß), Greek, Cyrillic, Hebrew, Arabic</td></tr>
+<tr><td>3</td><td>U+0800 to U+FFFF</td><td>Devanagari (Hindi), Chinese, Japanese, Korean, most symbols (€)</td></tr>
+<tr><td>4</td><td>U+10000 to U+10FFFF</td><td>Emoji, rare Chinese characters, historic scripts</td></tr>
+</tbody>
+</table>
+<p>Russian is 1.91, not 2, because its space is ASCII; German is 1.00 only because "Guten Morgen" has no umlaut. The Hindi greeting takes 24 bytes before a single merge, twice the English one's 12, in fewer code points. A tokenizer whose merges were learned mostly from English glues English bytes into long tokens and leaves other scripts nearer their raw bytes. Chapter 6 measures what that does to the count of tokens, and so to the bill.</p>
+<div class="callout try"><span class="label">Try it</span><p>From the table, predict the code points and the UTF-8 bytes of <code>"Grüße"</code>, <code>"₹100"</code> and <code>"한국어"</code> (Korean). Then add them to <code>greetings</code> and run it.</p></div>
+<details class="answer"><summary>Show the answer</summary><p><code>"Grüße"</code>: 5 and 7, because ü and ß take two bytes each. <code>"₹100"</code>: 4 and 6; the rupee sign, U+20B9, is in the three-byte row with the euro. <code>"한국어"</code>: 3 and 9; Korean syllables are in the three-byte row too.</p></details>
+
+<div class="callout try"><span class="label">Write it</span><p><strong>Count the characters in UTF-8 bytes, without decoding them.</strong> Open <a href="../../../drills/02-heaps-lists/warmups/count_characters.py"><code>drills/02-heaps-lists/warmups/count_characters.py</code></a>, read its docstring, and write the body from the empty stub with the book closed: about ten lines, ten minutes. Everything it needs is in this chapter. The test reads your file, so <code>decode</code> is not allowed.</p>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_count_characters.py
+</code></pre>
+<p>Then one row in <code>ledger.md</code>, with the set written <code>02w</code>. A Write it has no redos.</p></div>
+<details class="hint"><summary>Rung 1: where to look</summary><p>Read the stub's docstring and <a href="../../../drills/02-heaps-lists/warmups/test_count_characters.py"><code>drills/02-heaps-lists/warmups/test_count_characters.py</code></a>: the Hindi word and the hypothesis test say what "a character" means here. Then re-read <a href="#the-utf-8-table">The UTF-8 table</a>, the paragraph under the table above all, and in <a href="#bits-shifts-and-masks">Bits, shifts and masks</a> the paragraph on testing bits and its Trap.</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>Both halves of this chapter meet in a serving engine. Because GPT-2's tokenizer, and later models' byte-level tokenizers, start from the 256 bytes, every prompt can be tokenized: no input is refused as unknown. And because a token is bytes, a reply streamed token by token can stop in the middle of a character, as 水 did above. vLLM turns the ids it generates back into text a few tokens at a time as it streams, and when the newest bytes do not yet make a whole character, its detokenizer holds them back until the rest arrives, so the reader never sees half a character. That is <code>half_a_character.py</code>'s incremental decoder, in a server.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Why does GPT-2's tokenizer start from the 256 bytes, rather than from words or characters?</p><details class="answer"><summary>Answer</summary><p>Every text is a list of bytes, and there are only 256 byte values, so a vocabulary that starts with all of them encodes any text in any script with nothing unknown. Words always leave some word out; characters need a table for over a million code points, most never seen in training, and still miss next year's.</p></details></div>
+<div class="q"><p>How many code points and how many UTF-8 bytes does <code>"naïve"</code> have, when its ï is the single code point U+00EF?</p><details class="answer"><summary>Answer</summary><p>Five code points and six bytes. U+00EF is between U+0080 and U+07FF, so it takes two bytes; the four ASCII letters take one each.</p></details></div>
+<div class="q"><p>You meet the byte <code>0b10110001</code> in the middle of some UTF-8. What do you know about it, and how many bits of a code point does it carry?</p><details class="answer"><summary>Answer</summary><p>It starts with <code>10</code>, so it is a continuation byte: the second, third or fourth byte of a character, never the first. It carries six payload bits, <code>110001</code>.</p></details></div>
+<div class="q"><p>The first byte of a character is <code>0xF0</code>. How many bytes does the character take, and how many payload bits does it have?</p><details class="answer"><summary>Answer</summary><p><code>0xF0</code> is <code>11110000</code>; the prefix <code>11110</code> means four bytes. The payload is 3 bits in the first byte and 6 in each of the other three: 21.</p></details></div>
+<div class="q"><p>Work out <code>(0x3C4A &gt;&gt; 8) &amp; 0x0F</code> on paper.</p><details class="answer"><summary>Answer</summary><p><code>0x3C4A &gt;&gt; 8</code> drops the lowest byte and leaves <code>0x3C</code>. <code>&amp; 0x0F</code> keeps its lowest hex digit: <code>0xC</code>, which is 12.</p></details></div>
+<div class="q"><p>Why can a Python <code>str</code> hold <code>chr(0xD800)</code>, when UTF-8 cannot encode it?</p><details class="answer"><summary>Answer</summary><p>A <code>str</code> is a sequence of code points, and 0xD800 is a code point. But it is a surrogate, half of a pair that only UTF-16 uses, not a character. UTF-8 writes every code point directly and never needs pairs, so it has no bytes for a lone half.</p></details></div>
+<div class="q"><p>A server is streaming a reply, and the last token ended after the bytes <code>E6 B0</code>. What should it send the reader now, and why?</p><details class="answer"><summary>Answer</summary><p>Nothing yet for those two bytes. <code>E6</code> starts with <code>1110</code>, so the character needs one more byte. Decoding now would raise "unexpected end of data". Holding the bytes back, as an incremental decoder does, sends the whole character when the next token brings its last byte.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say why a byte-level tokenizer never meets an unknown text, and read a token printed as <code>bytes</code>.</li>
+<li>Use <code>ord</code> and <code>chr</code>, and say why <code>len</code> of a string counts code points, not what you see.</li>
+<li>Index, slice and print <code>bytes</code> in hex and binary, and change a <code>bytearray</code>.</li>
+<li>Take a number apart and put it together with <code>&gt;&gt;</code>, <code>&lt;&lt;</code>, <code>&amp;</code> and <code>|</code>, make a mask of n ones with <code>(1 &lt;&lt; n) - 1</code> for a field of any width, and test bits with a mask.</li>
+<li>Read the UTF-8 table, and decode a character from its bytes by hand.</li>
+<li>Say why surrogates and some byte strings are refused, and how to handle a character cut in half.</li>
+<li>Predict how many UTF-8 bytes a text takes, script by script.</li>
+</ul>
+</main>
+</body>
+</html>

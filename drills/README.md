@@ -9,6 +9,7 @@ in [docs/methodology.md](../docs/methodology.md), "Drills and the ledger".
 |---|---|---|---|
 | [00-diagnostic](00-diagnostic/README.md) | Mixed: a cold measurement of where you are | Day 1 | run_length, top_endpoints, pair_with_sum, balanced, merge_intervals, moving_average |
 | [01-arrays-hashing](01-arrays-hashing/README.md) | Arrays and hashing; the partition behind quickselect | 1 | group_anagrams, sort_colours, longest_streak, count_stretches; for review: tidy_path, free_slots |
+| [02-heaps-lists](02-heaps-lists/README.md) | Heaps and linked lists | 2 | reverse_list, merge_two_lists, k_largest, merge_sorted_runs; for review: days_to_wait, longest_draw; debugging: print_queue; six Write it warm-ups in `warmups/` |
 
 ```sh
 uv run pytest drills/01-arrays-hashing/test_sort_colours.py    # one problem

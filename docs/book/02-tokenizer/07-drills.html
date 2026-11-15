@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>07 · Drills — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Practice</p>
+<h1>Drills</h1>
+<p class="lede">The seven problems of set 02 and the four patterns behind them, each taught on a problem of its own. At the end you can follow, edit and walk chains of nodes, keep a to-do list on a heap, and you know where to look, the idea and the shape for every drill, without a line of its solution.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>How a drill runs, and what set 02 adds: two review problems, a debugging drill, and a Write it for each concept chapter.</li>
+<li>The order of this module: redos first every day, then one or two new problems.</li>
+<li>Four patterns, each on a problem of its own: following links in a chain of nodes, walking two chains at once, a heap as a to-do list, and the smallest of many.</li>
+<li>The six drills of set 02, each with its stub, its time box and three rungs of its hint ladder, folded away. Two of them do not say which pattern they need.</li>
+<li>The debugging drill: read the message, reproduce, form one hypothesis, change as little as you can, and say why.</li>
+</ul>
+</div>
+
+<h2>How the drills work</h2>
+<p>A <strong>drill</strong> is a small, classic problem solved by hand against a clock: a statement in a docstring, a function whose body says <code>TODO(you)</code>, and a test file beside it. The rules are the ones you used in Module 1, and they are written out in full in <a href="../../../docs/methodology.md">docs/methodology.md</a>, under "Drills and the ledger":</p>
+<ul>
+<li><strong>Hands only.</strong> No agent, no completion, no paste. The Python docs are allowed, and every lookup is written down.</li>
+<li><strong>A time box</strong>, given at the end of each stub's docstring. At the bell, ask for one rung of the ladder or log a timeout.</li>
+<li><strong>Out loud.</strong> Say what you are doing while you do it.</li>
+<li><strong>Dry-run before you run.</strong> When you think you are done, walk two inputs through your code on paper, one of them an edge case (an empty chain, a list of one). Then run the tests, and count the runs until green.</li>
+<li><strong>The ledger.</strong> One row per attempt in <a href="../../../ledger.md">ledger.md</a>: minutes, the highest rung, lookups, runs, and the result (<code>green</code>, <code>green+hint</code> or <code>timeout</code>).</li>
+<li><strong>Two redos</strong>, at +2 and +7 days, cold, from an emptied function. A redo that falls on a Sunday moves to the Monday.</li>
+<li><strong>No reveal after a timeout.</strong> The problem stays open and comes back at its +2 day redo with the rungs you have not used.</li>
+<li><strong>One commit per solved drill</strong>, with the minutes in the message: <code>reverse_list: 14 min, no hints</code>.</li>
+</ul>
+<p>Set 02 adds three things to what you know from Module 1:</p>
+<ul>
+<li><strong>Six problems, two of them review.</strong> Four are on this module's pattern: two on linked lists and two on heaps. The other two need a pattern from Module 1's sets, and nothing on this page says which one until rung 2. An interview does not name the pattern either. Work it out before you type, and write it in the ledger's Pattern column afterwards.</li>
+<li><strong>One debugging drill</strong>: a finished program with a fault, 20 minutes to find it, explain it and fix it. One ledger row, whose Pattern column holds what the fault was, and no redos.</li>
+<li><strong>A Write it in each concept chapter</strong>: a function of about ten lines on that chapter's mechanism, written from an empty stub in ten minutes. One ledger row with the set written as <code>02w</code>, and no redos.</li>
+</ul>
+<p>Run one drill's tests, or all of them, from the repository root:</p>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/test_reverse_list.py
+$ uv run pytest drills/02-heaps-lists
+</code></pre>
+<p>Drills never run in CI: a redo empties a function, and an empty function is meant to be red.</p>
+<p>The pattern sections below are read in block 5 of the day before the drill that needs them, and their programs the way a concept chapter's are: read one, cover it, type it into <code>scratch/</code> from memory under the name shown with it, compare and run; if block 5 runs short, type the rest with the page open.</p>
+
+<div class="callout note"><span class="label">The hint ladder in this chapter</span>
+<p>Each drill below has three rungs, folded: <strong>Rung 1, where to look</strong>, <strong>Rung 2, the idea in words</strong>, and <strong>Rung 3, the shape</strong> (which data structure, which loop goes where, what to test first). Open one rung at a time, only at the bell or when you are truly stuck, and write the rung in the ledger. Rung 4, the same mechanism on a different problem, you get from Claude by asking for it. There is no rung 5, and no solution anywhere in this book.</p>
+</div>
+
+<h2>The order of this module</h2>
+<p>Six days, one drill block of an hour each. The redos that the ledger says are due come first, every day, and only then a new problem.</p>
+<table>
+<thead><tr><th>Day</th><th>Drill block</th><th>Read first (block 5 of the day before)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>The eight redos that Module 1's week leaves (set 00's six at +7 days, and two of set 01's), then <code>reverse_list</code> if the hour allows</td><td>At the spec ritual, before day 1: <a href="#how-the-drills-work">How the drills work</a> and <a href="#following-links-a-chain-of-nodes">Following links: a chain of nodes</a></td></tr>
+<tr><td>2</td><td>Redos, then <code>merge_two_lists</code> and <code>days_to_wait</code></td><td><a href="#walking-two-chains-at-once">Walking two chains at once</a></td></tr>
+<tr><td>3</td><td>Redos, then <code>k_largest</code></td><td><a href="#a-heap-as-a-to-do-list">A heap as a to-do list</a></td></tr>
+<tr><td>4</td><td>Redos, then <code>merge_sorted_runs</code></td><td><a href="#the-smallest-of-many">The smallest of many</a></td></tr>
+<tr><td>5</td><td>Redos, then <code>print_queue</code>, then <code>longest_draw</code> if the hour allows (otherwise it waits for the next drill block)</td><td><a href="#the-debugging-drill">The debugging drill</a></td></tr>
+<tr><td>6</td><td>Redos, then the mock round: an engine kata from Module 1</td><td>Nothing: a kata is done cold</td></tr>
+</tbody>
+</table>
+<p><strong>Redos come first.</strong> Set 01's +7 day redos fall on days 2 to 5. A new problem that does not fit in the hour waits for the next drill block, and the last ones of the set may spill into the first days of Module 3. A redo is never skipped to make room for a new problem.</p>
+<p><strong>Read the pattern before the drill.</strong> Each drill below names the section of this chapter it needs, except the two review drills. "How the drills work" and "Following links" are read at the spec ritual, with chapter 00, because day 1's drill needs them before any read block has come; the other sections in block 5 of the day before. The heap and linked-list sections come before chapter 5, which builds on them instead of teaching them again: it adds entries that went stale, and a linked list kept in two lists of positions.</p>
+<p><strong>The engine kata on day 6</strong> is a function of Module 1 that you finished, typed again from an empty stub in <code>drills/katas/</code> in 30 to 45 minutes, out loud, with no hints. Claude keeps time and listens; after the bell you compare the two versions in git, and the attempt gets a ledger row with the set written as <code>kata m01</code>.</p>
+<p><strong>The Write it of each concept chapter</strong> is done at the end of that chapter's read block, from its stub in <a href="../../../drills/02-heaps-lists/README.md">drills/02-heaps-lists/warmups/</a>:</p>
+<table>
+<thead><tr><th>Chapter</th><th>Write it</th><th>Stub</th></tr></thead>
+<tbody>
+<tr><td>1, Bytes and UTF-8</td><td>Count the characters in UTF-8 bytes without decoding them</td><td><a href="../../../drills/02-heaps-lists/warmups/count_characters.py">count_characters.py</a></td></tr>
+<tr><td>2, Pairs and merges</td><td>The busiest hour of a day of requests</td><td><a href="../../../drills/02-heaps-lists/warmups/busiest_hour.py">busiest_hour.py</a></td></tr>
+<tr><td>3, Encoding by rank</td><td>Turn a lookup table around</td><td><a href="../../../drills/02-heaps-lists/warmups/invert_table.py">invert_table.py</a></td></tr>
+<tr><td>4, GPT-2's tokenizer</td><td>Read a palette of colours from a JSON file</td><td><a href="../../../drills/02-heaps-lists/warmups/read_palette.py">read_palette.py</a></td></tr>
+<tr><td>5, Heaps and linked lists</td><td>The next job off a heap, skipping the cancelled ones</td><td><a href="../../../drills/02-heaps-lists/warmups/next_alive.py">next_alive.py</a></td></tr>
+<tr><td>6, Tokens as cost</td><td>How much of a conversation fits in a context window</td><td><a href="../../../drills/02-heaps-lists/warmups/messages_that_fit.py">messages_that_fit.py</a></td></tr>
+</tbody>
+</table>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_count_characters.py
+</code></pre>
+
+<h2>Following links: a chain of nodes</h2>
+<p>A Python list is very good at one thing: finding the item at a position. It is poor at another: putting an item in at the front, or taking one out of the middle, because everything after that place has to move along by one. For a list of a million items, an insert at the front is a million moves. Some programs insert and remove in the middle all the time and almost never ask for "the item at position 500,000". For them there is a different way to keep a sequence: each item in its own small object, a <strong>node</strong>, that holds the item and a <strong>link</strong> to the node after it. A chain of such nodes is a <strong>linked list</strong>. The first node is its <strong>head</strong>, and the last node's link is <code>None</code>.</p>
+
+<div class="callout principle"><span class="label">First principle</span>
+<p>A Python list keeps, in one block of memory, the addresses of its items one after another. The address of item i is found by arithmetic (the start of the block plus 8 bytes times i), which is why <code>xs[i]</code> is instant, and why inserting at the front means shifting every address one slot along. A node is an object that can live anywhere in memory; its <code>next</code> attribute holds the address of one other node. Nothing is side by side, so nothing has to shift when you insert. And nothing can be found by arithmetic, so reaching the 500,000th node means following 499,999 links, one at a time.</p>
+</div>
+
+<div class="callout analogy"><span class="label">Analogy</span>
+<p>A treasure hunt. Each clue tells you where the next clue is hidden, and the last one says "the end". To add a clue in the middle, you rewrite one clue to point at the new one, and the new one to point where the old one did; no other clue changes. Where it breaks: a person on a treasure hunt can look around and spot clue 7 under a bench. A program sees only the nodes it holds a name for. Lose the name of the only node that leads to the rest, and the rest is gone.</p>
+</div>
+
+<p>A bus route, three stops, built by hand and walked from the first stop to the last:</p>
+<pre class="code" data-lang="python" data-file="route_walk.py" data-check="run"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(eq=False)
+class Stop:
+    name: str
+    next: Stop | None = None
+
+
+# Build the route Mill Lane -&gt; Market -&gt; Station by hand, back to front.
+station = Stop("Station")
+market = Stop("Market", station)
+first = Stop("Mill Lane", market)
+
+# Walk it: follow the links until there is no next stop.
+stop = first
+while stop is not None:
+    print(stop.name)
+    stop = stop.next
+
+count = 0
+stop = first
+while stop is not None:
+    count += 1
+    stop = stop.next
+print(count, "stops")
+print(first.next.next.name)
+</code></pre>
+<pre class="output" data-for="route_walk.py"><code>Mill Lane
+Market
+Station
+3 stops
+Station
+</code></pre>
+<p>The route is built back to front, so that each stop exists before the stop in front of it links to it. The walk is the loop you will write in every linked-list problem: start a variable at the head, do something with the node it names, move it with <code>stop = stop.next</code>, and stop when it is <code>None</code>. The walk uses its own variable, <code>stop</code>, and leaves <code>first</code> alone. Walk with <code>first</code> itself and, at the end, nothing names the start of the route any more. Counting is the same walk with a counter: there is no <code>len</code> for a chain, unless you keep one yourself.</p>
+
+<div class="callout note"><span class="label">Python you need</span>
+<p>A dataclass can link to its own kind. The annotation <code>Stop | None</code> names the class while it is still being defined, which <code>from __future__ import annotations</code> allows: it keeps annotations as text instead of working them out at once. The drills' <code>Node</code> is written the same way.</p>
+<p><code>@dataclass</code> also writes an <code>__eq__</code> that compares the fields, so two different nodes with equal fields are <code>==</code>. For nodes you almost always mean "the same node", which is <code>is</code>. <code>eq=False</code> leaves Python's own <code>==</code>, which is <code>is</code>:</p>
+<pre class="code" data-lang="python" data-file="same_or_equal.py" data-check="run"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class Carriage:  # eq is left on: == compares the fields
+    seats: int
+    next: Carriage | None = None
+
+
+@dataclass(eq=False)
+class Wagon:  # eq=False: == asks whether it is the same object, like `is`
+    seats: int
+    next: Wagon | None = None
+
+
+print(Carriage(40) == Carriage(40), Carriage(40) is Carriage(40))
+print(Wagon(40) == Wagon(40), Wagon(40) is Wagon(40))
+w = Wagon(40)
+print(w == w, w is w)
+print(Carriage(40, Carriage(60)))
+</code></pre>
+<pre class="output" data-for="same_or_equal.py"><code>True False
+False False
+True True
+Carriage(seats=40, next=Carriage(seats=60, next=None))
+</code></pre>
+<p>The last line shows the other problem with the default: the printed form of a node includes the node after it, and that one the next, all the way down the chain. That is why the drills' <code>Node</code> has its own <code>__repr__</code>, which prints only its value.</p>
+</div>
+
+<div class="callout trap"><span class="label">Trap</span>
+<p>Field-by-field <code>==</code> on a long chain compares the first nodes, which compares their <code>next</code> nodes, which compares theirs: one Python call inside another for every node. Python stops a chain of calls at about a thousand deep, with a <code>RecursionError</code>, and so does any function that calls itself once per node (the appendix shows one, in <a href="09-appendix.html#heaps-and-linked-lists">Heaps and linked lists</a>). The drills' tests use chains of 100,000 nodes on purpose: a loop is the safe shape.</p>
+</div>
+
+<p>A wider version: build a route from a Python list front to back, then change it in the three ways a linked list does cheaply.</p>
+<pre class="code" data-lang="python" data-file="route_edits.py" data-check="run"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(eq=False)
+class Stop:
+    name: str
+    next: Stop | None = None
+
+
+def build(names):
+    """A route through names, in order: its first stop, or None."""
+    first = last = None
+    for name in names:
+        stop = Stop(name)
+        if first is None:
+            first = stop  # the very first stop: nothing to link it from
+        else:
+            last.next = stop  # hang the new stop on the end
+        last = stop
+    return first
+
+
+def show(first):
+    names = []
+    stop = first
+    while stop is not None:
+        names.append(stop.name)
+        stop = stop.next
+    print(" -&gt; ".join(names) if names else "(no stops)")
+
+
+route = build(["Market", "Station", "Bridge"])
+show(route)
+
+route = Stop("Mill Lane", route)  # a new first stop: one link, nothing moves
+show(route)
+
+market = route.next
+school = Stop("School", market.next)  # first: the new stop points at what follows
+market.next = school  # then: Market points at the new stop
+show(route)
+
+market.next = market.next.next  # remove the stop after Market
+show(route)
+print(school.name, "still exists, but no stop leads to it")
+show(build([]))
+</code></pre>
+<pre class="output" data-for="route_edits.py"><code>Market -&gt; Station -&gt; Bridge
+Mill Lane -&gt; Market -&gt; Station -&gt; Bridge
+Mill Lane -&gt; Market -&gt; School -&gt; Station -&gt; Bridge
+Mill Lane -&gt; Market -&gt; Station -&gt; Bridge
+School still exists, but no stop leads to it
+(no stops)
+</code></pre>
+<p><code>build</code> keeps two names: <code>first</code>, which never changes after the first stop, and <code>last</code>, the stop at the end, so that each new stop is hung on the end with one assignment instead of a walk from the front. Then three edits, each one or two assignments however long the route is:</p>
+<ul>
+<li><strong>Insert at the front</strong>: a new stop whose <code>next</code> is the old first stop. The new stop is now the head, so the name <code>route</code> moves to it.</li>
+<li><strong>Insert after a stop</strong>: the new stop first points at what follows, then the stop before it points at the new stop.</li>
+<li><strong>Remove the stop after a stop</strong>: point past it. The removed stop still exists for as long as something names it (here <code>school</code>), but no walk will ever reach it again.</li>
+</ul>
+
+<div class="callout trap"><span class="label">Trap</span>
+<p>In "insert after", the order of the two assignments is the whole trick. Write <code>market.next = school</code> first, and then <code>school.next = market.next</code> makes School point at itself: the rest of the route is lost, and a walk goes round School for ever. Before you change a link, make sure something else already names the node it pointed at.</p>
+</div>
+
+<p>One more shape, for removing nodes that may include the first one. Take out every closed stop of a route. Removing a stop in the middle is "point past it" from the stop before. But the first stop has no stop before it, so removing it is a different operation: the head itself moves. A <strong>placeholder</strong> node (also called a dummy or a sentinel) put in front of the head gives every real stop a stop before it, and the special case disappears:</p>
+<pre class="code" data-lang="python" data-file="closed_stops.py" data-check="run"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(eq=False)
+class Stop:
+    name: str
+    closed: bool = False
+    next: Stop | None = None
+
+
+def build(stops):
+    first = last = None
+    for name, closed in stops:
+        stop = Stop(name, closed)
+        if first is None:
+            first = stop
+        else:
+            last.next = stop
+        last = stop
+    return first
+
+
+def names(first):
+    out = []
+    while first is not None:
+        out.append(first.name)
+        first = first.next
+    return out
+
+
+def skip_closed(first):
+    """Unlink every closed stop. Returns the new first stop, which may be a different one."""
+    placeholder = Stop("(placeholder)", next=first)  # a stop in front of the first one
+    before = placeholder
+    while before.next is not None:
+        if before.next.closed:
+            before.next = before.next.next  # unlink it; stay where you are
+        else:
+            before = before.next  # keep it; step on
+    return placeholder.next
+
+
+route = build([("Mill Lane", True), ("Market", False), ("School", True), ("Park", True), ("Station", False)])
+print(names(route))
+print(names(skip_closed(route)))
+print(names(skip_closed(build([("Depot", True), ("Yard", True)]))))
+print(names(skip_closed(None)))
+</code></pre>
+<pre class="output" data-for="closed_stops.py"><code>['Mill Lane', 'Market', 'School', 'Park', 'Station']
+['Market', 'Station']
+[]
+[]
+</code></pre>
+<p>The loop always looks one stop ahead, at <code>before.next</code>, because to unlink a stop you must stand on the stop before it. After an unlink it does not step on: the stop that has moved up into <code>before.next</code> has not been looked at yet, and Park, right after School, is closed too. The new head is whatever the placeholder points at in the end, which is <code>None</code> when every stop was closed. The placeholder is never part of the answer.</p>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>Add <code>station.next = first</code> to <code>route_walk.py</code> before the walk. What does the walk do, and the count after it? How do the drills' tests make sure that a chain like this cannot hang them?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>The walk never ends: it prints Mill Lane, Market, Station, Mill Lane, and so on, because no link is ever <code>None</code>, and the count never gets to run. The drills' test helper <code>nodes_of</code> counts the nodes as it walks and stops at a limit, a million, with the message <em>the list goes round in a loop</em>, so a chain that points back into itself fails the test instead of hanging it.</p>
+</details>
+
+<h2>Walking two chains at once</h2>
+<p>Some questions are about two chains: do they hold the same items, how do their items interleave, which comes first. The shape is one name per chain, like a finger on each, and a loop that moves the fingers by the rule of the question. The loop runs while both fingers are on a node. When it stops, at most one chain has nodes left, and the question decides what happens to them.</p>
+<p>Two piles of cards, each kept as a chain from the top card down. Do they hold the same cards in the same order?</p>
+<pre class="code" data-lang="python" data-file="same_pile.py" data-check="run"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(eq=False)
+class Card:
+    label: str
+    next: Card | None = None
+
+
+def pile(labels):
+    """A pile of cards, top first: its top card, or None."""
+    top = last = None
+    for label in labels:
+        card = Card(label)
+        if top is None:
+            top = card
+        else:
+            last.next = card
+        last = card
+    return top
+
+
+def same_cards(a, b):
+    """True when both piles hold the same labels in the same order."""
+    while a is not None and b is not None:
+        if a.label != b.label:
+            return False
+        a, b = a.next, b.next  # both fingers move together
+    return a is None and b is None  # both ran out at once, or one pile is longer
+
+
+print(same_cards(pile(["7♠", "Q♥", "2♦"]), pile(["7♠", "Q♥", "2♦"])))
+print(same_cards(pile(["7♠", "Q♥", "2♦"]), pile(["7♠", "K♥", "2♦"])))
+print(same_cards(pile(["7♠", "Q♥"]), pile(["7♠", "Q♥", "2♦"])))
+print(same_cards(None, None))
+</code></pre>
+<pre class="output" data-for="same_pile.py"><code>True
+False
+False
+True
+</code></pre>
+<p>Inside the loop the two fingers always move together. The interesting line is the last: when the loop ends, either both fingers fell off at the same moment (the piles are the same length, and every card matched), or one is still on a card, and then one pile is longer. Leave that line out and the third pile, which is the second one with its last card missing, would count as the same.</p>
+<p>A wider version, where the fingers move in turn: a perfect riffle shuffle, one card from the left pile, then one from the right, into a new Python list.</p>
+<pre class="code" data-lang="python" data-file="riffle.py" data-check="run"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(eq=False)
+class Card:
+    label: str
+    next: Card | None = None
+
+
+def pile(labels):
+    top = last = None
+    for label in labels:
+        card = Card(label)
+        if top is None:
+            top = card
+        else:
+            last.next = card
+        last = card
+    return top
+
+
+def riffle(left, right):
+    """The labels of a perfect riffle: one card from the left pile, then one from the right, and
+    so on. When one pile runs out, the rest of the other follows as it is. The piles are not
+    changed: this reads the links and builds a new Python list."""
+    labels = []
+    while left is not None and right is not None:
+        labels.append(left.label)
+        labels.append(right.label)
+        left, right = left.next, right.next
+    rest = left if left is not None else right  # at most one pile has cards left
+    while rest is not None:
+        labels.append(rest.label)
+        rest = rest.next
+    return labels
+
+
+left = pile(["A♠", "2♠", "3♠"])
+right = pile(["A♥", "2♥", "3♥", "4♥", "5♥"])
+print(riffle(left, right))
+print(riffle(left, None))
+print(riffle(None, None))
+print(left.label, left.next.label)  # the left pile is as it was
+</code></pre>
+<pre class="output" data-for="riffle.py"><code>['A♠', 'A♥', '2♠', '2♥', '3♠', '3♥', '4♥', '5♥']
+['A♠', '2♠', '3♠']
+[]
+A♠ 2♠
+</code></pre>
+<p>While both piles have cards, each round takes one from each. When the shorter pile runs out, the leftovers of the other follow as they are, in a second loop that walks whichever finger is not <code>None</code>. The piles themselves are not changed: the function reads their links and copies their labels. A problem that asks you to <em>relink</em> the nodes, instead of copying their values, keeps this shape: two fingers, a loop while both are on a node, and the leftovers after it.</p>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>Change <code>same_cards</code> into <code>first_difference(a, b)</code>, which returns the position (from 0) of the first place where the piles differ, or <code>-1</code> when they are the same. What should it return for a pile and the same pile with one more card at the bottom?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>Keep a counter that goes up each time the fingers move. Return it when two labels differ. After the loop, return <code>-1</code> only if both fingers are <code>None</code>; otherwise the piles differ at the counter's position, where one pile has a card and the other has none. For three cards against the same three plus one, that is 3.</p>
+</details>
+
+<h2>A heap as a to-do list</h2>
+<p>A triage desk in a hospital. Patients arrive in any order, each with an urgency from 1 (most urgent) upwards, and the nurse always calls the most urgent patient next. Kept in order of arrival, every call means looking at everyone who is waiting. Kept sorted by urgency, every arrival means finding its place and shifting everyone behind it. Either way, one of the two operations costs about n steps for n patients. A <strong>heap</strong> does both in about log₂ n: for a thousand patients, about 10 steps instead of a thousand.</p>
+
+<div class="callout principle"><span class="label">First principle</span>
+<p>A heap is an ordinary list, read as a tree. Position 0 is the top. The two children of position i sit at positions 2i + 1 and 2i + 2, so the parent of position i is at (i − 1) // 2. There is one rule, and only one: <strong>no item is smaller than its parent</strong>. So the smallest item is always at position 0, and nothing else is promised: two children can be in either order, and the list as a whole is not sorted. A push puts the new item at the end and swaps it with its parent for as long as it is smaller, at most once per level of the tree. A pop takes the item at position 0, moves the last item into its place, and swaps it down with its smaller child until the rule holds again. A tree of n items has about log₂ n levels, so each costs about log₂ n swaps.</p>
+</div>
+
+<p>Here are seven numbers made into a heap with <code>heapq.heapify</code>, and the rule checked at every position:</p>
+<pre class="code" data-lang="python" data-file="heap_shape.py" data-check="run"><code>import heapq
+
+minutes = [40, 15, 32, 8, 27, 5, 19]
+heapq.heapify(minutes)  # rearrange the list in place into heap order, in time proportional to n
+print(minutes)
+
+for i in range(1, len(minutes)):
+    parent = (i - 1) // 2
+    print(f"position {i} holds {minutes[i]:2}; its parent, position {parent}, holds {minutes[parent]:2}")
+
+print(all(minutes[(i - 1) // 2] &lt;= minutes[i] for i in range(1, len(minutes))))
+print(minutes == sorted(minutes))
+</code></pre>
+<pre class="output" data-for="heap_shape.py"><code>[5, 8, 19, 15, 27, 32, 40]
+position 1 holds  8; its parent, position 0, holds  5
+position 2 holds 19; its parent, position 0, holds  5
+position 3 holds 15; its parent, position 1, holds  8
+position 4 holds 27; its parent, position 1, holds  8
+position 5 holds 32; its parent, position 2, holds 19
+position 6 holds 40; its parent, position 2, holds 19
+True
+False
+</code></pre>
+<p>Drawn as the tree it stands for, each row is one level, and every number sits below a smaller one:</p>
+<pre class="code" data-lang="text"><code>              5            position 0
+           /     \
+         8         19      positions 1 and 2
+       /   \      /   \
+     15     27  32     40  positions 3 to 6
+</code></pre>
+<p>The list is a heap and it is not sorted: 19 sits before 15. Only the top is known to be the smallest. <code>heapify</code> rearranges a whole list in time proportional to its length, which is cheaper than pushing the items one at a time.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span>
+<p>An organisation chart in which every manager is senior to the two people who report to them. The most senior person is at the top, but two colleagues side by side can be in either order, and someone near the bottom of one branch may be more senior than a manager in another. Where it breaks: when the person at the top leaves, a heap moves whoever sits in the last place of the list up to the top and lets them sink, swapping with the more senior of their two reports at each level. No company fills a post that way.</p>
+</div>
+
+<div class="callout note"><span class="label">Python you need</span>
+<p>The <code>heapq</code> module works on a plain list that you keep: it has no heap class. <code>heapq.heappush(heap, item)</code> adds, <code>heapq.heappop(heap)</code> removes and returns the smallest, and <code>heap[0]</code> looks at the smallest without taking it. <code>heapq.heapify(xs)</code> turns a list into a heap in place. <code>heapq.heapreplace(heap, item)</code> pops the smallest and pushes <code>item</code> in one go, which is cheaper than the two calls. heapq keeps the <em>smallest</em> on top; it has no option for the largest. Items can be tuples, which compare item by item, the first items first (chapter 5, <a href="05-heaps-and-linked-lists.html#heapq-and-how-tuples-compare">heapq, and how tuples compare</a>), so <code>(urgency, name)</code> puts the lowest urgency on top.</p>
+</div>
+
+<pre class="code" data-lang="python" data-file="triage_desk.py" data-check="run"><code>import heapq
+
+# (urgency, name): 1 is the most urgent. The heap is an ordinary list.
+waiting = []
+for urgency, name in [(3, "sprained wrist"), (1, "chest pain"), (4, "splinter"), (2, "deep cut")]:
+    heapq.heappush(waiting, (urgency, name))
+    print("arrives:", name.ljust(15), "next up:", waiting[0][1])
+
+print(waiting)  # heap order, not sorted order
+
+heapq.heappush(waiting, (0, "cardiac arrest"))
+while waiting:
+    urgency, name = heapq.heappop(waiting)
+    print("seen:", urgency, name)
+</code></pre>
+<pre class="output" data-for="triage_desk.py"><code>arrives: sprained wrist  next up: sprained wrist
+arrives: chest pain      next up: chest pain
+arrives: splinter        next up: chest pain
+arrives: deep cut        next up: chest pain
+[(1, 'chest pain'), (2, 'deep cut'), (4, 'splinter'), (3, 'sprained wrist')]
+seen: 0 cardiac arrest
+seen: 1 chest pain
+seen: 2 deep cut
+seen: 3 sprained wrist
+seen: 4 splinter
+</code></pre>
+<p>After each arrival, <code>waiting[0]</code> is the most urgent patient so far, and printing the whole list shows heap order, not sorted order: the splinter (4) sits before the sprained wrist (3). The pops come out in order of urgency all the same, because each pop repairs the heap. The patient who arrives last with urgency 0 goes straight to the top.</p>
+
+<div class="callout trap"><span class="label">Trap</span>
+<p>The rule holds only while every change goes through heapq. Append to the list yourself, or change the priority of an entry already inside, and <code>heap[0]</code> may no longer be the smallest. Nothing raises an error:</p>
+<pre class="code" data-lang="python" data-file="heap_broken.py" data-check="run"><code>import heapq
+
+heap = [1, 5, 3]
+heapq.heapify(heap)
+heap.append(0)  # added by hand, not with heappush: nothing moved it up
+print(heap, "top:", heap[0])
+print(heapq.heappop(heap), "came off first, though 0 was in the heap")
+</code></pre>
+<pre class="output" data-for="heap_broken.py"><code>[1, 5, 3, 0] top: 1
+1 came off first, though 0 was in the heap
+</code></pre>
+</div>
+
+<p>A wider version: a to-do list that grows while you work through it. A bakery's day is a list of events, each at a minute. Handling one event can set another in motion later: bread that comes out of the oven must cool, then be sliced. The heap always hands you the earliest event that is still to happen, whatever order the events were added in:</p>
+<pre class="code" data-lang="python" data-file="bakery_day.py" data-check="run"><code>import heapq
+
+# What happens next, and what it sets in motion: (minutes until the follow-up, the follow-up).
+FOLLOW_UP = {
+    "bread in the oven": (35, "bread out"),
+    "cake in the oven": (25, "cake out"),
+    "bread out": (20, "slice the bread"),
+    "cake out": (16, "ice the cake"),
+    "ice the cake": (12, "cake on the counter"),
+}
+
+events = [(0, "bread in the oven"), (7, "cake in the oven")]  # (minute, event)
+heapq.heapify(events)
+
+while events:
+    minute, event = heapq.heappop(events)  # always the earliest thing still to happen
+    print(f"minute {minute:3}: {event}")
+    if event in FOLLOW_UP:
+        delay, next_event = FOLLOW_UP[event]
+        heapq.heappush(events, (minute + delay, next_event))  # it joins the to-do list
+</code></pre>
+<pre class="output" data-for="bakery_day.py"><code>minute   0: bread in the oven
+minute   7: cake in the oven
+minute  32: cake out
+minute  35: bread out
+minute  48: ice the cake
+minute  55: slice the bread
+minute  60: cake on the counter
+</code></pre>
+<p>The cake went into the oven after the bread and came out before it, and its icing (minute 48) was handled before the bread was sliced (minute 55), although the slicing was added to the heap first. The loop does not know about bread or cakes: it takes the earliest event, does it, and pushes whatever that event causes. This is how a <strong>discrete-event simulation</strong> works, and a simulation of a server, with requests that arrive and finish, is the same loop with other events.</p>
+
+<div class="callout twin"><span class="label">In a real engine</span>
+<p>vLLM's scheduler can run with a priority policy (<code>--scheduling-policy priority</code>): each request carries a priority number, a lower one is served first, and the requests waiting to be admitted are kept on a heap with <code>heapq</code>, so finding the next one costs about log₂ n however many are waiting. In recent versions it is in <code>vllm/v1/core/sched/request_queue.py</code>. The default policy, first come first served, needs no heap: a plain queue in order of arrival.</p>
+</div>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>In <code>bakery_day.py</code>, replace the heap with a plain list: <code>events.append(...)</code> to add, and <code>events.remove(min(events))</code> to take the earliest. Does the output change? What does each step cost now?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>The output is the same: <code>min</code> finds the earliest event, by the same tuple comparison. But each step now looks at every waiting event, once to find the smallest and again to remove it, so a step costs about n instead of about log₂ n. With seven events nobody can tell. With a million events waiting, it is the difference between twenty steps and a million.</p>
+</details>
+
+<h2>The smallest of many</h2>
+<p>A supermarket has k tills and a queue of n customers. Each customer, in turn, goes to the till that will be free first. Asking "which till is free first?" by looking at every till costs k steps per customer, n × k in all. But between two customers only one till changes: the one the last customer went to, which is now busy until later. So keep the tills on a heap, keyed by the minute each one is free. The top is the answer to the question. After you use it, the same till goes back with its new minute. The heap never holds more than k entries, one per till, so each customer costs about log₂ k.</p>
+<p>That is the pattern of this section: a heap of a fixed number of candidates, one for each source (here, each till), whose top is the one to use next, and the one you use is replaced by its successor.</p>
+<pre class="code" data-lang="python" data-file="checkout_lanes.py" data-check="run"><code>import heapq
+
+# Three tills open at minutes 0, 1 and 2. Customers queue in this order, each with the minutes
+# their shopping takes to scan, and each goes to the till that is free first.
+OPENS = [0, 1, 2]
+customers = [("Ana", 4), ("Ben", 9), ("Cy", 3), ("Dee", 5), ("Eli", 2), ("Fay", 7), ("Gus", 6)]
+
+
+def with_a_heap(customers, opens):
+    tills = [(minute, till) for till, minute in enumerate(opens)]  # (minute it is free, till)
+    heapq.heapify(tills)
+    plan = []
+    for name, minutes in customers:
+        free_at, till = tills[0]  # the till that is free first is on top
+        heapq.heapreplace(tills, (free_at + minutes, till))  # pop it, push it back busy
+        plan.append((name, till, free_at))
+    return plan
+
+
+def by_looking_at_every_till(customers, opens):
+    free = list(opens)
+    plan = []
+    for name, minutes in customers:
+        till = free.index(min(free))  # the first till with the earliest minute
+        plan.append((name, till, free[till]))
+        free[till] += minutes
+    return plan
+
+
+for name, till, start in with_a_heap(customers, OPENS):
+    print(f"{name:3} goes to till {till} at minute {start}")
+print(with_a_heap(customers, OPENS) == by_looking_at_every_till(customers, OPENS))
+</code></pre>
+<pre class="output" data-for="checkout_lanes.py"><code>Ana goes to till 0 at minute 0
+Ben goes to till 1 at minute 1
+Cy  goes to till 2 at minute 2
+Dee goes to till 0 at minute 4
+Eli goes to till 2 at minute 5
+Fay goes to till 2 at minute 7
+Gus goes to till 0 at minute 9
+True
+</code></pre>
+<p><code>tills[0]</code> is read first, because its minute and its number are needed for the new entry. Then <code>heapreplace</code> pops that entry and pushes the till back with the minute it will next be free. The slow version, which looks at every till for every customer, gives the same plan, and the last line checks it. A slow, obviously right version is the oracle of a fast one, here as in the tests.</p>
+<p>How much does it save? Count the steps. With 200 tills, looking at every till is 200 steps per customer; the heap is about log₂ 200, about 8. On a real machine the gap is smaller than 25 times, because <code>min</code> and <code>index</code> walk the tills in C while each heap step compares two tuples in Python, but it grows with k: ten times as many tills make the scan ten times as long, and the heap a few steps longer.</p>
+
+<div class="callout try"><span class="label">Try it</span>
+<p>In <code>checkout_lanes.py</code>, what happens with one till? And with as many tills as customers, all open at minute 0?</p>
+</div>
+<details class="answer"><summary>Show the answer</summary>
+<p>With one till the heap has one entry, and every customer waits for it in turn: the plan is the queue in order, each customer starting when the one before finishes. With as many tills as customers, all open at 0, every customer gets a till at minute 0, and the heap is as big as the queue: k is n, and the saving is gone, because no customer ever had to wait.</p>
+</details>
+
+<h2>Set 02: heaps and linked lists</h2>
+<p>The module's own pattern, after the redos, from day 1. Stubs and tests are in <a href="../../../drills/02-heaps-lists/README.md">drills/02-heaps-lists/</a>. Three test files read your code: <code>k_largest</code> fails if it calls <code>sorted()</code>, <code>.sort()</code>, <code>heapq.nlargest</code> or <code>heapq.nsmallest</code>, <code>merge_sorted_runs</code> if it calls <code>sorted()</code>, <code>.sort()</code> or <code>heapq.merge</code>, and <code>merge_two_lists</code> if it calls <code>sorted()</code> or <code>.sort()</code>. Each of those tests calls your function first, so it is red until the function works. Four time your function on a long input and stop it after two seconds (<code>k_largest</code>, <code>merge_sorted_runs</code>, <code>days_to_wait</code> and <code>longest_draw</code>), and the linked-list tests check that the nodes of the answer are the nodes you were given.</p>
+<p>Four of the six are on the module's pattern. The other two, <code>days_to_wait</code> and <code>longest_draw</code>, are <strong>review</strong>: each needs a pattern from Module 1's sets, and nothing here says which until you open rung 2.</p>
+
+<h3>reverse_list</h3>
+<p><strong>Pattern:</strong> linked lists (<a href="#following-links-a-chain-of-nodes">Following links: a chain of nodes</a>). Day 1, if the redos leave room.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/reverse_list.py">drills/02-heaps-lists/reverse_list.py</a> · <strong>Time box:</strong> 20 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_a_single_node</code>, <code>test_the_old_head_is_now_the_end</code> and <code>test_a_chain_of_one_hundred_thousand_nodes</code> in <a href="../../../drills/02-heaps-lists/test_reverse_list.py">test_reverse_list.py</a>, and the docstring's last paragraph. Draw <code>1 -&gt; 2 -&gt; 3</code> as boxes and arrows. The moment you change the arrow out of node 1, what names node 2? Then re-read the Trap after <code>route_edits.py</code>.</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Walk the chain from the head, one node at a time. Each node's link must end up pointing at the node you came from, the one before it. But its link is also your only way forward, so take note of the next node before you change the link. Then step on: the node you are standing on becomes "the one before", and the noted node becomes the one you stand on. The head has nobody before it, so its link becomes <code>None</code>, and it becomes the end. When you step off the end of the chain, the last node you turned round is the new head.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>Three names: the node before (it starts as <code>None</code>), the node you are on (it starts as the head), and the next node (set inside the loop). One <code>while</code> loop that runs while the node you are on is not <code>None</code>. Inside it, four assignments in a fixed order: note the next node, turn the link, move "before" up, move "current" up. Return "before". No recursion, no new <code>Node</code>, no Python list of the nodes. Dry-run <code>None</code>, a single node and two nodes on paper first, writing the three names under the boxes after each pass of the loop.</p>
+</details>
+
+<h3>merge_two_lists</h3>
+<p><strong>Pattern:</strong> linked lists (<a href="#walking-two-chains-at-once">Walking two chains at once</a>, and <a href="#following-links-a-chain-of-nodes">Following links: a chain of nodes</a>). Day 2.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/merge_two_lists.py">drills/02-heaps-lists/merge_two_lists.py</a> · <strong>Time box:</strong> 20 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read <code>test_one_empty_list</code>, <code>test_equal_values_take_the_first_list_first</code>, <code>test_every_node_is_used_and_none_is_new</code>, <code>test_it_does_not_collect_and_sort</code> and <code>test_two_lists_of_one_hundred_thousand_nodes</code> in <a href="../../../drills/02-heaps-lists/test_merge_two_lists.py">test_merge_two_lists.py</a>. Which node is the head of the answer, and do you know it before you start? What does the answer's last node link to, before the loop has placed anything?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Keep a finger on the front node of each chain, and build the answer by hanging nodes on its end. Each step, the front node with the smaller value goes next (on equal values, the first chain's), and that chain's finger moves along. When one chain runs out, everything left on the other is already in order and no smaller than anything placed, so it joins the end in one link. The awkward part is the very first node, because the answer has no end to hang it on yet: either decide the head before the loop, or put a placeholder node of your own in front, hang everything after it, and return what it points at. The placeholder is not part of the answer, so "no node may be new" still holds.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A placeholder <code>Node</code> made before the loop, and a name for the answer's last node, which starts on the placeholder. Two names for the fronts. One <code>while</code> loop that runs while both fronts are not <code>None</code>; inside, one <code>if</code> and <code>else</code> on the two front values (which comparison gives the tie to the first chain?), each branch linking the last node to that front and moving that front on, and then the last node moves to the one just linked. After the loop, one line links the leftover chain, whichever front is not <code>None</code>. Return the placeholder's <code>next</code>. No recursion: 100,000 nodes is too deep. Test <code>None</code> and <code>None</code>, one empty chain, and <code>[4]</code> with <code>[4]</code> first.</p>
+</details>
+
+<h3>days_to_wait</h3>
+<p><strong>Pattern:</strong> not said here. This is a review drill: the pattern is one from Module 1's sets, and naming it is part of the drill. Day 2, after <code>merge_two_lists</code>.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/days_to_wait.py">drills/02-heaps-lists/days_to_wait.py</a> · <strong>Time box:</strong> 30 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's example, <code>[20, 22, 19, 18, 25, 21]</code>, with its three explained days, and its last paragraph, on the slow case: days that get colder and colder. Then <code>test_colder_every_day</code>, <code>test_a_dip_and_a_peak</code>, <code>test_each_answer_points_at_the_first_warmer_day</code> (what it checks about each answer) and the parameter <code>"colder every day"</code> of <code>test_two_hundred_thousand_days_in_two_seconds</code> in <a href="../../../drills/02-heaps-lists/test_days_to_wait.py">test_days_to_wait.py</a>. For <code>[4, 3, 2, 1]</code>, count how many later days the obvious way looks at, day by day.</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>The pattern is a <strong>stack</strong> (Module 1, <a href="../01-measure/07-drills.html#a-stack">A stack</a>), here kept in a particular order, which is sometimes called a monotonic stack. Read the days from left to right, and keep the days that are still waiting for a warmer one. Their temperatures always fall from the oldest to the newest: a waiting day that was warmer than an older waiting day would already have answered it. So when a new day arrives, compare it with the newest waiting day. If the new day is warmer, that waiting day has its answer, the distance between the two days, and it stops waiting; compare again with the next newest, until the newest waiting day is as warm or warmer, or none is left. Then the new day joins the waiting days. Each day joins once and leaves at most once, so the whole walk is about 2n steps. Days still waiting at the end keep 0.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>An answer list of zeros, as long as the temperatures, made first: a day that is never answered is then already right. A list of the <em>positions</em> of the waiting days, not their temperatures: the gap needs the position, and the temperature is one lookup away. One <code>for</code> loop over the positions with <code>enumerate</code>. Inside it, a <code>while</code> loop that runs while the list is not empty and today is strictly warmer than the day at its last position; inside that, take the last position off the end of the list and write today's position minus it into the answer. After the inner loop, add today's position at the end. Say out loud why a <code>while</code> inside a <code>for</code> is still proportional to n here. Test <code>[30, 30, 30]</code>, <code>[4, 3, 2, 1]</code> and <code>[1, 2, 3, 4]</code> first, then the docstring example.</p>
+</details>
+
+<h3>k_largest</h3>
+<p><strong>Pattern:</strong> heaps (<a href="#a-heap-as-a-to-do-list">A heap as a to-do list</a>, and <a href="#the-smallest-of-many">The smallest of many</a>). Day 3.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/k_largest.py">drills/02-heaps-lists/k_largest.py</a> · <strong>Time box:</strong> 25 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's last paragraph ("Do it in about n log k steps"), then <code>test_repeats_count</code>, <code>test_a_negative_k_is_refused</code>, <code>test_it_does_not_sort_or_ask_heapq_for_the_answer</code> (which names does it refuse, and which heapq calls does it leave you?) and <code>test_a_million_numbers_with_k_one_thousand_in_two_seconds</code> in <a href="../../../drills/02-heaps-lists/test_k_largest.py">test_k_largest.py</a>. With k = 3, after reading <code>3, 9, 1, 7</code>, which three values are you keeping, and which of them is the first to be pushed out by a bigger one?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Go through the values once, keeping the k largest you have seen so far. The one question you ask about the kept values, again and again, is "which of them is the smallest?", because a new value gets in only if it beats that one, and then that one leaves. heapq keeps the smallest on top, so it answers that question in one step, and a push or a replace costs about log₂ k. Until you hold k values, every value gets in. At the end the heap holds the answer in heap order, not largest first: take the values off the top one at a time, smallest first, and turn that order round. A k of zero keeps nothing, and a k bigger than the list keeps everything.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>Refuse a negative k with <code>ValueError</code> before anything else. A plain list used as the heap. One loop over the values with two cases: fewer than k kept, then <code>heappush</code>; otherwise, if the value is larger than <code>heap[0]</code>, <code>heapreplace</code>. Then a <code>while</code> loop of <code>heappop</code> into a result list, and the result turned round with a slice or <code>.reverse()</code>, which is not sorting. Test k = 0 on a list that is not empty first: which of your two cases runs, and does it read <code>heap[0]</code> of an empty heap? Then <code>[5, 5, 1]</code> with k = 2, and k larger than the list.</p>
+</details>
+
+<h3>merge_sorted_runs</h3>
+<p><strong>Pattern:</strong> heaps (<a href="#the-smallest-of-many">The smallest of many</a>). Day 4.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/merge_sorted_runs.py">drills/02-heaps-lists/merge_sorted_runs.py</a> · <strong>Time box:</strong> 35 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's paragraph on cost ("costs k steps for each of the n numbers"), then <code>test_only_empty_runs</code>, <code>test_repeats_across_runs</code>, <code>test_the_runs_you_were_given_are_not_changed</code> and <code>test_it_does_not_sort_or_hand_the_work_to_heapq_merge</code> in <a href="../../../drills/02-heaps-lists/test_merge_sorted_runs.py">test_merge_sorted_runs.py</a>. That last test refuses <code>sorted()</code>, <code>.sort()</code> and <code>heapq.merge</code>; a helper of your own may have any name. For <code>[[1, 4, 9], [2, 3], [], [5]]</code>: which numbers could be the first number of the answer? After you take it, which number becomes a candidate in its place?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>The next number of the answer is always the smallest of the runs' front numbers: one candidate per run that is not used up. Keep those candidates on a heap, each with a note of which run it came from and where in that run it sits. Take the top: it goes into the answer. Its run's next number, if the run has one, becomes that run's new candidate. The heap never holds more than k entries, so each of the n numbers costs about log₂ k. An empty run never has a candidate. You never take numbers out of the runs: you move a position along each run instead, so the runs come back unchanged.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A heap of tuples (value, run number, position in that run), filled by one loop over <code>enumerate(runs)</code> that skips empty runs, then <code>heapify</code>. A result list. One <code>while</code> loop that runs while the heap is not empty: pop the top, append its value, and if its run has a number at the next position, push the tuple for that one (or use <code>heapreplace</code> and <code>heappop</code> by case). Test <code>[]</code>, <code>[[], [], []]</code> and <code>[[1, 2, 3]]</code> first, then the docstring example, then the long one.</p>
+</details>
+
+<h3>longest_draw</h3>
+<p><strong>Pattern:</strong> not said here. This is a review drill: the pattern is one from Module 1's sets, and naming it is part of the drill. Day 5, after <code>print_queue</code>, if the hour allows; otherwise it waits for the next drill block.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/longest_draw.py">drills/02-heaps-lists/longest_draw.py</a> · <strong>Time box:</strong> 35 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's last paragraph ("in one pass"), then <code>test_the_draw_is_at_the_end</code>, <code>test_alternating_results</code> and <code>test_a_draw_between_two_winning_streaks</code> in <a href="../../../drills/02-heaps-lists/test_longest_draw.py">test_longest_draw.py</a>. Under each game of <code>WWLLW</code>, write wins minus losses after that game, and write a 0 in front for "before the first game". Now find the stretch <code>WWLL</code>. What do the numbers just before it and at its end have in common?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>The pattern is a <strong>running total</strong>, together with a dict of the first place each total was seen (Module 1, <a href="../01-measure/07-drills.html#a-running-total">A running total</a> and <a href="../01-measure/07-drills.html#remembering-what-you-have-seen">Remembering what you have seen</a>). Keep the score as you go: one up for a win, one down for a loss. A stretch is a draw exactly when the score just before it equals the score at its end. So the longest draw that ends at the game you stand on starts just after the <em>earliest</em> place where the score was the same as now. Remember, for each score, the first place you saw it, and never overwrite it: a later place can only make the stretch shorter. The score before the first game is 0, at the place just before game 0.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>One variable for the score, one for the best length (it starts at 0, which is also the answer when there is no draw), and a dict from a score to the index of the game after which that score was first reached. The dict starts with one entry, score 0 at index −1, before any game. One loop over <code>enumerate(results)</code>. Inside it: change the score; if the score is in the dict, the stretch from just after the stored index to here is a draw, so compare its length with the best; otherwise, store the index. Say out loud why the dict is written only the first time. Dry-run <code>""</code>, <code>"W"</code>, <code>"WL"</code> and <code>"WWWWLWLL"</code> (answer 6) on paper first.</p>
+</details>
+
+<h2>The debugging drill</h2>
+<p>The other drills start from an empty function. A debugging drill starts from a finished program that is wrong: some of its tests fail. In 20 minutes you find the fault, say in one sentence why it is a fault, and fix it with the smallest change you can. Interviews ask for this as well, and so does every week of real work. The skill is not guessing: it is narrowing down, one hypothesis at a time.</p>
+<ol>
+<li><strong>Read the failing message first</strong>, all of it, before you read the code: the exception on the last line, and the line of the program it points at. The message usually says what happened; your job is to find out why.</li>
+<li><strong>Reproduce the smallest case.</strong> In <code>scratch/</code>, call the function on the smallest input that still fails. Compare it with the tests that pass: what do the failing inputs have that the passing ones do not?</li>
+<li><strong>Form one hypothesis</strong>, as a sentence: "it fails when ..., because ...".</li>
+<li><strong>Test the hypothesis</strong> before you fix anything: an input that should fail if you are right, and one that should pass.</li>
+<li><strong>Change as little as you can.</strong> One line, if one line does it. A rewrite may make the tests pass without telling you what the fault was, and it can bring faults of its own.</li>
+<li><strong>Say why, in one sentence</strong>, and write that sentence in the ledger's Pattern column. Then run all the tests: the ones that passed before must still pass.</li>
+</ol>
+<p>The commit names what you found, with the minutes: <code>print_queue: 12 min, fault found and fixed</code>.</p>
+
+<h3>print_queue</h3>
+<p><strong>Pattern:</strong> a finished program with a fault: finding it is the drill. Day 5, after the redos and before <code>longest_draw</code>.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/02-heaps-lists/print_queue.py">drills/02-heaps-lists/print_queue.py</a> · <strong>Time box:</strong> 20 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Run <code>uv run pytest drills/02-heaps-lists/test_print_queue.py</code> and read the first failure to its last line: the kind of exception, its message, and the line of <code>print_queue.py</code> it was raised from. Then list the two tests that pass and the three that fail in <a href="../../../drills/02-heaps-lists/test_print_queue.py">test_print_queue.py</a>. Look at the priorities of the jobs in each. What do all three failing tests have that neither passing test has?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>heapq keeps its list in heap order by comparing whole entries with <code>&lt;</code>, and an entry here is the tuple <code>(job.priority, job)</code>. Tuples compare item by item: the first items first, and only when those are equal, the second items. Two jobs with different priorities are settled by the priorities, and the comparison never looks at the jobs. Two jobs with the <em>same</em> priority make Python go on to compare the two <code>Job</code> objects, and a dataclass has no <code>&lt;</code> unless you ask for one: that is the <code>TypeError</code>. So the fault is that the entry gives the heap nothing to settle a tie with except the jobs themselves. Before you change anything, read the docstring's second rule again: what <em>should</em> settle a tie?</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>The shape of the fix, in words. Give each entry a middle item, between the priority and the job, that is different for every job and grows in the order the jobs were sent. The position of the job in the list, from <code>enumerate</code>, is such a number. A tie on priority is then settled by that number, and the comparison never reaches a <code>Job</code>. That is one changed line where the entries are pushed, and one where they are popped, because the entry now has three items. Why not <code>@dataclass(order=True)</code> on <code>Job</code> instead? It makes jobs comparable field by field, so a tie would go to the name in alphabetical order, and <code>test_jobs_with_the_same_priority_print_in_the_order_they_were_sent</code> (zebra, apple, mango) would fail in a new way. Write the one-sentence why before you commit.</p>
+</details>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>A Python list and a linked list each hold a million items. Roughly how many steps does each take to read the item at position 500,000, and to put a new item in at the front?</p><details class="answer"><summary>Answer</summary><p>The list reads position 500,000 in one step, by arithmetic on addresses, and inserts at the front with a million moves, because every address shifts along. The linked list follows 500,000 links to reach the item, and inserts at the front with one link: the new node points at the old head.</p></details></div>
+<div class="q"><p>In <code>route_edits.py</code>, School goes in after Market with <code>school = Stop("School", market.next)</code> and then <code>market.next = school</code>. What goes wrong if you make School first with no link and then write <code>market.next = school</code> and <code>school.next = market.next</code>, in that order?</p><details class="answer"><summary>Answer</summary><p>By the time the second line runs, <code>market.next</code> is already School, so School links to itself. Station and Bridge are no longer reachable from the head, and a walk goes round School for ever. Note where a link pointed before you change it.</p></details></div>
+<div class="q"><p>Why does a placeholder node in front of the head make removing the first node the same as removing any other?</p><details class="answer"><summary>Answer</summary><p>Removing a node means changing the link of the node before it. The head has no node before it, so without a placeholder removing the head is a special case: the head itself has to move. With a placeholder every real node has a node before it, the same loop handles them all, and the new head is whatever the placeholder points at in the end.</p></details></div>
+<div class="q"><p><code>heap[0]</code> is the smallest item of a heap. At which positions can the second smallest be, and why only there?</p><details class="answer"><summary>Answer</summary><p>At position 1 or 2. Its parent cannot be larger than it, and the only item smaller than it is the smallest, at position 0; so its parent is position 0, and the children of position 0 are 1 and 2. Which of the two it is, the heap does not say.</p></details></div>
+<div class="q"><p>Predict what <code>heapq.heapify(xs)</code> makes of <code>xs = [9, 4, 7, 1]</code>, then check that the rule holds at every position.</p><details class="answer"><summary>Answer</summary><p><code>[1, 4, 7, 9]</code>. Position 1 (4) and position 2 (7) have the parent 1 at position 0, and position 3 (9) has the parent 4 at position 1. This one happens to be sorted, but heapify promises only the rule, as <code>heap_shape.py</code>'s list showed.</p></details></div>
+<div class="q"><p>A shop has 100 tills and a million customers. Roughly how many steps does "look at every till" take for the whole day, and the heap of tills?</p><details class="answer"><summary>Answer</summary><p>Looking at every till: 100 per customer, about 100 million. The heap: about log₂ 100, which is about 7, per customer, so about 7 million, plus 100 to build it. The heap holds 100 entries all day, because each customer replaces an entry instead of adding one.</p></details></div>
+<div class="q"><p>Why does a debugging drill ask for the smallest change, when a rewrite would also make the tests pass?</p><details class="answer"><summary>Answer</summary><p>A small change tests one hypothesis: if the tests turn green, you know what the fault was, and you can say it in one sentence. A rewrite can turn them green without anyone knowing why, can hide the fault rather than remove it, and brings new code with new faults of its own.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Run a drill by the rules, including the two things set 02 adds: a review drill whose pattern you name yourself, and a debugging drill.</li>
+<li>Say in what order this module's drills come, and why redos come before new problems.</li>
+<li>Build, walk, count and edit a chain of nodes, with the two assignments of an insert in the right order and a placeholder in front of the head.</li>
+<li>Walk two chains at once with one finger on each, and decide what happens to the leftovers.</li>
+<li>Keep a to-do list on a heap with heapq, say what the one rule of a heap promises and what it does not, and find a parent or a child by its position.</li>
+<li>Keep one heap entry per source and replace the one you use, so that the smallest of many costs log₂ k instead of k.</li>
+<li>Find a fault by reading the message, reproducing the smallest case and testing one hypothesis, then fix it with the smallest change and say why.</li>
+</ul>
+</main>
+</body>
+</html>

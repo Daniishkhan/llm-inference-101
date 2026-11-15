@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>04 · GPT-2's tokenizer — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 04</p>
+<h1>GPT-2's tokenizer</h1>
+<p class="lede">At the end of this chapter you can read GPT-2's two files and say what every line means, explain why they are full of Ġ, check any id against tiktoken, give a program two arguments of which exactly one must be there, and colour a line in rich one piece at a time. Milestone M5 turns that into GPT-2's tokenizer, built by your code.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: your tokenizer works, and GPT-2's ids are in two files.</li>
+<li>A first look at <code>vocab.json</code> and <code>merges.txt</code> from the shell.</li>
+<li>Why a token's bytes are written as printable characters, and what Ġ stands for.</li>
+<li>Reading JSON and lines of text: <code>json.loads</code>, <code>Path.read_text</code>, <code>split("\n")</code>.</li>
+<li>GPT-2's order of ids, merge r making 256 + r, and the one token no merge makes.</li>
+<li>tiktoken as the oracle, built line by line.</li>
+<li>argparse with a mutually exclusive group of a positional and a flag, and rich's <code>Text</code> with background colours.</li>
+</ul>
+</div>
+
+<h2>The problem: two files and 50,257 ids</h2>
+<p>After Milestone M4 you have a tokenizer that works: give <code>Tokenizer</code> 256 byte ids and a list of merges, and it turns any text into ids and back. But its ids mean nothing to a model. A model is trained with one tokenizer, and only that tokenizer's ids line up with the rows of its tables. Feed GPT-2 the ids of a tokenizer you trained yourself and it reads nonsense.</p>
+<p>So the next step is GPT-2's own tokenizer: its merges, in its order, with its ids. OpenAI published them in 2019 as two files, now in <code>data/gpt2/</code>: <code>vocab.json</code> gives each of 50,257 tokens its id, and <code>merges.txt</code> lists 50,000 merges in the order they were learned. Two things make reading them more than reading two files: they do not write a token's bytes as bytes, and GPT-2 does not number its bytes the way your trained tokenizer does. This chapter takes both apart, then sets up the <strong>oracle</strong>, a tokenizer you trust, against which the tests check every id you produce.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A token is a run of <em>bytes</em>, not of characters, and half a character is a perfectly good token: the byte 0xE4 alone, the first of three bytes of many Chinese characters, is one of GPT-2's 256 single-byte tokens. A text file, though, is bytes that every reader decodes as UTF-8, so it can only hold whole characters. A file that lists tokens has to write bytes that may not be text as characters that are.</p></div>
+
+<h2>A first look at the files</h2>
+<p>Look before you write any Python. <code>head</code> prints the first lines of a file, <code>tail</code> the last, and <code>wc -l</code> counts its newline characters:</p>
+
+<pre class="shell"><code>$ head -3 data/gpt2/merges.txt
+#version: 0.2
+Ġ t
+Ġ a
+$ tail -2 data/gpt2/merges.txt
+Ġinform ants
+Ġg azed
+$ wc -l data/gpt2/merges.txt
+   50001 data/gpt2/merges.txt
+</code></pre>
+
+<p>The first line, <code>#version: 0.2</code>, is a header, not a merge. Every line after it is one merge: two token strings separated by one space. 50,001 newlines are the header plus 50,000 merges, each line ending in a newline, the last included. The first merge, <code>Ġ t</code>, joins "Ġ" and "t". Ġ stands for a space, as the next section shows, so the first thing GPT-2 learned was " t", the start of " the", " to" and " that". The last makes " gazed".</p>
+<p><code>vocab.json</code> is one JSON object:</p>
+
+<pre class="shell"><code>$ wc -l data/gpt2/vocab.json
+       0 data/gpt2/vocab.json
+$ head -c 80 data/gpt2/vocab.json
+{"!": 0, "\"": 1, "#": 2, "$": 3, "%": 4, "&amp;": 5, "'": 6, "(": 7, ")": 8, "*": 9
+$ tail -c 80 data/gpt2/vocab.json
+ 50253, "\u0120informants": 50254, "\u0120gazed": 50255, "&lt;|endoftext|&gt;": 50256}
+$ grep -o '"\\u0120world": [0-9]*' data/gpt2/vocab.json
+"\u0120world": 995
+</code></pre>
+
+<p>Zero lines: the file is a million bytes of <code>"token": id</code> entries with no newline at all. The first entry is <code>"!": 0</code>, so in GPT-2, id 0 is the exclamation mark; the last is <code>&lt;|endoftext|&gt;</code>, 50,256. And the tail shows that the Ġ of " gazed" is written <code>\u0120</code>: JSON's way of writing a character by its code point, U+0120, in ASCII only. So a search for "Ġworld" finds nothing, and a search for the escape (<code>\\</code> asks grep for one real backslash) finds " world": id 995.</p>
+
+<h2>Why the files are full of Ġ</h2>
+<p><code>merges.txt</code> separates the two halves of a merge with a space and ends it with a newline. A token that holds a space, such as " t", would make the line <code>&nbsp;&nbsp;t</code>: which space is the separator? A token that holds a newline would break its line in two. And a token such as byte 0xE4 alone is not text at all, so a file decoded as UTF-8 cannot hold it.</p>
+<p>GPT-2's answer is a <strong>byte-to-character map</strong>: each of the 256 byte values gets one printable character that is not a space, all 256 different. A token is written as the characters of its bytes, one character per byte, and read back by turning each character into its byte again.</p>
+<p>The rule is short, and the docstring of <code>bytes_to_unicode</code> in <a href="../../../src/llm101/tokenizer/gpt2.py">src/llm101/tokenizer/gpt2.py</a> states it as three ranges:</p>
+<ul>
+<li>The bytes from 33 ("!") to 126 ("~"), from 161 ("¡") to 172 ("¬") and from 174 ("®") to 255 ("ÿ") keep their own character, <code>chr(b)</code>: byte 65 is written "A". That is 94 + 12 + 82 = 188 bytes.</li>
+<li>The other 68 bytes, 0 to 32, 127 to 160, and 173, among them the space, the newline and the control bytes, borrow characters from just past the first 256 code points: in rising order of the byte, they get <code>chr(256)</code>, <code>chr(257)</code>, <code>chr(258)</code>, and so on, one each.</li>
+</ul>
+<p>A few rows:</p>
+
+<table>
+<thead><tr><th>Byte</th><th>What it is</th><th>Written as</th><th>Code point</th></tr></thead>
+<tbody>
+<tr><td>65</td><td>A</td><td>A</td><td>U+0041, itself</td></tr>
+<tr><td>0</td><td>the null byte</td><td>Ā</td><td>U+0100, the first borrowed</td></tr>
+<tr><td>10</td><td>newline</td><td>Ċ</td><td>U+010A</td></tr>
+<tr><td>32</td><td>space</td><td>Ġ</td><td>U+0120</td></tr>
+<tr><td>195, 169</td><td>the two UTF-8 bytes of é</td><td>Ã©</td><td>U+00C3, U+00A9, themselves</td></tr>
+</tbody>
+</table>
+
+<p>So "Ġworld" is the six bytes of " world", and <code>Ġ t</code> has exactly one space in it. Byte 0 is the first byte left over and gets U+0100; the space is the thirty-third left over and gets U+0100 + 32, U+0120.</p>
+<p>Why three ranges, with gaps at 160 and 173? Because those two characters cannot be seen. Python's <code>str.isprintable()</code> says whether a character shows as something on the page, and <code>unicodedata.name</code> gives a character its official name. Here they are on the space and on the two bytes in the gaps:</p>
+
+<pre class="code" data-lang="python" data-file="printable_bytes.py" data-check="run"><code>import unicodedata
+
+# The space, and the two bytes that make the gaps between the kept ranges.
+for byte in [32, 160, 173]:
+    character = chr(byte)
+    name = unicodedata.name(character)
+    print(f"{byte:&gt;3}  {name:15}  printable {character.isprintable()!s:5}  space {character.isspace()}")
+</code></pre>
+<pre class="output" data-for="printable_bytes.py"><code> 32  SPACE            printable True   space True
+160  NO-BREAK SPACE   printable False  space True
+173  SOFT HYPHEN      printable False  space False
+</code></pre>
+
+<p>The space is printable (Python makes an exception for it) but it is a space, which is what the file cannot hold, so it is not kept. Byte 160, the no-break space, looks like a space and counts as one. Byte 173, the soft hyphen, is an invisible mark where a word may break. Neither can be told apart by eye in a file, so both are borrowed. Byte 160 is why the second range starts at 161, not straight after the control bytes 127 to 159; byte 173 is why it stops at 172, and a third range begins at 174.</p>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A word processor with "show formatting marks" on draws a space as a raised dot and a paragraph's end as ¶, so you can see the invisible. GPT-2's map does that for every byte that would be invisible or ambiguous. <em>Where it breaks:</em> the word processor only draws the marks, and its file still holds a real space. GPT-2's files really hold Ġ, two bytes of UTF-8, and a program that reads them must turn each character back into its byte. The map is a file format, not a display.</p></div>
+
+<div class="callout trap"><span class="label">Trap</span><p>"é" in <code>vocab.json</code> is not the character é. It is the token for the single byte 233 (id 165), which in UTF-8 is never a whole character. The character é is two bytes, and its token is "Ã©" (id 2634). Every non-ASCII token in the files looks garbled like this: " café" is "ĠcafÃ©".</p></div>
+
+<h2>Reading JSON and lines of text</h2>
+<p><strong>JSON</strong> is a text format for data: objects in braces with string keys, arrays in square brackets, numbers, strings in double quotes, <code>true</code>, <code>false</code> and <code>null</code>. <code>json.loads</code> ("load string") turns JSON text into Python objects, and <code>json.dumps</code> turns them back; an object becomes a dict. First on a small object of your own, the platforms that trains leave from:</p>
+
+<pre class="code" data-lang="python" data-file="platforms.py" data-check="run"><code>import json
+from pathlib import Path
+
+source = '{"Leeds": 4, "York": 7, "Durham": 2, "Malmö": 11, "1": 5}'
+platforms = json.loads(source)
+print(type(platforms).__name__, len(platforms), platforms)
+print(platforms["York"], platforms.get("Bristol"), list(platforms)[-1] == "1")
+
+path = Path("platforms.json")
+path.write_text(json.dumps(platforms), encoding="utf-8")
+print(path.read_text(encoding="utf-8"))
+again = json.loads(path.read_text(encoding="utf-8"))
+print(again == platforms, again["Malmö"])
+</code></pre>
+<pre class="output" data-for="platforms.py"><code>dict 5 {'Leeds': 4, 'York': 7, 'Durham': 2, 'Malmö': 11, '1': 5}
+7 None True
+{"Leeds": 4, "York": 7, "Durham": 2, "Malm\u00f6": 11, "1": 5}
+True 11
+</code></pre>
+
+<p>The dict keeps the file's order. JSON keys are always strings, so <code>"1"</code> stayed a string. <code>.get</code> gives <code>None</code> for a missing key where <code>[]</code> would raise <code>KeyError</code>. <code>Path.write_text</code> and <code>Path.read_text</code> write and read a whole file as one string, and <code>encoding="utf-8"</code> says how its characters become bytes. <code>json.dumps</code> wrote ö as <code>\u00f6</code>, because by default it writes only ASCII; <code>vocab.json</code> was written the same way, and <code>json.loads</code> turns each escape back into its character.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Always name the encoding. Without it, <code>read_text</code> uses the platform's preferred encoding: UTF-8 on your Mac, something else on many Windows machines, where the same call reads <code>merges.txt</code> as garbage without an error.</p></div>
+
+<p>Now the real file, through <code>VOCAB_PATH</code>, a given name in <code>gpt2.py</code>:</p>
+
+<pre class="code" data-lang="python" data-file="vocab_lookup.py" data-check="run"><code>import json
+
+from llm101.tokenizer.gpt2 import VOCAB_PATH
+
+text = VOCAB_PATH.read_text(encoding="utf-8")
+print(f"{len(text):,} characters")
+print('"\\u0120world"' in text, '"Ġworld"' in text)
+
+vocab = json.loads(text)
+print(type(vocab).__name__, f"{len(vocab):,} entries")
+for token in ["Ġworld", "!", "Ġ", "Ċ", "Hello", "ĠcafÃ©"]:
+    print(f"{token!r:&gt;10} {vocab[token]:&gt;6}")
+print(" " in vocab, "Ġ" in vocab)
+</code></pre>
+<pre class="output" data-for="vocab_lookup.py"><code>1,042,301 characters
+True False
+dict 50,257 entries
+  'Ġworld'    995
+       '!'      0
+       'Ġ'    220
+       'Ċ'    198
+   'Hello'  15496
+  'ĠcafÃ©'  40304
+False True
+</code></pre>
+
+<p>As many characters as the file has bytes: every character in it is ASCII. Before <code>json.loads</code> the text holds the six characters <code>\u0120</code> and no Ġ; after it, the keys hold the real character. The space's token is "Ġ", id 220, the newline's "Ċ", 198, and no key is a plain space.</p>
+
+<h3>Lines, and the empty piece at the end</h3>
+<p><code>merges.txt</code> is lines of text. <code>str.split("\n")</code> cuts at every newline and keeps whatever lies between, even nothing. <code>str.splitlines()</code> treats a newline as the end of a line, so a final newline starts no empty one. A shopping list with a header shows the difference:</p>
+
+<pre class="code" data-lang="python" data-file="split_pieces.py" data-check="run"><code>from llm101.tokenizer.gpt2 import MERGES_PATH
+
+shopping = "#list: groceries\neggs\nflour\nmilk\n"
+print(shopping.split("\n"))
+print(shopping.splitlines())
+print("".split("\n"), "".splitlines())
+
+lines = MERGES_PATH.read_text(encoding="utf-8").split("\n")
+print(len(lines), "pieces")
+print(repr(lines[0]), repr(lines[1]), repr(lines[-2]), repr(lines[-1]))
+</code></pre>
+<pre class="output" data-for="split_pieces.py"><code>['#list: groceries', 'eggs', 'flour', 'milk', '']
+['#list: groceries', 'eggs', 'flour', 'milk']
+[''] []
+50002 pieces
+'#version: 0.2' 'Ġ t' 'Ġg azed' ''
+</code></pre>
+
+<p>Four newlines, five pieces, the last one empty; even the empty string splits into <code>['']</code>. On <code>merges.txt</code>, 50,001 newlines give 50,002 pieces: the header, 50,000 merges and the empty string that <code>load_gpt2</code>'s docstring warns is not a merge. <code>splitlines</code> also breaks at other characters, such as <code>"\x85"</code> and <code>"\u2028"</code>, Unicode's "line separator". GPT-2's files hold none, but splitting on exactly one character says exactly what you mean.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Extend <code>vocab_lookup.py</code> to look up <code>"Ġthe"</code>, <code>"ĠThe"</code>, <code>"the"</code> and <code>"ĊĊ"</code>. First say what text each stands for, and guess which of the first three has the smallest id.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>" the" is 262, " The" is 383, "the" is 1169, and "ĊĊ", two newlines, is 628. Merges are learned most frequent first, and in English "the" nearly always follows a space, so " the" was among the first merges; "the" with no space in front is much rarer.</p></details>
+
+<h2>Ids in GPT-2's order</h2>
+<p>In a tokenizer you train, ids 0 to 255 are the bytes in their own order: byte b is id b, the space is 32. GPT-2 numbered the same 256 tokens differently. Here are a few, then the first two merges and the last:</p>
+
+<pre class="code" data-lang="python" data-file="gpt2_order.py" data-check="run"><code>import json
+
+from llm101.tokenizer.gpt2 import VOCAB_PATH
+
+vocab = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+
+for token in ["!", "A", "~", "¡", "ÿ", "Ā", "Ġ"]:
+    print(f"{token!r:&gt;5} {vocab[token]:&gt;3}")
+
+# merges.txt's first two merges and its last, copied from head and tail.
+for left, right in [("Ġ", "t"), ("Ġ", "a"), ("Ġg", "azed")]:
+    print(f"{left} + {right} -&gt; {left + right!r} {vocab[left + right]}")
+
+print(repr(max(vocab, key=vocab.get)), max(vocab.values()))
+</code></pre>
+<pre class="output" data-for="gpt2_order.py"><code>  '!'   0
+  'A'  32
+  '~'  93
+  '¡'  94
+  'ÿ' 187
+  'Ā' 188
+  'Ġ' 220
+Ġ + t -&gt; 'Ġt' 256
+Ġ + a -&gt; 'Ġa' 257
+Ġg + azed -&gt; 'Ġgazed' 50255
+'&lt;|endoftext|&gt;' 50256
+</code></pre>
+
+<p>GPT-2 gave the first 188 ids to the bytes that keep their own character, in byte order: "!" (byte 33) is 0, "~" (byte 126) is 93, "¡" (byte 161) is 94, "ÿ" (byte 255) is 187. The 68 borrowed characters follow: "Ā", byte 0, is 188, and "Ġ", the space, is 220. So the id of byte b takes two steps: byte to character through the map, character to id through <code>vocab.json</code>. <code>test_load_gpt2_byte_ids</code> checks four of them.</p>
+<p>The merges follow the rule of every tokenizer in this module: <strong>merge number r makes the token whose id is 256 + r</strong>, the first merge being r = 0. "Ġ" and "t" join into "Ġt", and <code>vocab.json</code> gives "Ġt" the id 256; "Ġa" is 257; the last merge, r = 49,999, makes "Ġgazed", 50,255. The two files agree. <code>max(vocab, key=vocab.get)</code> returns the key whose value is largest: <code>vocab.get</code> is passed as a function, without calling it.</p>
+
+<h2>The token that no merge makes</h2>
+<p>256 bytes and 50,000 merges make ids 0 to 50,255. The 50,257th entry, 50,256, is <code>&lt;|endoftext|&gt;</code>, and no merge makes it. It is a <strong>special token</strong>, a control signal rather than text. GPT-2 was trained on documents run together into one stream, with this token between each document and the next, so the model learned that what follows it has nothing to do with what came before. A server uses it the other way: when the model generates 50,256, the reply is finished. So <code>load_gpt2</code> hands it to <code>Tokenizer</code> separately, as <code>special_tokens</code>.</p>
+<p>Now think about who supplies the text. If your tokenizer turned the thirteen characters <code>&lt;|endoftext|&gt;</code>, typed by a user, into id 50,256, any user could end the document halfway through a prompt and start one of their own; to the model, the instructions before it would be another document. It is the mistake of building a database query by pasting in a user's text. So <code>Tokenizer.encode</code> never returns a special token's id: that text is encoded as seven ordinary tokens. Only <code>decode</code> knows the special token, so that the model's own output can still become text. <code>test_load_gpt2_end_of_text</code> checks both directions.</p>
+
+<h2>tiktoken, the oracle</h2>
+<p>A few ids checked by hand catch a few mistakes. The tests do better: they compare your ids, text by text, with a tokenizer known to be right. A trusted reference used this way is an <strong>oracle</strong>, and here it is <strong>tiktoken</strong>, OpenAI's tokenizer, which does GPT-2's split and merges in Rust. The tests build it from the same two files your <code>load_gpt2</code> reads, as <a href="../../../tests/m02/conftest.py">tests/m02/conftest.py</a> does, never from the network:</p>
+
+<pre class="code" data-lang="python" data-file="oracle.py" data-check="run"><code>import tiktoken
+from tiktoken.load import data_gym_to_mergeable_bpe_ranks
+from tiktoken_ext.openai_public import r50k_pat_str
+
+from llm101.tokenizer.gpt2 import MERGES_PATH, VOCAB_PATH
+
+ranks = data_gym_to_mergeable_bpe_ranks(
+    vocab_bpe_file=str(MERGES_PATH),
+    encoder_json_file=str(VOCAB_PATH),
+)
+print(type(ranks).__name__, len(ranks), ranks[b" world"])
+gpt2 = tiktoken.Encoding(
+    name="gpt2-from-data",
+    pat_str=r50k_pat_str,
+    mergeable_ranks=ranks,
+    special_tokens={"&lt;|endoftext|&gt;": 50256},
+)
+
+ids = gpt2.encode_ordinary("Hello world")
+print(ids)
+for token_id in ids:
+    print(token_id, gpt2.decode_single_token_bytes(token_id))
+print(repr(gpt2.decode(ids)))
+print(gpt2.encode_ordinary("Grüße"))
+
+print(gpt2.encode_ordinary("&lt;|endoftext|&gt;"))
+print(gpt2.encode("&lt;|endoftext|&gt;", allowed_special={"&lt;|endoftext|&gt;"}))
+try:
+    gpt2.encode("&lt;|endoftext|&gt;")
+except ValueError as error:
+    print("ValueError:", str(error).splitlines()[0])
+</code></pre>
+<pre class="output" data-for="oracle.py"><code>dict 50256 995
+[15496, 995]
+15496 b'Hello'
+995 b' world'
+'Hello world'
+[8642, 9116, 39683, 68]
+[27, 91, 437, 1659, 5239, 91, 29]
+[50256]
+ValueError: Encountered text corresponding to disallowed special token '&lt;|endoftext|&gt;'.
+</code></pre>
+
+<p>This is the one place the book builds the oracle in full, so here it is line by line. The setup first:</p>
+<ul>
+<li><strong>The three imports.</strong> <code>tiktoken</code> is the library itself, and <code>tiktoken.Encoding</code> is its tokenizer class. <code>tiktoken.load</code> holds the functions that read tokenizer files; <code>data_gym_to_mergeable_bpe_ranks</code> reads files in the format of GPT-2's two, which tiktoken calls "data gym". <code>tiktoken_ext.openai_public</code> holds the definitions of OpenAI's published tokenizers, and <code>r50k_pat_str</code> is the split pattern of its 50k-token ones, GPT-2's among them.</li>
+<li><strong><code>MERGES_PATH</code> and <code>VOCAB_PATH</code></strong> are the given paths in <code>gpt2.py</code>, so the oracle reads exactly the files your <code>load_gpt2</code> reads, from <code>data/gpt2/</code>. tiktoken's ready-made GPT-2 encoding downloads the same two files from OpenAI's servers; these lines never touch the network.</li>
+<li><strong><code>str(...)</code></strong>, because the function wants a string: it looks for <code>"://"</code> in the name to tell a web address from a file. Hand it a <code>Path</code> and it stops with <code>AttributeError: 'PosixPath' object has no attribute 'encode'</code>.</li>
+<li><strong><code>ranks</code></strong> is the table it returns: a dict from each token's bytes to its id, 256 bytes and 50,000 merges, with <code>b" world"</code> at 995 as <code>vocab.json</code> said. The special token is not in it. conftest.py also passes <code>vocab_bpe_hash</code> and <code>encoder_json_hash</code>, each file's checksum, so that a changed file fails before any test compares ids; this program leaves them out.</li>
+<li><strong><code>tiktoken.Encoding(...)</code></strong> builds the tokenizer from four things: a <code>name</code>, which is only a label; <code>pat_str</code>, the split pattern, which tiktoken spells differently from <code>GPT2_PATTERN</code> (written for speed) but which cuts every text into the same chunks; <code>mergeable_ranks</code>, the table; and <code>special_tokens</code>, the one token no merge makes, with its id.</li>
+</ul>
+<p>Then the calls:</p>
+<ul>
+<li><code>encode_ordinary(text)</code> gives the ids, every character treated as ordinary text. Your <code>encode</code> must give the same list for every text; <code>test_done_when_ids_match_gpt2_on_the_test_set</code> checks twenty-one, from Hindi to emoji to the empty string.</li>
+<li><code>decode_single_token_bytes(id)</code> gives one token's bytes, the oracle's version of your <code>token_bytes</code>. <code>decode(ids)</code> gives text. "Grüße" is four tokens: "Gr", "ü", "ß" and "e".</li>
+<li><code>encode_ordinary</code> splits <code>&lt;|endoftext|&gt;</code> into seven ordinary tokens. tiktoken's <code>encode</code> refuses that text unless you allow it with <code>allowed_special</code>, and then gives 50,256. Its refusal is a <code>ValueError</code> with a long message, and <code>str(error).splitlines()[0]</code> keeps the first line. Your <code>encode</code> behaves like <code>encode_ordinary</code>.</li>
+</ul>
+<p><code>gpt2.py</code> may not import tiktoken, and <code>test_gpt2_does_not_import_tiktoken</code> reads the file to check: a tokenizer that asks the oracle for its answers proves nothing. And numbers about GPT-2 in this book, such as the four tokens of "Grüße", come from running the oracle. <a href="06-tokens-as-cost.html">Chapter 6</a> builds the oracle again with these same first lines, up to <code>gpt2 = tiktoken.Encoding(...)</code>; there you may type them with this page open.</p>
+
+<div class="callout try"><span class="label">Try it</span><p>Add lines to <code>oracle.py</code> that print the ids of <code>"world"</code>, <code>" world"</code>, <code>"World"</code> and <code>" World"</code>. Predict first: one token each? Any two the same?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>One token each, four different ids: 6894, 995, 10603 and 2159. A leading space or a capital is a different byte, so a different token. " world" mid-sentence is far more common than "world", which is why the split pattern keeps the space with the word.</p></details>
+
+<h2>A program with exclusive arguments</h2>
+<p>Your program takes its text in one of two ways, as a plain argument on the command line or from <code>--file</code>: exactly one, never both, never neither. You met argparse in <a href="../01-measure/04-pictures-in-the-terminal.html#arguments-on-the-command-line-argparse">Module 1, chapter 4</a>. The new piece is a <strong>mutually exclusive group</strong>: arguments of which at most one may be given, or, with <code>required=True</code>, exactly one. Here it is on a temperature converter that takes degrees Celsius as a plain (positional) argument, or degrees Fahrenheit after the flag <code>--fahrenheit</code>:</p>
+
+<pre class="code" data-lang="python" data-file="temperature.py" data-check="error"><code>import argparse
+
+
+def convert(argv: list[str] | None = None) -&gt; None:
+    """Read the arguments (argv, or the command line when argv is None) and print the other scale."""
+    parser = argparse.ArgumentParser(description="Convert a temperature.")
+    scale = parser.add_mutually_exclusive_group(required=True)
+    scale.add_argument("celsius", nargs="?", type=float, help="a temperature in degrees Celsius")
+    scale.add_argument("--fahrenheit", type=float, help="a temperature in degrees Fahrenheit")
+    args = parser.parse_args(argv)
+    if args.celsius is not None:
+        print(f"{args.celsius:g} °C is {args.celsius * 9 / 5 + 32:g} °F")
+    else:
+        print(f"{args.fahrenheit:g} °F is {(args.fahrenheit - 32) * 5 / 9:g} °C")
+
+
+if __name__ == "__main__":
+    convert()
+</code></pre>
+<p>Run with no arguments, as the book's checker runs it, it stops at once:</p>
+<pre class="output" data-for="temperature.py"><code>usage: temperature.py [-h] [--fahrenheit FAHRENHEIT] [celsius]
+temperature.py: error: one of the arguments celsius --fahrenheit is required
+</code></pre>
+
+<p><code>nargs="?"</code> means "one value or none", like <code>?</code> in a regular expression (<a href="03-encoding-by-rank.html#regular-expressions-from-first-principles">chapter 3</a>). From the shell, <code>echo $?</code> prints the <strong>exit status</strong> of the last program, the number it handed back: 0 for success. Here are one of each, neither, and both:</p>
+
+<pre class="shell"><code>$ uv run python scratch/temperature.py 21
+21 °C is 69.8 °F
+$ uv run python scratch/temperature.py --fahrenheit 98.6
+98.6 °F is 37 °C
+$ uv run python scratch/temperature.py
+usage: temperature.py [-h] [--fahrenheit FAHRENHEIT] [celsius]
+temperature.py: error: one of the arguments celsius --fahrenheit is required
+$ echo $?
+2
+$ uv run python scratch/temperature.py 21 --fahrenheit 70
+usage: temperature.py [-h] [--fahrenheit FAHRENHEIT] [celsius]
+temperature.py: error: argument --fahrenheit: not allowed with argument celsius
+$ echo $?
+2
+</code></pre>
+
+<p>Neither and both end the same way: argparse prints the usage line and the error to standard error and raises <code>SystemExit(2)</code>, so nothing after <code>parse_args</code> runs, and 2 is the convention for "you called me wrongly". That is how a test tells a usage error from a crash without reading the message: <code>test_the_program_wants_exactly_one_of_text_and_file</code> asks only for <code>returncode == 2</code>, for neither and for both.</p>
+<p>Look at the usage line: the group is not in it. Two flags in a group are drawn as <code>(--celsius CELSIUS | --fahrenheit FAHRENHEIT)</code>, the parentheses and the bar meaning "exactly one of these", but argparse lists positionals after the flags, so here the two members are drawn apart, each in square brackets. The rule still holds, as the errors show; only the usage line cannot draw it. The argument that was not given is <code>None</code>, so test it with <code>is not None</code>: <code>if args.celsius:</code> would treat 0 °C as missing.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>A positional in a mutually exclusive group must be optional. Without <code>nargs="?"</code>, a positional has to be given every time, which no member of a group can promise, and argparse refuses it as soon as you add it: <code>scale.add_argument("celsius", type=float)</code> stops with <code>ValueError: mutually exclusive arguments must be optional</code>, before any argument is read.</p></div>
+
+<div class="callout try"><span class="label">Try it</span><p>Add <code>--kelvin</code> to the group (0 °C is 273.15 K). Predict the usage line, and what happens with <code>--kelvin 300 20</code>.</p></div>
+<details class="hint"><summary>A nudge</summary><p>One more <code>scale.add_argument</code>, and one more branch. The usage line gains <code>[--kelvin KELVIN]</code>, after the other flag and before <code>[celsius]</code>. The pair exits with status 2 and <code>argument celsius: not allowed with argument --kelvin</code>: the message starts with the second member it met.</p></details>
+
+<h2>Colour in rich, one piece at a time</h2>
+<p>With rich, your program prints the text token by token, each token on a background colour that alternates between two, so that you can see where one token ends and the next begins. In rich a background is a style written with <code>on</code>: <code>"on yellow"</code>, or <code>"black on yellow"</code> for black letters on it. And a <code>Text</code> (<a href="../01-measure/04-pictures-in-the-terminal.html#text-styled-text-as-an-object">Module 1, chapter 4</a>) is built one piece at a time with <code>append(text, style=...)</code>. A different problem: marking every number in a line of a server's log.</p>
+
+<pre class="code" data-lang="python" data-file="log_marks.py" data-check="run"><code>import re
+
+from rich.console import Console
+from rich.text import Text
+
+line = "12:04:31 GET /search took 1840 ms, 3 retries, status 200"
+
+marked = Text()
+for piece in re.split(r"(\d+)", line):
+    if piece.isdigit():
+        marked.append(piece, style="black on yellow")
+    else:
+        marked.append(piece)
+print(len(marked.spans), "styled pieces;", marked.plain == line)
+
+Console().print(marked)
+</code></pre>
+<pre class="output" data-for="log_marks.py"><code>6 styled pieces; True
+12:04:31 GET /search took 1840 ms, 3 retries, status 200
+</code></pre>
+
+<p>Run it in your terminal and the six numbers sit on yellow. Piece by piece:</p>
+<ul>
+<li><code>re.split(r"(\d+)", line)</code> cuts at every run of digits, and because the pattern is a group, the runs are kept in the list too. The six <strong>spans</strong> are the styled ranges, and <code>marked.plain</code> is the original line: styling adds no characters.</li>
+<li><code>Console().print(marked)</code> writes the line with its styles. What a colour terminal receives is the text with <strong>escape sequences</strong> among it: <code>"\x1b[30;43m"</code>, the escape byte and then "black letters (30), yellow background (43)", before each number, and <code>"\x1b[0m"</code>, "back to normal", after it. Colour in a terminal is nothing more than these bytes among the text.</li>
+</ul>
+<p><strong>NO_COLOR</strong> is a convention many programs follow: when the environment variable <code>NO_COLOR</code> is set and not empty, print no colour. rich's <code>Console()</code> follows it, and it also leaves the escape sequences out when it writes to a pipe or a file rather than a terminal. That is why the output above is plain: this book's checker runs every program with <code>NO_COLOR=1</code> (and <code>COLUMNS=80</code>), its output captured through a pipe. The program tests in <code>test_gpt2.py</code> run yours the same way, with <code>NO_COLOR=1</code> and <code>COLUMNS=200</code>, and read what it prints as plain text.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>A markup string such as <code>f"[on yellow]{piece}[/]"</code> reads any <code>[b]</code> or <code>[/]</code> inside <code>piece</code> as a tag: Module 1's <a href="../01-measure/04-pictures-in-the-terminal.html#the-square-bracket-trap">square-bracket trap</a>. <code>Text.append</code> holds characters, not markup, so it is safe for text a user typed.</p></div>
+
+<div class="callout try"><span class="label">Write it</span><p><strong>Read a palette of colours.</strong> Open <a href="../../../drills/02-heaps-lists/warmups/read_palette.py"><code>drills/02-heaps-lists/warmups/read_palette.py</code></a>, read its docstring, and write the body from the empty stub: about ten lines, ten minutes, the book closed. The file holds one JSON object from a colour's name to its red, green and blue, three whole numbers from 0 to 255; return a dict from each name to its hex code, such as <code>"#87ceeb"</code>, in the file's order. Read the file as UTF-8, and raise <code>ValueError</code> for a number outside 0 to 255.</p>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_read_palette.py
+</code></pre>
+<p>Then one row in <code>ledger.md</code>, with the set written <code>02w</code>; a Write it has no redos.</p></div>
+<details class="hint"><summary>Rung 1: where to look</summary><p>Read the four tests, especially <code>test_the_example</code>, whose "grün" is why the encoding matters, and <code>test_a_number_outside_0_to_255</code>. Then re-read <a href="#reading-json-and-lines-of-text">reading JSON and lines of text</a>. For the hex digits, read the Python docs page "Format Specification Mini-Language".</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>These files are older than any engine. GPT-2's original encoder, <code>src/encoder.py</code> in the <code>openai/gpt-2</code> repository, defines <code>bytes_to_unicode</code> and reads <code>encoder.json</code> and <code>vocab.bpe</code>, the same files as <code>vocab.json</code> and <code>merges.txt</code> under other names. Hugging Face later bundled the vocabulary, the merges and the split pattern into one file, <code>tokenizer.json</code>, which many open models ship; a byte-level tokenizer in it still writes tokens through the same map, so you will meet Ġ in models much newer than GPT-2. vLLM loads each model's tokenizer from those Hugging Face files, tokenizes every prompt before scheduling it, and by default ends a reply when the model generates its end-of-text id.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p><code>wc -l</code> says <code>merges.txt</code> has 50,001 lines and <code>vocab.json</code> has 0. Explain both.</p><details class="answer"><summary>Answer</summary><p><code>wc -l</code> counts newlines. <code>merges.txt</code> has a header and 50,000 merges, each line ending in one. <code>vocab.json</code> is one JSON object with no newline at all.</p></details></div>
+<div class="q"><p>Why can <code>merges.txt</code> not write each token's bytes as they are?</p><details class="answer"><summary>Answer</summary><p>A space separates a merge's halves and a newline ends it, so a token holding either would be ambiguous or break its line; and a byte such as 0xE4 alone is not text a UTF-8 file can hold. One printable, non-space character per byte solves all three.</p></details></div>
+<div class="q"><p>What byte does Ġ stand for, and why is its code point U+0120?</p><details class="answer"><summary>Answer</summary><p>The space, byte 32. It is not kept, and the bytes that are not kept get the characters from U+0100 on, in byte order. Bytes 0 to 31 come first, so the space gets U+0100 + 32.</p></details></div>
+<div class="q"><p>What does <code>"a\nb\n".split("\n")</code> return, and how many "merges" would a loop find that took every piece of <code>merges.txt</code> after the header?</p><details class="answer"><summary>Answer</summary><p><code>['a', 'b', '']</code>. On <code>merges.txt</code>, 50,001: one too many, the empty string after the last newline.</p></details></div>
+<div class="q"><p>Which id does the 1,000th merge make? Which id is the newline byte in GPT-2, and in a tokenizer you train?</p><details class="answer"><summary>Answer</summary><p>The 1,000th merge is r = 999, so 256 + 999 = 1,255. The newline, "Ċ", is 198 in GPT-2 (the borrowed characters start at 188, and byte 10 is the eleventh); in your trained tokenizer it is 10.</p></details></div>
+<div class="q"><p>A user's prompt contains <code>&lt;|endoftext|&gt;</code>. What should your <code>encode</code> return, and what could go wrong if it returned 50,256?</p><details class="answer"><summary>Answer</summary><p>Seven ordinary ids, <code>[27, 91, 437, 1659, 5239, 91, 29]</code>, as <code>encode_ordinary</code> gives. Otherwise any user could end the document mid-prompt, and the model would treat what came before, instructions included, as a separate document.</p></details></div>
+<div class="q"><p>Why do the tests build tiktoken from <code>data/gpt2/</code>, and why may <code>gpt2.py</code> not import it?</p><details class="answer"><summary>Answer</summary><p>So that the tests never need the network and the oracle reads exactly the files your code reads. A <code>gpt2.py</code> that asked tiktoken would pass every comparison and prove nothing.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Say why a tokenizer's ids mean something only to the model trained with it.</li>
+<li>Read <code>vocab.json</code> and <code>merges.txt</code> from the shell and say what each line and entry means.</li>
+<li>Explain why GPT-2 writes every byte as a printable character, state its three ranges, decode Ġ, Ċ and Ã© by hand, and say why bytes 160 and 173 are borrowed.</li>
+<li>Read JSON with <code>json.loads</code> and <code>Path.read_text(encoding="utf-8")</code>, and say where <code>split("\n")</code>'s empty piece comes from.</li>
+<li>Find a byte's GPT-2 id, a merge's new id and the one id no merge makes, and say why <code>encode</code> never returns it.</li>
+<li>Build tiktoken from the two files and look at tokens with <code>encode_ordinary</code>, <code>decode_single_token_bytes</code> and <code>decode</code>.</li>
+<li>Make a positional and a flag mutually exclusive with argparse, with <code>nargs="?"</code>, and colour a line piece by piece with <code>Text.append</code>, and say what <code>NO_COLOR</code> changes.</li>
+</ul>
+</main>
+</body>
+</html>

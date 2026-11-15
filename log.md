@@ -75,3 +75,62 @@ What was hard, one line per problem:
 - Date:
 - Measurement (one line, from BENCH.md):
 - Five lines in your own words:
+
+---
+
+## Module 2: Tokenizer (planned from Mon 23 Nov 2026)
+
+Spec: [modules/02-tokenizer/README.md](modules/02-tokenizer/README.md). Done when: round trips are
+exact on arbitrary Unicode, and your token ids match GPT-2's tokenizer on the test set.
+
+### Spec ritual
+
+- Date and decisions:
+
+### Sessions
+
+#### Mon 23 Nov 2026
+
+-
+
+#### Tue 24 Nov 2026
+
+-
+
+#### Wed 25 Nov 2026
+
+-
+
+#### Thu 26 Nov 2026
+
+-
+
+#### Fri 27 Nov 2026
+
+-
+
+#### Sat 28 Nov 2026
+
+-
+
+### Blockers
+
+| Date | What | How it was resolved |
+|---|---|---|
+| | | |
+
+### Review questions and your answers
+
+| Date | Question | Your answer |
+|---|---|---|
+| | | |
+
+### Scope changes (dated)
+
+-
+
+### Module 2 done
+
+- Date:
+- Measurement (one line, from BENCH.md):
+- Five lines in your own words:

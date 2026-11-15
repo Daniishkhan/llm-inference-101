@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>09 · Appendix — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 09</p>
+<h1>Appendix</h1>
+<p class="lede">The page to keep open while you build: how to read a traceback that runs through this module's code, every error message the module is likely to show you with its cause and its fix, cheat sheets for the Python and the libraries of the module, the module's words, and a first look at Module 3.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>Reading a traceback through this module's code: a test, your function, and an exception turned into another.</li>
+<li>The errors of this module, as tables: message, cause, fix, chapter.</li>
+<li>The tests' own messages, the alarm that stops a slow function, and hypothesis's strange strings.</li>
+<li>Cheat sheets: str and bytes, bit operations, regular expressions, heapq, json and pathlib, tiktoken, hypothesis's text strategies, and the commands of this module.</li>
+<li>A glossary of the module's words.</li>
+<li>What Module 3 brings: the forward pass.</li>
+</ul>
+</div>
+
+<h2>Reading a traceback</h2>
+<p>Module 1's appendix took a traceback apart (<a href="../01-measure/09-appendix.html#reading-a-traceback">Reading a traceback</a>): the calls in progress when the exception was raised, oldest first, read from the bottom up. This module adds three things: the message of a <code>KeyError</code>, tracebacks that pass through a test into your package, and an exception turned into another.</p>
+
+<h3>A lookup that fails three calls down</h3>
+<p>A small program in the shape of this module's code: it reads a JSON file into a dict, then looks names up in it, one function calling the next. The last name is not in the dict:</p>
+<pre class="code" data-lang="python" data-file="station_codes.py" data-check="error"><code>import json
+import tempfile
+from pathlib import Path
+
+
+def load_codes(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def code_of(codes, station):
+    return codes[station]
+
+
+def route_codes(codes, route):
+    return [code_of(codes, station) for station in route]
+
+
+with tempfile.TemporaryDirectory() as folder:
+    path = Path(folder) / "stations.json"
+    path.write_text(json.dumps({"Leeds": "LDS", "York": "YRK", "Newcastle": "NCL"}))
+    codes = load_codes(path)
+
+print(route_codes(codes, ["Leeds", "York"]))
+print(route_codes(codes, ["Leeds", "York", "Newcastle upon Tyne"]))
+</code></pre>
+<pre class="output" data-for="station_codes.py"><code>['LDS', 'YRK']
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/station_codes.py", line 24, in &lt;module&gt;
+    print(route_codes(codes, ["Leeds", "York", "Newcastle upon Tyne"]))
+          ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "…/llm-inference-101/scratch/station_codes.py", line 15, in route_codes
+    return [code_of(codes, station) for station in route]
+            ~~~~~~~^^^^^^^^^^^^^^^^
+  File "…/llm-inference-101/scratch/station_codes.py", line 11, in code_of
+    return codes[station]
+           ~~~~~^^^^^^^^^
+KeyError: 'Newcastle upon Tyne'
+</code></pre>
+<p>Bottom up: <code>KeyError: 'Newcastle upon Tyne'</code> is the exception, and a <code>KeyError</code>'s message is only the key that was missing, shown with <code>repr</code>, quotes and all. The entry above it says the lookup was in <code>code_of</code>, at line 11; above that, <code>route_codes</code> called it from its list comprehension; above that, the script called <code>route_codes</code> at line 24. Nothing is wrong with any line of code: the data and the key disagree. The fix goes wherever the key was made.</p>
+
+<div class="callout trap"><span class="label">Trap</span><p>Read a <code>KeyError</code>'s key character by character. In this module the classic is a key with or without its space, or with a space where the file has <code>Ġ</code>: <code>KeyError: ' world'</code> says you looked up the token's bytes as text, while <code>vocab.json</code> writes that token as <code>"Ġworld"</code> (<a href="04-gpt2s-tokenizer.html#why-the-files-are-full-of">chapter 4</a>). The quotes in the message are <code>repr</code>'s, so a leading space shows as <code>' world'</code> and a newline as <code>'\n'</code>.</p></div>
+
+<h3>A test that fails inside your code</h3>
+<p>When a test calls your code, the traceback starts in the test file and goes down into <code>src/</code>. Here is one of Module 2's tests on day one, while <code>load_gpt2</code> is still a stub:</p>
+<pre class="shell"><code>$ uv run pytest "tests/m02/test_gpt2.py::test_load_gpt2_the_docstring_example"
+</code></pre>
+<pre class="output"><code>============================= test session starts ==============================
+platform darwin -- Python 3.13.18, pytest-9.2.0, pluggy-1.7.0
+rootdir: …/llm-inference-101
+configfile: pyproject.toml
+plugins: hypothesis-6.170.15
+collected 1 item
+
+tests/m02/test_gpt2.py F                                                 [100%]
+
+=================================== FAILURES ===================================
+_____________________ test_load_gpt2_the_docstring_example _____________________
+tests/m02/test_gpt2.py:95: in test_load_gpt2_the_docstring_example
+    tokenizer = gpt2_tokenizer()
+                ^^^^^^^^^^^^^^^^
+tests/m02/test_gpt2.py:51: in gpt2_tokenizer
+    return load_gpt2()
+           ^^^^^^^^^^^
+src/llm101/tokenizer/gpt2.py:60: in load_gpt2
+    raise NotImplementedError("TODO(you)")
+E   NotImplementedError: TODO(you)
+=========================== short test summary info ============================
+FAILED tests/m02/test_gpt2.py::test_load_gpt2_the_docstring_example - NotImpl...
+============================== 1 failed in 0.02s ===============================
+</code></pre>
+<p>pytest prints one entry per frame, as <code>file:line: in function</code>, then the line. Read upwards: the exception was raised in <code>src/llm101/tokenizer/gpt2.py</code>, line 60, inside <code>load_gpt2</code>; the helper <code>gpt2_tokenizer</code> at line 51 of the test file called it; the test called the helper at line 95. Once <code>load_gpt2</code> works and something inside it fails, more entries appear at the bottom, such as <code>load_gpt2</code> calling <code>Tokenizer</code> in <code>bpe.py</code>. The rule does not change: the lowest entry in <code>src/</code> is where it broke, and the entries above it say which test got it there.</p>
+
+<h3>One exception turned into another</h3>
+<p>Code often catches one exception and raises another that suits its caller better, for example a <code>ValueError</code> with a sentence in it instead of a bare <code>KeyError</code>. <code>raise ... from err</code> keeps the first one attached, and the traceback shows both:</p>
+<pre class="code" data-lang="python" data-file="dialling_codes.py" data-check="error"><code>DIALLING_CODES = {"Norway": "+47", "Portugal": "+351", "Japan": "+81"}
+
+
+def dialling_code(country):
+    try:
+        return DIALLING_CODES[country]
+    except KeyError as err:
+        raise ValueError(f"no dialling code for {country!r}") from err
+
+
+print(dialling_code("Japan"))
+print(dialling_code("Atlantis"))
+</code></pre>
+<pre class="output" data-for="dialling_codes.py"><code>+81
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/dialling_codes.py", line 6, in dialling_code
+    return DIALLING_CODES[country]
+           ~~~~~~~~~~~~~~^^^^^^^^^
+KeyError: 'Atlantis'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/dialling_codes.py", line 12, in &lt;module&gt;
+    print(dialling_code("Atlantis"))
+          ~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "…/llm-inference-101/scratch/dialling_codes.py", line 8, in dialling_code
+    raise ValueError(f"no dialling code for {country!r}") from err
+ValueError: no dialling code for 'Atlantis'
+</code></pre>
+<p>Two tracebacks, joined by "The above exception was the direct cause of the following exception". Read the last one first: it ends in the exception that stopped the program. The first is the <strong>cause</strong>, the original <code>KeyError</code> and where it happened. Without <code>from err</code>, the join reads "During handling of the above exception, another exception occurred", which usually means a mistake inside an <code>except</code> block.</p>
+
+<h2>The errors of this module</h2>
+<p>Every message below is one you are likely to meet this module, with what it usually means. "Chapter" is where the idea behind the fix is taught. Module 1's tables still hold for running things: <code>NotImplementedError: TODO(you)</code> is a stub you have not written yet, and <code>ModuleNotFoundError: No module named 'llm101'</code> means a Python other than the project's (<a href="../01-measure/09-appendix.html#the-errors-of-this-module">Module 1's errors</a>).</p>
+
+<h3>Text and bytes</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 0-1: unexpected end of data</code></td><td>The bytes stop in the middle of a character: a token, a slice or a chunk of a file that ends after the first two bytes of a three-byte character.</td><td>Decode only whole characters, or decode with <code>errors="replace"</code> where the spec says so (a token shown on its own, <code>Tokenizer.decode</code>).</td><td><a href="01-bytes-and-utf8.html#when-bytes-are-not-a-whole-character">1</a></td></tr>
+<tr><td><code>... can't decode byte 0xff in position 0: invalid start byte</code></td><td>A byte that can never start a character: a continuation byte (<code>10xxxxxx</code>) with no start byte before it, or <code>0xC0</code>, <code>0xC1</code>, <code>0xF5</code> to <code>0xFF</code>, which UTF-8 never uses.</td><td>Find where the bytes were cut or joined. Bytes that are not UTF-8 at all (a Latin-1 file, random data) need their own codec, or <code>errors="replace"</code>.</td><td><a href="01-bytes-and-utf8.html#reading-utf-8-by-hand">1</a></td></tr>
+<tr><td><code>... can't decode byte 0xe2 in position 0: invalid continuation byte</code></td><td>A start byte promised more bytes, and the next one is not <code>10xxxxxx</code>.</td><td>The same.</td><td><a href="01-bytes-and-utf8.html#reading-utf-8-by-hand">1</a></td></tr>
+<tr><td><code>UnicodeEncodeError: 'utf-8' codec can't encode character '\ud83d' in position 16: surrogates not allowed</code></td><td>The string holds a lone <strong>surrogate</strong>, a code point from U+D800 to U+DFFF: half of a UTF-16 pair, which is not a character and has no UTF-8 bytes. It usually comes from <code>"\ud83d"</code> typed by hand, or from text decoded with <code>errors="surrogateescape"</code>.</td><td>Do not make such strings. Your <code>utf8_encode</code> must refuse them with a <code>ValueError</code>, as its docstring says.</td><td><a href="01-bytes-and-utf8.html#surrogates-and-text-that-is-not-text">1</a></td></tr>
+<tr><td><code>TypeError: can't concat str to bytes</code></td><td><code>b"tok" + "en"</code>: bytes and text mixed in one expression.</td><td>Decide which one you are holding. Bytes join with <code>b"".join(...)</code>, text with <code>"".join(...)</code>.</td><td><a href="01-bytes-and-utf8.html#bytes-in-python">1</a></td></tr>
+<tr><td><code>AttributeError: 'str' object has no attribute 'decode'</code>, <code>'bytes' object has no attribute 'encode'</code></td><td>You decoded text or encoded bytes: the value is already what you wanted.</td><td><code>str.encode</code> makes bytes; <code>bytes.decode</code> makes text. Print <code>type(x)</code> if you are not sure.</td><td><a href="01-bytes-and-utf8.html#bytes-in-python">1</a></td></tr>
+<tr><td><code>ValueError: bytes must be in range(0, 256)</code></td><td><code>bytes([...])</code> was given a number that is not a byte: a code point, or an id above 255.</td><td>A byte holds 0 to 255. A code point above 127 needs more than one byte; an id is not a byte at all until you look up the bytes its token stands for.</td><td><a href="01-bytes-and-utf8.html#bits-shifts-and-masks">1</a></td></tr>
+<tr><td><code>TypeError: 'bytes' object does not support item assignment</code></td><td><code>bytes</code> cannot be changed after it is made.</td><td>Build a <code>bytearray</code> or a list of ints, and turn it into <code>bytes</code> at the end.</td><td><a href="01-bytes-and-utf8.html#bytes-in-python">1</a></td></tr>
+</tbody>
+</table>
+<p>The four ways to break UTF-8, and what <code>errors="replace"</code> makes of each:</p>
+<pre class="code" data-lang="python" data-file="decode_errors.py" data-check="run"><code>attempts = {
+    "the first two bytes of €": b"\xe2\x82",
+    "a byte that never starts a character": b"\xff",
+    "a start byte, then no continuation": b"\xe2AB",
+    "a continuation byte on its own": b"\x82",
+}
+for what, data in attempts.items():
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError as err:
+        print(f"{what}:\n  {err}")
+    print("  with errors='replace':", repr(data.decode("utf-8", errors="replace")))
+</code></pre>
+<pre class="output" data-for="decode_errors.py"><code>the first two bytes of €:
+  'utf-8' codec can't decode bytes in position 0-1: unexpected end of data
+  with errors='replace': '�'
+a byte that never starts a character:
+  'utf-8' codec can't decode byte 0xff in position 0: invalid start byte
+  with errors='replace': '�'
+a start byte, then no continuation:
+  'utf-8' codec can't decode byte 0xe2 in position 0: invalid continuation byte
+  with errors='replace': '�AB'
+a continuation byte on its own:
+  'utf-8' codec can't decode byte 0x82 in position 0: invalid start byte
+  with errors='replace': '�'
+</code></pre>
+<p>And the mix-ups of text and bytes, one after the other:</p>
+<pre class="code" data-lang="python" data-file="str_or_bytes.py" data-check="run"><code>attempts = [
+    'b"tok" + "en"',
+    '"token".decode("utf-8")',
+    'b"token".encode("utf-8")',
+    "bytes([72, 105, 256])",
+    'data = b"abc"; data[0] = 120',
+    'ord("ab")',
+    "chr(0x110000)",
+    '"a b".split(b" ")',
+]
+for source in attempts:
+    try:
+        exec(source)
+    except (TypeError, ValueError, AttributeError) as err:
+        print(f"{source}\n  {type(err).__name__}: {err}")
+</code></pre>
+<pre class="output" data-for="str_or_bytes.py"><code>b"tok" + "en"
+  TypeError: can't concat str to bytes
+"token".decode("utf-8")
+  AttributeError: 'str' object has no attribute 'decode'
+b"token".encode("utf-8")
+  AttributeError: 'bytes' object has no attribute 'encode'
+bytes([72, 105, 256])
+  ValueError: bytes must be in range(0, 256)
+data = b"abc"; data[0] = 120
+  TypeError: 'bytes' object does not support item assignment
+ord("ab")
+  TypeError: ord() expected a character, but string of length 2 found
+chr(0x110000)
+  ValueError: chr() arg not in range(0x110000)
+"a b".split(b" ")
+  TypeError: must be str or None, not bytes
+</code></pre>
+<p>A lone surrogate, the one kind of string that <code>.encode("utf-8")</code> refuses, is shown in chapter 1's <a href="01-bytes-and-utf8.html#surrogates-and-text-that-is-not-text">Surrogates, and text that is not text</a>.</p>
+
+<h3>Files, JSON and lines</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>FileNotFoundError: [Errno 2] No such file or directory: 'data/gpt2/vocab.json'</code></td><td>A relative path is looked up from the folder the program runs in, not from the folder of the file. From the repository's root the path works; from <code>scratch/</code> it does not.</td><td>Use <code>VOCAB_PATH</code> and <code>MERGES_PATH</code> from <code>llm101.tokenizer.gpt2</code>: they are built from the location of <code>gpt2.py</code> itself, so they work from anywhere. If the files are really missing, <code>uv run python tools/fetch-gpt2-tokenizer.py --check</code> says so.</td><td><a href="04-gpt2s-tokenizer.html#a-first-look-at-the-files">4</a></td></tr>
+<tr><td><code>json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)</code></td><td><code>json.loads</code> was given something that is not JSON: <code>merges.txt</code> instead of <code>vocab.json</code>, or an empty string. Single quotes or a trailing comma give messages of their own.</td><td>Check which file you opened. <code>merges.txt</code> is lines of text, not JSON.</td><td><a href="04-gpt2s-tokenizer.html#reading-json-and-lines-of-text">4</a></td></tr>
+<tr><td><code>KeyError: ' world'</code>, <code>KeyError: 'Ġ'</code></td><td>A token looked up in <code>vocab.json</code>'s dict under the wrong spelling: as raw text instead of through the byte-to-character map, or with a piece of a line that is not a token.</td><td>Print the key with <code>repr</code> and compare it with the file (<code>grep</code> it). Every key of <code>vocab.json</code> is written through the map, one character per byte.</td><td><a href="04-gpt2s-tokenizer.html#why-the-files-are-full-of">4</a></td></tr>
+<tr><td><code>KeyError: '#version:'</code></td><td>The first line of <code>merges.txt</code>, <code>#version: 0.2</code>, was read as if it were a merge.</td><td>It is a header: the merges start on the second line, as the docstring of <code>load_gpt2</code> says.</td><td><a href="04-gpt2s-tokenizer.html#reading-json-and-lines-of-text">4</a></td></tr>
+<tr><td><code>ValueError: not enough values to unpack (expected 2, got 0)</code></td><td><code>a, b = line.split()</code> on an empty line. A file that ends with a newline splits on <code>"\n"</code> into one empty string after its last line.</td><td>Leave out the empty piece, or use <code>splitlines()</code>, which does not make it. (<code>expected 2, got 1</code> is a line with one word; <code>too many values to unpack</code>, one with three.)</td><td><a href="04-gpt2s-tokenizer.html#reading-json-and-lines-of-text">4</a></td></tr>
+<tr><td><code>ValueError: Hash mismatch for data downloaded from …/data/gpt2/merges.txt</code> (or <code>vocab.json</code>)</td><td>Raised by tiktoken while the tests build the oracle (<code>tests/m02/conftest.py</code>): a file in <code>data/gpt2/</code> is not the one the checksums expect. Every test that uses the oracle shows <code>E</code>.</td><td>Do not edit <code>data/gpt2/</code>. <code>git diff data/gpt2</code> shows a change; <code>git checkout data/gpt2</code> undoes it, and <code>uv run python tools/fetch-gpt2-tokenizer.py --check</code> confirms.</td><td><a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">4</a></td></tr>
+</tbody>
+</table>
+<p>A relative path, run from a folder that is not the repository's root:</p>
+<pre class="code" data-lang="python" data-file="wrong_folder.py" data-check="error"><code>from pathlib import Path
+
+vocab = Path("data/gpt2/vocab.json").read_text(encoding="utf-8")
+</code></pre>
+<pre class="output" data-for="wrong_folder.py"><code>Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/wrong_folder.py", line 3, in &lt;module&gt;
+    vocab = Path("data/gpt2/vocab.json").read_text(encoding="utf-8")
+  File "…/lib/python3.13/pathlib/_local.py", line 546, in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "…/lib/python3.13/pathlib/_abc.py", line 632, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "…/lib/python3.13/pathlib/_local.py", line 537, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'data/gpt2/vocab.json'
+</code></pre>
+<p>The three entries after your line are inside <code>pathlib</code>; the first entry, the one in your file, is where the fix goes. From the repository's root, <code>uv run python scratch/wrong_folder.py</code> works, because uv runs it in the folder you are in. <code>cd scratch</code> first, and it fails like this.</p>
+<p>Lines of text that are not JSON, and a file's empty last piece:</p>
+<pre class="code" data-lang="python" data-file="not_json.py" data-check="error"><code>import json
+
+from llm101.tokenizer.gpt2 import MERGES_PATH
+
+text = MERGES_PATH.read_text(encoding="utf-8")
+print(repr(text[:20]))
+merges = json.loads(text)
+</code></pre>
+<pre class="output" data-for="not_json.py"><code>'#version: 0.2\nĠ t\nĠ '
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/not_json.py", line 7, in &lt;module&gt;
+    merges = json.loads(text)
+  File "…/lib/python3.13/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "…/lib/python3.13/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "…/lib/python3.13/json/decoder.py", line 363, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+</code></pre>
+<p>A file's empty last piece, and why <code>split("\n")</code> makes it, is in chapter 4's <a href="04-gpt2s-tokenizer.html#lines-and-the-empty-piece-at-the-end">Lines, and the empty piece at the end</a>: unpack that piece into two names and you get the <code>not enough values to unpack (expected 2, got 0)</code> of the table above.</p>
+
+<h3>Regular expressions</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>re.PatternError: bad escape \p at position 0</code> (before Python 3.13: <code>re.error</code>)</td><td>The standard library's <code>re</code> does not know <code>\p{L}</code> or <code>\p{N}</code>.</td><td><code>import regex</code> and call <code>regex.compile</code>, <code>regex.findall</code> and so on: the same functions, with Unicode properties.</td><td><a href="03-encoding-by-rank.html#letters-in-every-script-the-regex-package">3</a></td></tr>
+<tr><td>No message: <code>findall</code> returns empty strings among the matches</td><td>An alternative that can match nothing, such as <code>\s*</code> where <code>\s+</code> was meant: it matches the empty string at every position.</td><td>Make every alternative match at least one character.</td><td><a href="03-encoding-by-rank.html#regular-expressions-from-first-principles">3</a></td></tr>
+</tbody>
+</table>
+<p><code>regex</code> and <code>re</code> side by side. The traceback is long, because the error is found deep inside <code>re</code>'s parser; it is cut here to its first entry and its last two lines:</p>
+<pre class="code" data-lang="python" data-file="bad_escape.py" data-check="error"><code>import re
+
+import regex
+
+print(regex.findall(r"\p{L}+", "Grüße aus 東京, 42 times"))
+print(re.findall(r"\p{L}+", "Grüße aus 東京, 42 times"))
+</code></pre>
+<pre class="output"><code>['Grüße', 'aus', '東京', 'times']
+Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/bad_escape.py", line 6, in &lt;module&gt;
+    print(re.findall(r"\p{L}+", "Grüße aus 東京, 42 times"))
+          ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  [six entries inside the re module are left out here]
+  File "…/lib/python3.13/re/_parser.py", line 442, in _escape
+    raise source.error("bad escape %s" % escape, len(escape))
+re.PatternError: bad escape \p at position 0
+</code></pre>
+
+<h3>Heaps and linked lists</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>IndexError: index out of range</code> from <code>heapq.heappop</code></td><td>A pop from an empty heap. The message is short because heapq is written in C.</td><td>Check <code>if heap:</code> before popping, and decide what an empty heap means for the problem: often "no more work", and the loop ends.</td><td><a href="05-heaps-and-linked-lists.html#heapq-and-how-tuples-compare">5</a></td></tr>
+<tr><td><code>AttributeError: 'NoneType' object has no attribute 'next'</code></td><td>A walk along a chain of nodes went past the last one: <code>node</code> is <code>None</code> and the loop still reads <code>node.next</code>.</td><td>Make the loop's condition <code>while node is not None</code>, and check <code>node.next</code> before you read <code>node.next.next</code>.</td><td><a href="07-drills.html#following-links-a-chain-of-nodes">7</a></td></tr>
+<tr><td><code>RecursionError: maximum recursion depth exceeded</code></td><td>A function that calls itself once per node or per item, on a long chain or a long list: Python stops at about 1,000 calls deep. The drills' tests use chains of 100,000 nodes.</td><td>Turn the recursion into a loop that keeps its place in a variable or two.</td><td><a href="07-drills.html#following-links-a-chain-of-nodes">7</a></td></tr>
+</tbody>
+</table>
+<p>A chain of 5,000 stops, counted by a function that calls itself once per stop:</p>
+<pre class="code" data-lang="python" data-file="chain_length.py" data-check="error"><code>class Stop:
+    def __init__(self, name, next=None):
+        self.name = name
+        self.next = next
+
+
+def stops_from(stop):
+    if stop is None:
+        return 0
+    return 1 + stops_from(stop.next)
+
+
+first = None
+for number in range(5_000, 0, -1):
+    first = Stop(f"stop {number}", first)
+
+print(stops_from(first))
+</code></pre>
+<pre class="output" data-for="chain_length.py"><code>Traceback (most recent call last):
+  File "…/llm-inference-101/scratch/chain_length.py", line 17, in &lt;module&gt;
+    print(stops_from(first))
+          ~~~~~~~~~~^^^^^^^
+  File "…/llm-inference-101/scratch/chain_length.py", line 10, in stops_from
+    return 1 + stops_from(stop.next)
+               ~~~~~~~~~~^^^^^^^^^^^
+  File "…/llm-inference-101/scratch/chain_length.py", line 10, in stops_from
+    return 1 + stops_from(stop.next)
+               ~~~~~~~~~~^^^^^^^^^^^
+  File "…/llm-inference-101/scratch/chain_length.py", line 10, in stops_from
+    return 1 + stops_from(stop.next)
+               ~~~~~~~~~~^^^^^^^^^^^
+  [Previous line repeated 996 more times]
+RecursionError: maximum recursion depth exceeded
+</code></pre>
+<p>The traceback folds the thousand identical entries into "Previous line repeated 996 more times". The function is correct, and fine for a chain of 50; it is the depth that fails.</p>
+
+<h3>tiktoken</h3>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>ValueError: Encountered text corresponding to disallowed special token '&lt;|endoftext|&gt;'.</code> (and three more lines of advice)</td><td><code>encode</code>, unlike <code>encode_ordinary</code>, refuses text that looks like a special token unless you say what to do with it.</td><td>To look at tokens as your tokenizer makes them, use <code>encode_ordinary</code>: it treats <code>&lt;|endoftext|&gt;</code> as ordinary text, as your <code>Tokenizer.encode</code> does.</td><td><a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">4</a></td></tr>
+</tbody>
+</table>
+
+<h3>The tests' own messages</h3>
+<p>Many of Module 2's tests add a sentence of their own to an assertion; it appears after <code>AssertionError:</code> in the E lines. The tests that read your source code call your function first, so on day one they fail with <code>NotImplementedError</code>, not with their message.</p>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>assert [15496, 11, 995] == [15496, 995]</code> (any two lists of ids)</td><td>Your ids differ from the oracle's. pytest shows the first index where they differ.</td><td>Look at the tokens on both sides with tiktoken's <code>decode_single_token_bytes</code>: a difference in the chunks (the split) looks different from a difference inside one chunk (the merges).</td><td><a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">4</a></td></tr>
+<tr><td><code>work the bytes out yourself</code>, <code>bytes(text, 'utf-8') is str.encode under another name</code></td><td><code>utf8.py</code> calls <code>.encode()</code> or <code>.decode()</code>, or hands a string and an encoding to <code>bytes()</code> or <code>bytearray()</code>.</td><td>Work out every byte from <code>ord</code> with shifts and masks.</td><td><a href="01-bytes-and-utf8.html#the-utf-8-table">1</a></td></tr>
+<tr><td><code>U+0800 takes 3 bytes</code> (any code point and length)</td><td>A code point at the edge of a row of the UTF-8 table got the wrong number of bytes: a <code>&lt;</code> where <code>&lt;=</code> was meant.</td><td>Check each boundary of the table against your comparisons.</td><td><a href="01-bytes-and-utf8.html#the-utf-8-table">1</a></td></tr>
+<tr><td><code>return a new list, even when nothing changes</code></td><td><code>merge_pair</code> returned the list it was given.</td><td>Build a new one, as the docstring says.</td><td><a href="02-pairs-and-merges.html#neighbours-in-a-list">2</a></td></tr>
+<tr><td><code>still training after 10 s: count each distinct chunk once, and weigh its pairs by how often the chunk appears (see the docstring)</code></td><td><code>train_bpe</code> counts every chunk of argparse's source, ten times over, in every round.</td><td>What the message says.</td><td><a href="02-pairs-and-merges.html#count-each-word-once">2</a></td></tr>
+<tr><td><code>the left one wins, as merge_pair</code></td><td><code>apply_merges</code> merged overlapping occurrences in the wrong order: <code>[97, 97, 97]</code> must become <code>[256, 97]</code>.</td><td>Replace the occurrences of the chosen pair from left to right.</td><td><a href="02-pairs-and-merges.html#overlapping-pairs">2</a></td></tr>
+<tr><td><code>stop only when no neighbouring pair has a rank</code></td><td><code>apply_merges</code> stopped while a pair with a rank was still in the list.</td><td>Stop only when none of the neighbouring pairs is in the table.</td><td><a href="03-encoding-by-rank.html#encoding-a-word-by-hand">3</a></td></tr>
+<tr><td><code>encode never makes a special token</code></td><td><code>Tokenizer.encode</code> turned the text of a special token into its id.</td><td>Special tokens are for <code>decode</code> and <code>token_bytes</code> only.</td><td><a href="04-gpt2s-tokenizer.html#the-token-that-no-merge-makes">4</a></td></tr>
+<tr><td><code>the space byte is token 220</code>, <code>merges.txt's first merge, Ġ t</code></td><td><code>load_gpt2</code> gave a byte or a merge the wrong id.</td><td>Byte ids come from <code>vocab.json</code> through the byte-to-character map; merge r makes 256 + r.</td><td><a href="04-gpt2s-tokenizer.html#ids-in-gpt-2-s-order">4</a></td></tr>
+<tr><td><code>fast.py finds the answer itself</code></td><td><code>apply_merges_fast</code> calls <code>apply_merges</code>.</td><td>The point of the milestone is to do without.</td><td><a href="05-heaps-and-linked-lists.html#how-the-two-fit-together">5</a></td></tr>
+<tr><td><code>still merging after 2 s: does each merge look at every pair again? (book chapter 5)</code></td><td><code>apply_merges_fast</code> on 100,000 letters does work that grows with the square of the length.</td><td>A heap for the next pair, a linked list for the merge, and stale entries skipped.</td><td><a href="05-heaps-and-linked-lists.html#why-the-slow-way-is-quadratic">5</a></td></tr>
+<tr><td><code>GPT-2 still encoding one long word after 2 s: does Tokenizer.encode use apply_merges_fast yet?</code></td><td><code>apply_merges_fast</code> is green, but <code>Tokenizer.encode</code> still calls the slow one.</td><td>Switch <code>encode</code> to the fast one (milestone M6).</td><td><a href="08-build-the-tokenizer.html#milestone-6-apply-merges-fast">8</a></td></tr>
+<tr><td><code>count with masks, without decoding</code>, <code>str(data, ...) decodes too</code></td><td>The Write it <code>count_characters</code> decodes the bytes.</td><td>Do without decoding: the mechanism is in chapter 1's <a href="01-bytes-and-utf8.html#the-utf-8-table">The UTF-8 table</a>.</td><td><a href="01-bytes-and-utf8.html#the-utf-8-table">1</a></td></tr>
+<tr><td><code>the list goes round in a loop: a link points backwards</code>, <code>the list goes round in a loop</code></td><td>A linked-list drill returned a chain whose last node points back into the chain, so a walk never ends. The test stops after a million nodes.</td><td>Draw the links on paper, before and after one step of your loop.</td><td><a href="07-drills.html#following-links-a-chain-of-nodes">7</a></td></tr>
+<tr><td><code>change the links of the nodes you were given; make no new Node</code>, <code>use the nodes you were given, all of them</code></td><td>The drills <code>reverse_list</code> or <code>merge_two_lists</code> built new nodes, or dropped some.</td><td>Relink the nodes you were given.</td><td><a href="07-drills.html#walking-two-chains-at-once">7</a></td></tr>
+<tr><td><code>find the k largest without sorting the whole list (see the docstring)</code></td><td><code>k_largest</code> calls <code>sorted()</code>, <code>.sort()</code>, <code>heapq.nlargest</code> or <code>heapq.nsmallest</code>.</td><td>The point of the drill is to do without.</td><td><a href="07-drills.html#k-largest">7</a></td></tr>
+<tr><td><code>merge the runs yourself, without sorting</code>, <code>heapq.merge does the whole drill: merge the runs yourself</code></td><td><code>merge_sorted_runs</code> calls <code>sorted()</code> or <code>.sort()</code>, or uses <code>heapq.merge</code>.</td><td>The point of the drill is to do without.</td><td><a href="07-drills.html#merge-sorted-runs">7</a></td></tr>
+<tr><td><code>both chains are already in order: walk them</code></td><td><code>merge_two_lists</code> calls <code>sorted()</code> or <code>.sort()</code>, on the values or on the nodes.</td><td>The point of the drill is to do without.</td><td><a href="07-drills.html#merge-two-lists">7</a></td></tr>
+<tr><td><code>still running after 2 s: finding the largest k times over costs n * k steps</code></td><td><code>k_largest</code> scans the whole list once for each of the k values.</td><td>Go through the list once, as the docstring asks.</td><td><a href="07-drills.html#a-heap-as-a-to-do-list">7</a></td></tr>
+<tr><td><code>still running after 2 s: looking at the head of every run for every number costs n * k steps</code></td><td><code>merge_sorted_runs</code> compares the heads of all k runs to find each next number.</td><td>The drill's rungs are in chapter 7.</td><td><a href="07-drills.html#the-smallest-of-many">7</a></td></tr>
+<tr><td><code>still running after 2 s: looking ahead from every day costs n * n steps</code>, <code>still running after 2 s: trying every start with every end costs n * n steps</code></td><td>The review drills <code>days_to_wait</code> or <code>longest_draw</code> do work that grows with the square of the list's length.</td><td>The drills' rungs are in chapter 7.</td><td><a href="07-drills.html#set-02-heaps-and-linked-lists">7</a></td></tr>
+</tbody>
+</table>
+
+<p>The "still running after 2 s" messages, and the training test's "still training after 10 s", come from an <strong>alarm</strong>. A test asks the operating system to send the process a signal, <code>SIGALRM</code>, after two seconds (ten for training), and installs a handler that raises an exception when it arrives; Python runs the handler between two bytecode instructions of whatever your code is doing, and the test catches the exception and fails with its message. In a <code>finally</code>, it switches the alarm off and puts the old handler back, so a fast answer is never interrupted. The same mechanism, on a loop that never ends:</p>
+<pre class="code" data-lang="python" data-file="alarm.py" data-check="run"><code>import signal
+
+
+class StillRunning(Exception):
+    pass
+
+
+def ring(signum, frame):
+    raise StillRunning
+
+
+def count_for_ever():
+    total = 0
+    while True:
+        total += 1
+
+
+before = signal.signal(signal.SIGALRM, ring)
+signal.setitimer(signal.ITIMER_REAL, 0.2)
+try:
+    count_for_ever()
+except StillRunning:
+    print("still running after 0.2 s: the alarm rang, and a test would fail here")
+finally:
+    signal.setitimer(signal.ITIMER_REAL, 0)
+    signal.signal(signal.SIGALRM, before)
+print("the alarm is off and the old handler is back")
+</code></pre>
+<pre class="output" data-for="alarm.py"><code>still running after 0.2 s: the alarm rang, and a test would fail here
+the alarm is off and the old handler is back
+</code></pre>
+<p>Python runs the handler only between instructions of Python code, so a long call into C or Rust is interrupted only when it returns.</p>
+
+<h3>Hypothesis and strange strings</h3>
+<p>Module 2's property tests draw text from <code>st.text()</code>, whose characters come from all of Unicode: scripts you cannot read, control characters, combining marks, characters with no picture at all. So a failing example can look strange. A toy property that should hold, and does not: a note written to a file and read back is the same note.</p>
+<pre class="code" data-lang="python" data-file="test_note_on_disk.py" data-check="run"><code>import tempfile
+from pathlib import Path
+
+from hypothesis import given
+from hypothesis import strategies as st
+
+
+def save_and_load(text):
+    """Write a note to a file and read it back."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "note.txt"
+        path.write_text(text, encoding="utf-8")
+        return path.read_text(encoding="utf-8")
+
+
+@given(st.text())
+def test_a_note_survives_the_disk(text):
+    assert save_and_load(text) == text
+</code></pre>
+<pre class="shell"><code>$ uv run pytest scratch/test_note_on_disk.py
+</code></pre>
+<pre class="output"><code>============================= test session starts ==============================
+platform darwin -- Python 3.13.18, pytest-9.2.0, pluggy-1.7.0
+rootdir: …/llm-inference-101
+configfile: pyproject.toml
+plugins: hypothesis-6.170.15
+collected 1 item
+
+scratch/test_note_on_disk.py F                                           [100%]
+
+=================================== FAILURES ===================================
+________________________ test_a_note_survives_the_disk _________________________
+scratch/test_note_on_disk.py:17: in test_a_note_survives_the_disk
+    def test_a_note_survives_the_disk(text):
+                   ^^^
+scratch/test_note_on_disk.py:18: in test_a_note_survives_the_disk
+    assert save_and_load(text) == text
+E   AssertionError: assert '\n' == '\r'
+E     
+E     Strings contain only whitespace, escaping them using repr()
+E     - '\r'
+E     ?   ^
+E     + '\n'
+E     ?   ^
+E   Failing test case: test_a_note_survives_the_disk(
+E       text='\r',
+E   )
+=========================== short test summary info ============================
+FAILED scratch/test_note_on_disk.py::test_a_note_survives_the_disk - Assertio...
+============================== 1 failed in 0.55s ===============================
+</code></pre>
+<p>The failing example is <code>text='\r'</code>, a single carriage return, shrunk from whatever odd string failed first. Reading a file in text mode turns <code>\r</code> and <code>\r\n</code> into <code>\n</code> (Python's "universal newlines"), so the note did not survive. The fix is <code>read_text(encoding="utf-8", newline="")</code>, which keeps line endings as they are; a test that reads and writes bytes never meets the problem.</p>
+<p>Hypothesis shows every example with <code>repr</code>, so learn to read its escapes:</p>
+<table>
+<thead><tr><th>You see</th><th>It is</th></tr></thead>
+<tbody>
+<tr><td><code>'\r'</code>, <code>'\n'</code>, <code>'\t'</code>, <code>'\x00'</code></td><td>A carriage return, a newline, a tab, the null character: control characters with short escapes.</td></tr>
+<tr><td><code>'\x80'</code> to <code>'\x9f'</code></td><td>More control characters, U+0080 to U+009F: two bytes each in UTF-8, and invisible.</td></tr>
+<tr><td><code>'\xa0'</code></td><td>A non-breaking space: looks like a space, is not <code>" "</code>, and is two bytes.</td></tr>
+<tr><td><code>'é'</code> but <code>len</code> is 2</td><td>e followed by U+0301, a combining accent: two code points that draw as one.</td></tr>
+<tr><td><code>'\U000e0000'</code></td><td>A code point above U+FFFF that has no picture: four bytes in UTF-8.</td></tr>
+<tr><td><code>'\ud800'</code></td><td>A lone surrogate. <code>st.text()</code> never makes one (its default alphabet is <code>st.characters(codec="utf-8")</code>), so if you see one, your own code made it.</td></tr>
+</tbody>
+</table>
+<p>To look at an example, paste it into a <code>scratch/</code> program and print it character by character: <code>[f"U+{ord(c):04X}" for c in text]</code> names each code point, and <code>text.encode("utf-8")</code> shows its bytes.</p>
+<table>
+<thead><tr><th>Message</th><th>Cause</th><th>Fix</th><th>Chapter</th></tr></thead>
+<tbody>
+<tr><td><code>hypothesis.errors.DeadlineExceeded: Test took … ms, which exceeds the deadline of 200.00ms</code></td><td>One example took longer than 200 ms: for a short text, that is far slower than an encoder should be. Common causes: merging that grows with the square of a chunk's length, or work in every call of <code>encode</code> or <code>decode</code> that belongs in the constructor, such as building a table again.</td><td>Make the code faster; do not add <code>@settings(deadline=None)</code> to a course test. Loading is not the cause: the tests load GPT-2's tokenizer once, with <code>functools.cache</code>, and the two hypothesis tests that use it load it before hypothesis starts timing (their <code>@given</code> function sits inside the test), so a slow <code>load_gpt2</code> never counts against the deadline.</td><td><a href="05-heaps-and-linked-lists.html#why-the-slow-way-is-quadratic">5</a></td></tr>
+<tr><td><code>Failing test case: test_..._round_trips_...(text='\x80')</code></td><td>Your round trip fails for one character. A character from 0x80 up is the first that needs two bytes.</td><td>Paste the example into a <code>scratch/</code> program and follow it through encode and decode.</td><td><a href="03-encoding-by-rank.html#round-trips-and-hypothesis">3</a></td></tr>
+</tbody>
+</table>
+
+<h2>Cheat sheets</h2>
+
+<h3>str and bytes</h3>
+<table>
+<thead><tr><th>You want</th><th>Type</th></tr></thead>
+<tbody>
+<tr><td>the code point of a character, and back</td><td><code>ord("é")</code> is 233; <code>chr(233)</code> is <code>"é"</code></td></tr>
+<tr><td>the UTF-8 bytes of a text, and back</td><td><code>text.encode("utf-8")</code>; <code>data.decode("utf-8")</code></td></tr>
+<tr><td>decode bytes that may be broken</td><td><code>data.decode("utf-8", errors="replace")</code> (one <code>�</code> per broken piece) or <code>errors="ignore"</code></td></tr>
+<tr><td>characters against bytes</td><td><code>len(text)</code> counts code points; <code>len(data)</code> counts bytes</td></tr>
+<tr><td>a bytes literal; bytes from numbers</td><td><code>b"ab\xc3\xa9"</code>; <code>bytes([97, 98])</code></td></tr>
+<tr><td>one byte as a number</td><td><code>data[0]</code> is an int from 0 to 255; <code>data[0:1]</code> is bytes</td></tr>
+<tr><td>bytes you can change</td><td><code>bytearray(b"ab")</code>, then <code>.append(99)</code>, <code>+= b"d"</code>; <code>bytes(buffer)</code> at the end</td></tr>
+<tr><td>join many pieces</td><td><code>b"".join(pieces)</code> for bytes, <code>"".join(pieces)</code> for text</td></tr>
+<tr><td>see a byte</td><td><code>hex(195)</code> is <code>'0xc3'</code>; <code>f"{195:08b}"</code> is <code>'11000011'</code></td></tr>
+</tbody>
+</table>
+<pre class="code" data-lang="python" data-file="str_and_bytes.py" data-check="run"><code>text = "Grüße 🙂"
+data = text.encode("utf-8")
+print(len(text), len(data))
+print(data)
+print(data[2], hex(data[2]), f"{data[2]:08b}")
+print(list(data[:4]), data[:4])
+print(bytes([71, 114]), bytearray(b"ab") + b"c")
+print(data.decode("utf-8"))
+print(data[:3].decode("utf-8", errors="replace"), data[:3].decode("utf-8", errors="ignore"))
+print(ord("ü"), chr(252), f"U+{ord('🙂'):04X}")
+print(b"".join([b"to", b"ken"]), "-".join(["to", "ken"]))
+</code></pre>
+<pre class="output" data-for="str_and_bytes.py"><code>7 12
+b'Gr\xc3\xbc\xc3\x9fe \xf0\x9f\x99\x82'
+195 0xc3 11000011
+[71, 114, 195, 188] b'Gr\xc3\xbc'
+b'Gr' bytearray(b'abc')
+Grüße 🙂
+Gr� Gr
+252 ü U+1F642
+b'token' to-ken
+</code></pre>
+
+<h3>Bit operations</h3>
+<table>
+<thead><tr><th>Operator</th><th>Does</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td><code>x &gt;&gt; n</code></td><td>Shift right: drop the lowest n bits (divide by 2<sup>n</sup>, rounding down)</td><td><code>0b110101 &gt;&gt; 2</code> is <code>0b1101</code></td></tr>
+<tr><td><code>x &lt;&lt; n</code></td><td>Shift left: append n zero bits (multiply by 2<sup>n</sup>)</td><td><code>1 &lt;&lt; 10</code> is 1024</td></tr>
+<tr><td><code>x &amp; m</code></td><td>Mask: keep only the bits that are 1 in m</td><td><code>0b110101 &amp; 0b111</code> is <code>0b101</code></td></tr>
+<tr><td><code>x | m</code></td><td>Set: turn on the bits that are 1 in m</td><td><code>0b100 | 0b001</code> is <code>0b101</code></td></tr>
+<tr><td><code>x ^ m</code></td><td>Flip the bits that are 1 in m</td><td><code>0b110 ^ 0b011</code> is <code>0b101</code></td></tr>
+<tr><td><code>~m</code></td><td>Every bit flipped; <code>x &amp; ~m</code> turns off the bits of m</td><td><code>0b111 &amp; ~0b010</code> is <code>0b101</code></td></tr>
+<tr><td><code>0b…</code>, <code>0x…</code>, <code>0o…</code>; <code>bin</code>, <code>hex</code>, <code>oct</code></td><td>Write and show numbers in base 2, 16 and 8</td><td><code>0xFF == 0b1111_1111 == 255</code></td></tr>
+</tbody>
+</table>
+<p>A permissions byte, with a bit for reading, writing and running, and the three groups of a Unix file mode packed into one number:</p>
+<pre class="code" data-lang="python" data-file="flags.py" data-check="run"><code>READ, WRITE, RUN = 0b100, 0b010, 0b001
+
+owner = READ | WRITE
+print(f"{owner:03b}", bool(owner &amp; WRITE), bool(owner &amp; RUN))
+owner |= RUN
+owner &amp;= ~WRITE
+print(f"{owner:03b}")
+
+mode = (0b111 &lt;&lt; 6) | (0b101 &lt;&lt; 3) | 0b101  # rwx r-x r-x
+print(oct(mode), f"{mode:09b}")
+print((mode &gt;&gt; 3) &amp; 0b111, mode &amp; 0b111)
+print(0xFF, 0b1111_1111, 255 &gt;&gt; 4, 255 &amp; 0x0F, 1 &lt;&lt; 10, 6 ^ 3)
+</code></pre>
+<pre class="output" data-for="flags.py"><code>110 True False
+101
+0o755 111101101
+5 5
+255 255 15 15 1024 5
+</code></pre>
+
+<h3>Regular expression syntax</h3>
+<table>
+<thead><tr><th>Piece</th><th>Matches</th></tr></thead>
+<tbody>
+<tr><td><code>a</code>, <code>\.</code>, <code>\\</code></td><td>That character; a backslash makes a special character ordinary</td></tr>
+<tr><td><code>[abc]</code>, <code>[a-z]</code>, <code>[^abc]</code></td><td>One character from the set, from the range, or not in the set</td></tr>
+<tr><td><code>\s</code>, <code>\S</code>; <code>\d</code>; <code>\w</code></td><td>A whitespace character, a character that is not one; a digit; a "word" character</td></tr>
+<tr><td><code>\p{L}</code>, <code>\p{N}</code> (<code>regex</code> only)</td><td>A letter in any script; a digit or numeral in any script (Ⅻ, ½)</td></tr>
+<tr><td><code>[^\s\p{L}\p{N}]</code> (<code>regex</code> only)</td><td>One character that is neither space, letter nor number: punctuation and symbols</td></tr>
+<tr><td><code>x+</code>, <code>x*</code>, <code>x?</code></td><td>One or more x; zero or more; zero or one. All greedy: as many as possible</td></tr>
+<tr><td><code>a|b</code></td><td>a, or else b: the first alternative that matches at this position wins, not the longest</td></tr>
+<tr><td><code>(?:...)</code>, <code>(...)</code></td><td>A group; the second also captures, which changes what <code>findall</code> returns</td></tr>
+<tr><td><code>x(?!y)</code></td><td>Lookahead: x, only if y does not come next. Checks without consuming</td></tr>
+<tr><td><code>r"..."</code></td><td>A raw string: backslashes reach the regex engine unchanged. Always write patterns this way</td></tr>
+<tr><td><code>findall(p, s)</code>, <code>finditer</code>, <code>fullmatch</code>, <code>compile</code></td><td>Every match, in order; the same as match objects; does the whole string match; a pattern compiled once for many uses</td></tr>
+</tbody>
+</table>
+<p>Each piece is shown at work in chapter 3: classes, repeats, alternation and the lookahead in <a href="03-encoding-by-rank.html#regular-expressions-from-first-principles">Regular expressions from first principles</a>, and <code>\p{L}</code> and <code>\p{N}</code> in <a href="03-encoding-by-rank.html#letters-in-every-script-the-regex-package">Letters in every script: the regex package</a>. One rule to keep in mind: the first alternative that matches wins, not the longest, so <code>cat|category</code> finds <code>cat</code> in "category".</p>
+
+<h3>heapq</h3>
+<table>
+<thead><tr><th>Call</th><th>Does</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td><code>heapq.heappush(heap, item)</code></td><td>Adds an item, keeping the heap rule</td><td>log n</td></tr>
+<tr><td><code>heapq.heappop(heap)</code></td><td>Removes and returns the smallest item; <code>IndexError</code> when empty</td><td>log n</td></tr>
+<tr><td><code>heap[0]</code></td><td>The smallest item, without removing it</td><td>1</td></tr>
+<tr><td><code>heapq.heapify(items)</code></td><td>Rearranges a list into a heap, in place</td><td>n</td></tr>
+<tr><td><code>heapq.heapreplace(heap, item)</code></td><td>Pop the smallest, then push <code>item</code>, in one step; <code>IndexError</code> when empty. It returns the old top even when <code>item</code> is smaller</td><td>log n</td></tr>
+<tr><td><code>heapq.heappushpop(heap, item)</code></td><td>Push, then pop the smallest, in one step: if <code>item</code> is no larger than the top, it comes straight back</td><td>log n</td></tr>
+<tr><td>parent and children of position i</td><td><code>(i - 1) // 2</code>; <code>2 * i + 1</code> and <code>2 * i + 2</code></td><td></td></tr>
+<tr><td>items that are tuples</td><td>Ordered as tuples always are, item by item (chapter 5)</td><td></td></tr>
+</tbody>
+</table>
+<p>heapq has no "largest first" mode: to pop the largest first, push the negated priority. It is a list underneath, so only <code>heap[0]</code> is in a known place; the rest is in heap order, not sorted. Chapter 7's <a href="07-drills.html#a-heap-as-a-to-do-list">A heap as a to-do list</a> shows the calls at work on a triage desk, and <a href="07-drills.html#the-smallest-of-many">The smallest of many</a> shows <code>heapreplace</code>.</p>
+
+<h3>json and pathlib</h3>
+<table>
+<thead><tr><th>You want</th><th>Type</th></tr></thead>
+<tbody>
+<tr><td>a file's text; its bytes</td><td><code>path.read_text(encoding="utf-8")</code>; <code>path.read_bytes()</code></td></tr>
+<tr><td>write text</td><td><code>path.write_text(text, encoding="utf-8")</code></td></tr>
+<tr><td>keep <code>\r</code> and <code>\r\n</code> as they are</td><td><code>read_text(encoding="utf-8", newline="")</code> (Python 3.13)</td></tr>
+<tr><td>a path from pieces; its parts</td><td><code>Path("data") / "gpt2" / "vocab.json"</code>; <code>.name</code>, <code>.suffix</code>, <code>.parent</code></td></tr>
+<tr><td>a path that works from any folder</td><td><code>Path(__file__).resolve().parent / "name"</code>, or a given constant such as <code>VOCAB_PATH</code></td></tr>
+<tr><td>does it exist</td><td><code>path.exists()</code>, <code>path.is_file()</code></td></tr>
+<tr><td>JSON text to Python, and back</td><td><code>json.loads(text)</code>; <code>json.dumps(value)</code>, with <code>ensure_ascii=False</code> to keep é as é</td></tr>
+<tr><td>lines of text</td><td><code>text.split("\n")</code> (an empty last piece after a final newline) or <code>text.splitlines()</code> (none)</td></tr>
+<tr><td>a line in two</td><td><code>left, right = line.split()</code> (any run of spaces) or <code>line.split(" ")</code> (exactly one)</td></tr>
+</tbody>
+</table>
+<pre class="code" data-lang="python" data-file="json_and_paths.py" data-check="run"><code>import json
+import tempfile
+from pathlib import Path
+
+from llm101.tokenizer.gpt2 import VOCAB_PATH
+
+with tempfile.TemporaryDirectory() as folder:
+    path = Path(folder) / "prices.json"
+    path.write_text(json.dumps({"tea": 2.5, "café": 3.1}), encoding="utf-8")
+    print(path.read_text(encoding="utf-8"))
+    table = json.loads(path.read_text(encoding="utf-8"))
+
+print(table["café"], type(table["tea"]).__name__)
+print(json.dumps({"café": 3.1}, ensure_ascii=False))
+print("a\nb\n".split("\n"), "a\nb\n".splitlines())
+print(VOCAB_PATH.is_absolute(), VOCAB_PATH.name, VOCAB_PATH.parent.name, VOCAB_PATH.exists())
+print(Path("data/gpt2/vocab.json").exists())
+</code></pre>
+<pre class="output" data-for="json_and_paths.py"><code>{"tea": 2.5, "caf\u00e9": 3.1}
+3.1 float
+{"café": 3.1}
+['a', 'b', ''] ['a', 'b']
+True vocab.json gpt2 True
+False
+</code></pre>
+<p>JSON keys are always strings: a dict with int keys comes back from <code>json.loads(json.dumps(d))</code> with string keys. And the last line: the relative path does not exist here, because this program ran in another folder, while <code>VOCAB_PATH</code> does.</p>
+
+<h3>tiktoken, for looking</h3>
+<table>
+<thead><tr><th>Call</th><th>Gives</th></tr></thead>
+<tbody>
+<tr><td><code>data_gym_to_mergeable_bpe_ranks(vocab_bpe_file=..., encoder_json_file=...)</code></td><td>GPT-2's two files read into a dict from each token's bytes to its id</td></tr>
+<tr><td><code>tiktoken.Encoding(name=..., pat_str=r50k_pat_str, mergeable_ranks=..., special_tokens=...)</code></td><td>An encoding built from those ranks and GPT-2's split pattern, without the network</td></tr>
+<tr><td><code>enc.encode_ordinary(text)</code></td><td>The ids, with <code>&lt;|endoftext|&gt;</code> treated as ordinary text: what the tests compare yours with</td></tr>
+<tr><td><code>enc.encode(text, allowed_special="all")</code></td><td>The ids, with special tokens made from their text</td></tr>
+<tr><td><code>enc.decode(ids)</code></td><td>The text, with <code>errors="replace"</code></td></tr>
+<tr><td><code>enc.decode_single_token_bytes(i)</code></td><td>The bytes of one token</td></tr>
+<tr><td><code>enc.n_vocab</code>, <code>enc.max_token_value</code></td><td>50,257 and 50,256 for GPT-2</td></tr>
+</tbody>
+</table>
+<p>How to build the encoding from <code>data/gpt2/</code> and look at tokens with these calls, a token that holds half a character included, is chapter 4's <a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">tiktoken, the oracle</a>. Use tiktoken to look and to check, never inside <code>gpt2.py</code>: the tests read that file for it.</p>
+
+<h3>hypothesis, for text</h3>
+<table>
+<thead><tr><th>Strategy</th><th>Draws</th></tr></thead>
+<tbody>
+<tr><td><code>st.text()</code></td><td>Strings of any Unicode characters except surrogates, empty included</td></tr>
+<tr><td><code>st.text(max_size=50)</code>, <code>min_size=1</code></td><td>The same, with a length limit</td></tr>
+<tr><td><code>st.text(alphabet="abcé ")</code></td><td>Strings made only of those characters</td></tr>
+<tr><td><code>st.characters(codec="utf-8")</code></td><td>One character that UTF-8 can encode (no surrogates); use it as an alphabet: <code>st.text(alphabet=st.characters(codec="utf-8"))</code></td></tr>
+<tr><td><code>st.characters(min_codepoint=0x80, max_codepoint=0x7FF)</code></td><td>Characters in a range of code points: here, the ones that take two bytes</td></tr>
+<tr><td><code>st.binary(max_size=30)</code></td><td>Bytes, of any values</td></tr>
+<tr><td><code>st.lists(st.integers(0, 4), max_size=40)</code></td><td>Lists of small ints: ids with many repeats, so that pairs recur</td></tr>
+<tr><td><code>@st.composite</code></td><td>A strategy of your own that draws in steps, as <code>merge_tables</code> in <code>tests/m02/test_fast.py</code> does</td></tr>
+</tbody>
+</table>
+
+<h3>The commands of this module</h3>
+<table>
+<thead><tr><th>You want to</th><th>Type</th></tr></thead>
+<tbody>
+<tr><td>run the module's tests; stop at the first failure</td><td><code>uv run pytest tests/m02</code>; add <code>-x</code></td></tr>
+<tr><td>one file; one milestone</td><td><code>uv run pytest tests/m02/test_utf8.py</code>; <code>uv run pytest tests/m02 -k train_bpe</code></td></tr>
+<tr><td>only the tests that failed last time</td><td><code>uv run pytest tests/m02 --lf</code></td></tr>
+<tr><td>the "Done when" tests</td><td><code>uv run pytest tests/m02 -k done_when</code></td></tr>
+<tr><td>one drill; one Write it</td><td><code>uv run pytest drills/02-heaps-lists/test_reverse_list.py</code>; <code>uv run pytest drills/02-heaps-lists/warmups/test_count_characters.py</code></td></tr>
+<tr><td>the program</td><td><code>uv run python -m llm101.tokenizer "Grüße aus München! 你好"</code>, <code>--file notes.txt</code>, <code>--train notes.txt --vocab-size 300 "text"</code></td></tr>
+<tr><td>check GPT-2's files</td><td><code>uv run python tools/fetch-gpt2-tokenizer.py --check</code></td></tr>
+<tr><td>what the hook checks</td><td><code>uv run ruff check . &amp;&amp; uv run ruff format --check .</code></td></tr>
+</tbody>
+</table>
+
+<h2>Glossary</h2>
+<dl>
+<dt>Alarm</dt><dd>A signal (<code>SIGALRM</code>) that the operating system sends a process after a set time; the tests use one to stop a function that takes too long (9).</dd>
+<dt>BPE (byte-pair encoding)</dt><dd>Learning a tokenizer by merging the most frequent pair of neighbouring tokens into a new token, again and again; encoding replays the merges (2).</dd>
+<dt>Byte</dt><dd>Eight bits: a number from 0 to 255. Files, sockets and this module's tokenizer see bytes, not characters (1).</dd>
+<dt>Byte-to-character map</dt><dd>GPT-2's table from each of the 256 bytes to one printable character, so that tokens can be written in text files; it is why space is <code>Ġ</code> (4).</dd>
+<dt>Characters per token</dt><dd>A text's length in characters divided by its tokens: about 4.5 for plain English prose with GPT-2, below 1 for some scripts (6).</dd>
+<dt>Chunk</dt><dd>One piece of text after the split, such as <code>" world"</code>; merges never cross from one chunk to the next (3).</dd>
+<dt>Code point</dt><dd>The number Unicode gives a character, from 0 to 0x10FFFF, written U+00E9; <code>ord</code> gives it (1).</dd>
+<dt>Context window</dt><dd>The most tokens a model can hold at once, prompt and reply together: 1,024 for GPT-2 (6).</dd>
+<dt>Continuation byte</dt><dd>A byte of the form <code>10xxxxxx</code>: the second, third or fourth byte of a character in UTF-8 (1).</dd>
+<dt>Decode (model)</dt><dd>The phase in which a model writes its reply, one token per step (6).</dd>
+<dt>Decode (tokenizer)</dt><dd>Turning ids back into text: join the tokens' bytes, then decode them as UTF-8 (3).</dd>
+<dt>Embedding table</dt><dd>The table inside a model with one row of numbers per token of the vocabulary; a token's row is looked up by its id (6).</dd>
+<dt>Heap</dt><dd>A list kept in an order where each item is no larger than its two children, so the smallest is always at position 0; push and pop cost log n (5).</dd>
+<dt>Linked list</dt><dd>Items that each hold a link to the next (and perhaps the previous), so that one can be removed or joined without moving the rest (5, 7).</dd>
+<dt>Merge</dt><dd>One learned rule of BPE: this pair of tokens, side by side, becomes this new token (2).</dd>
+<dt>Node</dt><dd>One link of a linked list: a value and a reference to the next node, or <code>None</code> at the end (7).</dd>
+<dt>Oracle</dt><dd>A trusted implementation the tests compare yours with: tiktoken, built from the same two files (4).</dd>
+<dt>Pre-tokenization (the split)</dt><dd>Cutting text into chunks with a regular expression before any merge, so that words, numbers, punctuation and spaces are merged separately (3).</dd>
+<dt>Prefill</dt><dd>The phase in which a model reads the whole prompt in one go, in parallel, ending with the first token of the reply (6).</dd>
+<dt>Rank</dt><dd>A merge's place in the order of learning: merge r has rank r, makes token 256 + r, and lower ranks are applied first (3).</dd>
+<dt>Replacement character</dt><dd>U+FFFD, <code>�</code>: what <code>errors="replace"</code> puts in place of each broken piece of UTF-8 (1, 3).</dd>
+<dt>Round trip</dt><dd>Doing something and then its inverse and getting back what you started with: <code>decode(encode(text)) == text</code> (3).</dd>
+<dt>Shift and mask</dt><dd><code>&gt;&gt;</code> and <code>&lt;&lt;</code> move bits; <code>&amp;</code> keeps the bits you choose. Together they take a number apart into fields (1).</dd>
+<dt>Softmax</dt><dd>Turning a model's scores, one per token of the vocabulary, into probabilities that add up to 1 (6; Module 3).</dd>
+<dt>Special token</dt><dd>A token that no merge makes and that ordinary text never produces, such as GPT-2's <code>&lt;|endoftext|&gt;</code>, id 50,256 (4).</dd>
+<dt>Stale entry</dt><dd>An item left in a heap after the thing it described has changed; it is recognised and skipped when it reaches the top (5).</dd>
+<dt>Surrogate</dt><dd>A code point from U+D800 to U+DFFF, half of a UTF-16 pair. Not a character; UTF-8 has no bytes for it (1).</dd>
+<dt>Token</dt><dd>One unit of a tokenizer's vocabulary: a run of bytes, often a word with its leading space (2).</dd>
+<dt>Token id</dt><dd>A token's number, from 0 to 50,256 for GPT-2; what a model reads and writes (2).</dd>
+<dt>Unicode property</dt><dd>A class of characters by meaning, such as <code>\p{L}</code> (letters) or <code>\p{N}</code> (numbers), in the <code>regex</code> package (3).</dd>
+<dt>UTF-8</dt><dd>The encoding that writes each code point as one to four bytes, with ASCII as single bytes (1).</dd>
+<dt>Vocabulary</dt><dd>Every token a tokenizer knows: for GPT-2, 256 bytes, 50,000 merges and one special token, 50,257 in all (2, 6).</dd>
+</dl>
+
+<h2>What Module 3 brings</h2>
+<p>Module 3 is the <strong>forward pass</strong>: GPT-2 small written in numpy, loaded from its <strong>safetensors</strong> file (a simple file format for a model's arrays of numbers), and run with greedy generation, always taking the most likely next token. A preview, so that you recognise the names; nothing here is needed this module.</p>
+<ul>
+<li><strong>Your token ids are its input.</strong> The ids your <code>load_gpt2()</code> makes are exactly the numbers GPT-2 small was trained on, so Module 3 starts where this module ends.</li>
+<li><strong>Embeddings are a lookup by id.</strong> The first thing the model does with an id is read row <em>id</em> of its embedding table, 768 numbers for GPT-2 small. No arithmetic, just indexing.</li>
+<li><strong>Then the layers</strong>: attention, which lets each token look at the tokens before it, and an MLP, twelve times over, each layer changing the rows a little.</li>
+<li><strong>Then the logits</strong>: one score for each of the 50,257 tokens, and the softmax, written so that it does not overflow.</li>
+<li><strong>Done when</strong> its logits match a reference implementation's within tolerance on 20 prompts.</li>
+</ul>
+<p>An embedding table is an array with one row per token, and numpy reads several rows at once when you index it with a list of ids. A toy vocabulary of six tokens, four numbers each:</p>
+<pre class="code" data-lang="python" data-file="embedding_lookup.py" data-check="run"><code>import numpy as np
+
+rng = np.random.default_rng(0)
+table = rng.standard_normal((6, 4)).round(2)  # 6 tokens in the vocabulary, 4 numbers each
+ids = [3, 0, 3]
+print(table)
+print(table[ids])
+print(table[ids].shape)
+</code></pre>
+<pre class="output" data-for="embedding_lookup.py"><code>[[ 0.13 -0.13  0.64  0.1 ]
+ [-0.54  0.36  1.3   0.95]
+ [-0.7  -1.27 -0.62  0.04]
+ [-2.33 -0.22 -1.25 -0.73]
+ [-0.54 -0.32  0.41  1.04]
+ [-0.13  1.37 -0.67  0.35]]
+[[-2.33 -0.22 -1.25 -0.73]
+ [ 0.13 -0.13  0.64  0.1 ]
+ [-2.33 -0.22 -1.25 -0.73]]
+(3, 4)
+</code></pre>
+<p>Three ids in, three rows out: a 3 × 4 array, and id 3 gives the same row both times. In GPT-2 small the table is 50,257 × 768, and the ids come from your tokenizer.</p>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>A test fails, and its traceback has entries in <code>tests/m02/test_gpt2.py</code>, then <code>src/llm101/tokenizer/gpt2.py</code>, then <code>src/llm101/tokenizer/bpe.py</code>, ending in <code>KeyError: (32, 116)</code>. Where do you look first, and what is the key?</p><details class="answer"><summary>Answer</summary><p>The lowest entry, in <code>bpe.py</code>: a dict was read with the key <code>(32, 116)</code>, a pair of ids, and it does not have it. Then walk up into <code>gpt2.py</code> to see how that dict was built and what it was given.</p></details></div>
+<div class="q"><p>What does <code>UnicodeDecodeError: ... unexpected end of data</code> tell you about the bytes, and what does <code>errors="replace"</code> make of them?</p><details class="answer"><summary>Answer</summary><p>The bytes stop partway through a character: a start byte promised more bytes than there are. With <code>errors="replace"</code> the broken piece becomes one <code>�</code>.</p></details></div>
+<div class="q"><p>Why does <code>Path("data/gpt2/vocab.json")</code> work from the repository's root and fail from <code>scratch/</code>, and what does not?</p><details class="answer"><summary>Answer</summary><p>A relative path is looked up from the folder the program runs in. <code>VOCAB_PATH</code> is built from the location of <code>gpt2.py</code>, so it is absolute and works from anywhere.</p></details></div>
+<div class="q"><p>A file of 50,001 lines ends with a newline. How many pieces does <code>text.split("\n")</code> give, and what goes wrong if every piece is unpacked into two names?</p><details class="answer"><summary>Answer</summary><p>50,002: one per line and an empty one after the last newline. The empty piece splits into no words, so unpacking it raises <code>ValueError: not enough values to unpack (expected 2, got 0)</code>.</p></details></div>
+<div class="q"><p>How does a test stop your function after two seconds, and why can it not stop a long call into C?</p><details class="answer"><summary>Answer</summary><p>It sets an alarm (<code>signal.setitimer</code>) whose handler raises an exception; Python runs the handler between bytecode instructions, so the exception appears inside your loop. A call into C or Rust runs no bytecode until it returns, so the handler waits until then.</p></details></div>
+<div class="q"><p>Hypothesis reports <code>text='\x85'</code>. What is it, and how do you find out?</p><details class="answer"><summary>Answer</summary><p>U+0085, a control character called "next line": invisible, two bytes in UTF-8, and one of the characters that <code>str.splitlines()</code> treats as a line break. Paste it into a scratch program and print <code>f"U+{ord(c):04X}"</code> and <code>c.encode("utf-8")</code>.</p></details></div>
+<div class="q"><p>Why does <code>re.findall(r"\p{L}+", text)</code> raise, and what do you change?</p><details class="answer"><summary>Answer</summary><p>The standard library's <code>re</code> does not know Unicode properties, so <code>\p</code> is a bad escape. Use the <code>regex</code> package: <code>regex.findall(r"\p{L}+", text)</code>.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Read a traceback that runs from a test into your package, and one with a cause attached by <code>raise ... from</code>.</li>
+<li>Decode this module's error messages from their first words, and say which chapter has the fix.</li>
+<li>Explain the tests' own messages, including the alarm's "still running after 2 s".</li>
+<li>Read hypothesis's strange strings through their <code>repr</code> escapes.</li>
+<li>Use the cheat sheets for str and bytes, bits, regular expressions, heapq, json and pathlib, tiktoken and hypothesis instead of searching.</li>
+<li>Explain every word of the glossary in two sentences, for the retrieval block.</li>
+<li>Say what Module 3 builds, and where your token ids go in it.</li>
+</ul>
+</main>
+</body>
+</html>

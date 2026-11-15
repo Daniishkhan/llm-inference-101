@@ -60,7 +60,7 @@ A module takes about a week and is done when its "Done when" passes ([goal.md](g
 |---|---|---|---|---|
 | | **Phase 1: one model, one request (Mac; the Pi from Module 5)** | | | |
 | 1 | Measure first | A benchmark harness: p50, p95, p99, throughput, a terminal histogram, a line timer | Arrays and hashing; quickselect | **In progress** (from Mon 16 Nov 2026) |
-| 2 | Tokenizer | BPE: train, encode, decode; GPT-2's tokenizer reproduced | Hash maps, heaps, linked lists | Not started |
+| 2 | Tokenizer | BPE: train, encode, decode; GPT-2's tokenizer reproduced | Hash maps, heaps, linked lists | Written ahead; spec ritual when Module 1 is done |
 | 3 | Forward pass | GPT-2 small in numpy from its safetensors file, with greedy generation | Matrix shapes; complexity | Not started |
 | 4 | Sampling | Temperature, top-k, top-p, repetition penalty, stop strings; a live probability chart | Heaps, quickselect, prefix sums, binary search, sliding window | Not started |
 | 5 | KV cache | The cache, and tokens per second with and without it, on the Mac and on the Pi | Dynamic arrays, ring buffers | Not started |
@@ -94,6 +94,7 @@ Each module keeps its numbers in its own `BENCH.md`, with the machine, the date 
 | Module | Headline number | Source |
 |---|---|---|
 | 1 | *not yet measured* | [modules/01-measure/BENCH.md](modules/01-measure/BENCH.md) |
+| 2 | *not yet measured* | [modules/02-tokenizer/BENCH.md](modules/02-tokenizer/BENCH.md) |
 
 ## Layout
 

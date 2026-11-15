@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Module 2 of 20 · LLM inference in Python</p>
+<h1>Tokenizer</h1>
+<p class="lede">Ten chapters that take you from "a model reads numbers" to GPT-2's own tokenizer, typed by hand: UTF-8 bit by bit, byte-pair encoding trained on a text of your own, encoding by rank, GPT-2's two files, and a heap over a linked list that makes a long word fast. By the end, your ids match GPT-2's on every test, and you can say what a sentence costs before a model sees it.</p>
+
+<h2>What this book is</h2>
+<p>This is the book of <strong>Module 2</strong>, the second of the 20 modules in <a href="../../../goal.md">goal.md</a>, the plan of the whole course. The module's spec, its contract and its milestones are in <a href="../../../modules/02-tokenizer/README.md">modules/02-tokenizer/README.md</a>; this book teaches everything the spec needs, one idea at a time.</p>
+<p>What you build is <code>python -m llm101.tokenizer</code>: a program that turns any text into GPT-2's token ids and back, and shows you where each token begins and ends. Under it sit the pieces of a byte-level <strong>BPE</strong> (byte-pair encoding) tokenizer: UTF-8 written out with shifts and masks, a trainer that counts neighbouring pairs and merges the most frequent, an encoder that replays the merges, a loader for GPT-2's <code>vocab.json</code> and <code>merges.txt</code>, and a fast encoder built from a heap and a linked list. The drills of the module are on those last two: heaps and linked lists.</p>
+<p>The rule of the course holds on every page. The book teaches each mechanism with complete, runnable examples on a <em>different</em> problem (a colour packed into one number, temperatures from day to day, a hospital's triage queue, a playlist with songs removed), and never shows a function of your contract or a drill. Chapter 8 gives you the milestones and the hint ladders; the code is yours to type.</p>
+
+<h2>How to read it</h2>
+<p>Read in order; each chapter uses only what came before it. Type every example into <code>scratch/</code> and run it with <code>uv run python scratch/NAME.py</code>, rather than copying it. A concept chapter has at most eight programs, so that each one can be covered and rebuilt from memory inside the read block. When a program's output is shown, compare yours with it line by line. Answer each check-yourself question before you open its answer. Tick the box at the bottom of a chapter when you have worked through it; your progress is saved in this browser.</p>
+<p>The coloured boxes mean:</p>
+<div class="callout principle"><span class="label">First principle</span><p>What the machine is really doing underneath the code: bytes, memory, the interpreter. The rest of the course is built on these.</p></div>
+<div class="callout analogy"><span class="label">Analogy</span><p>A picture from everyday life, followed by where the picture breaks down.</p></div>
+<div class="callout twin"><span class="label">In a real engine</span><p>Where the thing you just learned appears in vLLM, nano-vLLM or SGLang, and where in that engine.</p></div>
+<div class="callout trap"><span class="label">Trap</span><p>A mistake that is easy to make and that Python will not point out for you.</p></div>
+<div class="callout try"><span class="label">Try it</span><p>Stop reading and type something. Each one takes a few minutes.</p></div>
+<div class="callout try"><span class="label">Write it</span><p>New in this module: near the end of each concept chapter, one function of about ten lines on the chapter's mechanism, written from an empty stub in <code>drills/02-heaps-lists/warmups/</code> in ten minutes, with the book closed. It gets one ledger row and no redos.</p></div>
+<div class="callout note"><span class="label">Note</span><p>Anything else: "In this chapter", a "Python you need" refresher, a pointer to the appendix.</p></div>
+<p>Hidden text looks like this:</p>
+<details class="hint"><summary>Stuck? First nudge</summary><p>Hints come in rungs. Open one, try again, and open the next only if you must.</p></details>
+<details class="answer"><summary>Show the answer</summary><p>Answers to the check-yourself questions. Write your own answer first.</p></details>
+
+<h2>Contents</h2>
+<div class="progress"></div>
+<div class="toc-cards" data-auto
+  data-blurb0="What the module builds and why, Done when, the six days, first-time setup and reading 136 red tests."
+  data-blurb1="Why a tokenizer starts from 256 bytes. Code points, bytes, shifts and masks, and the UTF-8 table read by hand."
+  data-blurb2="Counting neighbouring pairs, choosing the most frequent with ties broken by a key, and byte-pair encoding by hand."
+  data-blurb3="Replaying merges on new text by rank, decoding broken bytes, regular expressions, and GPT-2's split pattern."
+  data-blurb4="GPT-2's two files: why they are full of Ġ, ids in GPT-2's order, tiktoken as the oracle, and colour in rich."
+  data-blurb5="Why one long word takes seconds, heaps from first principles, stale entries, and a linked list in two lists."
+  data-blurb6="The same sentence, different bills: tokens per character, prices per token, latency, and why tiktoken is fast."
+  data-blurb7="Following links, walking two chains, a heap as a to-do list, and a hint ladder for every drill of set 02."
+  data-blurb8="The seven milestones of the tokenizer, each with its hint ladder, common bugs and commit."
+  data-blurb9="Reading a traceback, the errors of this module, cheat sheets, a glossary, and what Module 3 brings."></div>
+
+<h2>Around the book</h2>
+<ul>
+<li><a href="../../../modules/02-tokenizer/README.md">The module README</a>: the spec, the contract, the milestones, "Done when", and the decisions of the spec ritual.</li>
+<li><a href="../../../modules/02-tokenizer/BENCH.md">BENCH.md</a>: the Experiment of milestone M7, which you fill in.</li>
+<li><a href="../../../drills/02-heaps-lists/README.md">Set 02</a>: the drills of this module, the debugging drill and the six Write its.</li>
+<li><a href="../../../goal.md">goal.md</a>: the whole course, and where the tokenizer sits in it.</li>
+<li><a href="../../methodology.md">docs/methodology.md</a>: how a day and a module run.</li>
+<li><a href="../../../CLAUDE.md">CLAUDE.md</a>: the rules Claude follows in this repository, the hint ladder among them.</li>
+<li><a href="../index.html">Every book of the course</a>.</li>
+</ul>
+
+<h2>Opening the book</h2>
+<p>Open <code>docs/book/02-tokenizer/index.html</code> straight from the folder, or serve the books on this Mac and read them at <code>http://localhost:8767/02-tokenizer/</code>:</p>
+<pre class="shell"><code>$ uv run python tools/serve-book.py
+</code></pre>
+<p>The tutor panel (press <kbd>A</kbd>, or select any text) does not answer here. It composes your question, with the chapter and section it came from, and copies it to the clipboard; paste it into Claude Code in the terminal of this repository, where <a href="../../../CLAUDE.md">CLAUDE.md</a> applies. Progress ticks are stored per browser and per address.</p>
+<p>To check that every example in the book still runs and prints what it claims:</p>
+<pre class="shell"><code>$ uv run python tools/book-check.py
+</code></pre>
+</main>
+</body>
+</html>

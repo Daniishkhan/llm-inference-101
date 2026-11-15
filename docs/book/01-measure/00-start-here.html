@@ -133,7 +133,7 @@ E   NotImplementedError: TODO(you)
 <p>Four fail differently. Two read your source instead of calling it, checking that <code>summarise</code> calls your <code>percentile</code> and that <code>percentile</code> calls your <code>quickselect</code>; they fail with their own message, such as <code>AssertionError: summarise computes p50, p95 and p99 with your percentile()</code>. Two run the whole program, <code>python -m llm101.bench</code>, and fail because it stops with the <code>NotImplementedError</code> traceback.</p>
 
 <h3>Five tests that pass on day one</h3>
-<p>Before you have typed anything, five tests are green. Two are in <code>tests/m01</code> (the <code>.</code> in the histogram and quickselect lines above), and three are in the drills, which you see when you run everything with <code>uv run pytest</code>, which ends <code>5 passed</code>:</p>
+<p>Before you have typed anything, five tests are green. Two are in <code>tests/m01</code> (the <code>.</code> in the histogram and quickselect lines above), and three are in the drills. Run Module 1's tests and drills together with <code>uv run pytest tests/m01 drills/00-diagnostic drills/01-arrays-hashing</code>, and it ends <code>5 passed</code>:</p>
 <ul>
 <li><code>test_stats_does_not_import_numpy</code>: <code>stats.py</code> must not import numpy.</li>
 <li><code>test_stats_does_not_sort</code>: <code>stats.py</code> must not call <code>sorted()</code> or <code>.sort()</code>.</li>

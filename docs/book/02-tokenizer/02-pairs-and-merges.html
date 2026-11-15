@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>02 · Pairs and merges — Tokenizer</title>
+<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/tutor.css?v=1">
+<script src="../assets/theme.js?v=1"></script>
+<script defer src="book-config.js?v=1"></script>
+<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/tutor.js?v=1"></script>
+</head>
+<body>
+<nav class="sidebar" aria-label="Chapters"></nav>
+<main>
+<p class="chapter-kicker">Chapter 02</p>
+<h1>Pairs and merges</h1>
+<p class="lede">At the end of this chapter you can count things with a dict, walk a list two neighbours at a time, choose a winner with a rule for ties that never depends on luck, and train a byte-pair tokenizer by hand, on paper, round by round: the ideas behind milestones M2 and M3.</p>
+
+<div class="callout note"><span class="label">In this chapter</span>
+<ul>
+<li>The problem: with only 256 tokens, every text is too long.</li>
+<li>Counting with <code>dict.get</code> and <code>collections.Counter</code>.</li>
+<li>Neighbours with <code>zip(xs, xs[1:])</code>, on a week of temperatures.</li>
+<li>Ties: <code>max</code> and <code>min</code> with a tuple key, and why the smaller pair wins.</li>
+<li>Byte-pair encoding by hand, and the left-to-right rule when pairs overlap.</li>
+<li>Why each distinct word is counted once and weighed by how often it appears.</li>
+<li>What training gives you: a list of merges, in order.</li>
+</ul>
+</div>
+
+<h2>The problem: 256 tokens are too few</h2>
+<p><a href="01-bytes-and-utf8.html">Chapter 1</a> turned every text into bytes, numbers from 0 to 255. You could stop there: one token per byte, a vocabulary of 256, and no text is ever out of reach. The price is length. Here is what GPT-2's real tokenizer does to three sentences.</p>
+<p><strong>From the oracle</strong>: tiktoken's GPT-2 encoding, built from the two files in <code>data/gpt2/</code> (<a href="04-gpt2s-tokenizer.html#tiktoken-the-oracle">chapter 4</a> builds it). The bytes are UTF-8 bytes, as chapter 1 counted them.</p>
+<table>
+<thead><tr><th>Sentence</th><th>Bytes</th><th>GPT-2 tokens</th><th>Bytes a token</th></tr></thead>
+<tbody>
+<tr><td>The kettle boiled twice before anyone noticed that the tea had gone cold.</td><td>73</td><td>14</td><td>5.2</td></tr>
+<tr><td>Der Wasserkocher kochte zweimal, bevor jemand merkte, dass der Tee kalt war.</td><td>76</td><td>29</td><td>2.6</td></tr>
+<tr><td>Grüße aus der Küche: der Tee ist kalt, die Kekse sind weg.</td><td>61</td><td>27</td><td>2.3</td></tr>
+</tbody>
+</table>
+<p>The English sentence is 73 bytes and 14 tokens: one token carries about five bytes. With one token per byte it would be about five times as long. Why does length matter? A model does some work at every position of the text: it looks up the id, and runs the numbers through the same layers of sums. That part grows in proportion to the length, so five times the tokens costs about five times as much. One part grows faster. Module 3 builds <strong>attention</strong>, in which every position of the text looks at every earlier position and gives each a score. Picture a party where every guest shakes hands with every other: ten guests make 45 handshakes, twenty make 190. Double the guests and the handshakes roughly quadruple, because the count grows with the <em>square</em> of the guests. Attention's scores grow the same way with the number of tokens, so on the English sentence byte tokens would cost about 5.2² ≈ 27 times the attention-score work, and about 5 times the rest. At lengths like these the rest is most of what GPT-2 computes, so the whole bill grows by somewhat more than five; the square takes over only on long texts. A model also has a fixed window (GPT-2's is 1,024 positions), which with byte tokens would hold about one kilobyte of English instead of four or five.</p>
+<p>The other extreme, one token per word, needs every word of every language, every name and every typo, and still fails on the first new word. <strong>Byte-pair encoding</strong> (BPE) sits in between: it keeps the 256 bytes, so nothing is out of reach, and adds tokens for common runs of bytes, learned by counting a body of text. GPT-2 added 50,000. It learned them from mostly English text, so German gets about two and a half bytes a token; <a href="06-tokens-as-cost.html">chapter 6</a> counts what that costs.</p>
+
+<div class="callout principle"><span class="label">First principle</span><p>A model does two things with token ids. It looks each one up in a table that has one row of numbers per id (GPT-2's smallest model has 50,257 rows of 768 numbers), and it then computes at every position of the text. So the size of the vocabulary decides how big the table is, and the number of tokens decides how much computing there is. A tokenizer trades one against the other. 256 tokens make a tiny table and long texts; 50,257 make a big table and English texts four or five times shorter. Training a tokenizer means choosing <em>which</em> extra tokens earn a row.</p></div>
+
+<div class="callout analogy"><span class="label">Analogy</span><p>A court reporter who writes every letter cannot keep up with speech, so shorthand gives the commonest combinations a single stroke. BPE builds its shorthand by counting: the pair of symbols that occurs most often gets a new symbol, the text is rewritten with it, and the count starts again, so later symbols are built from earlier ones. <em>Where it breaks:</em> a reporter picks strokes for words that mean something. BPE only counts. Its tokens are often pieces of words (GPT-2 writes " tokenizer" as " token" and "izer"), and it never knows what a token means.</p></div>
+
+<h2>Counting with a dict</h2>
+<p>Training is counting, done again and again, so start with the plainest count there is: how many times each word appears in a sentence.</p>
+
+<div class="callout note"><span class="label">Python you need</span><p><strong><code>d.get(key, default)</code></strong> returns <code>d[key]</code> if the key is there and <code>default</code> if it is not, where <code>d[key]</code> would raise <code>KeyError</code>. <strong><code>collections.Counter</code></strong> is a dict made for counting: give it any iterable and it counts each item, a missing key reads as 0, and <code>most_common(n)</code> returns the <code>n</code> largest counts as <code>(item, count)</code> pairs.</p></div>
+
+<pre class="code" data-lang="python" data-file="word_counts.py" data-check="run"><code>from collections import Counter
+
+text = "the cat sat on the mat and the dog sat on the cat"
+words = text.split()
+
+counts = {}
+for word in words:
+    counts[word] = counts.get(word, 0) + 1  # 0 the first time a word is seen
+print(counts)
+
+counter = Counter(words)  # the same loop, written in C
+print(counter)
+print(counter == counts, counter["fish"], counts.get("fish", 0))
+print(counter.most_common(2))
+print(len(words), "words,", len(counter), "distinct")
+</code></pre>
+<pre class="output" data-for="word_counts.py"><code>{'the': 4, 'cat': 2, 'sat': 2, 'on': 2, 'mat': 1, 'and': 1, 'dog': 1}
+Counter({'the': 4, 'cat': 2, 'sat': 2, 'on': 2, 'mat': 1, 'and': 1, 'dog': 1})
+True 0 0
+[('the', 4), ('cat', 2)]
+13 words, 7 distinct
+</code></pre>
+<p>The loop and the <code>Counter</code> agree, and a <code>Counter</code> compares equal to a plain dict with the same counts. Both keep their keys in the order each word was <em>first</em> seen, <code>'the'</code> first and <code>'dog'</code> last; the section on ties needs that. The last line previews <a href="#count-each-word-once">count each word once</a>: thirteen words, seven different ones. A key can also be a tuple: <code>{(1, 2): 2}</code> counts the pair <code>(1, 2)</code>, the shape your <code>count_pairs</code> returns in <code>src/llm101/tokenizer/train.py</code>.</p>
+<div class="callout trap"><span class="label">Trap</span><p><code>Counter(text)</code> on a string counts its <em>characters</em>, spaces included, because iterating over a string gives one character at a time. To count words, give it the list of words: <code>Counter(text.split())</code>. The same holds for <code>bytes</code>: iterating over <code>b"tea"</code> gives the three ints 116, 101 and 97.</p></div>
+
+<h2>Neighbours in a list</h2>
+<p>BPE does not count single items; it counts pairs of items that sit next to each other. The Python way to walk a list two neighbours at a time is <code>zip(xs, xs[1:])</code>. Here it is on a different question: a week of noon temperatures, and how much each day differs from the day before.</p>
+
+<pre class="code" data-lang="python" data-file="temperature_changes.py" data-check="run"><code>temperatures = [11, 13, 12, 12, 16, 15, 9]  # noon, Monday to Sunday
+
+days = list(zip(temperatures, temperatures[1:], strict=False))  # each day with the next
+print(days)
+print(len(temperatures), "readings,", len(days), "neighbouring days")
+
+changes = [after - before for before, after in days]
+print(changes)
+print("biggest rise:", max(changes), "biggest fall:", min(changes))
+</code></pre>
+<pre class="output" data-for="temperature_changes.py"><code>[(11, 13), (13, 12), (12, 12), (12, 16), (16, 15), (15, 9)]
+7 readings, 6 neighbouring days
+[2, -1, 0, 4, -1, -6]
+biggest rise: 4 biggest fall: -6
+</code></pre>
+<p>Picture the week written on two strips of paper, the second slid one day to the left: <code>temperatures[1:]</code> is that strip, a new list that starts on Tuesday. <code>zip</code> reads the strips side by side, one pair per column, and stops when the shorter runs out: seven readings give six pairs, one reading or none gives none, and no day needs treating specially.</p>
+<p>Two things in the output matter for M2. Every reading but the first and last belongs to <em>two</em> pairs: Tuesday's 13 ends one and starts the next. And Wednesday and Thursday make <code>(12, 12)</code>: equal neighbours are a pair like any other.</p>
+<div class="callout trap"><span class="label">Trap</span><p>ruff's rule B905 wants every <code>zip</code> to say <code>strict=</code>; <code>zip(xs, xs[1:])</code> needs <code>strict=False</code>, because its two lengths differ by one and <code>strict=True</code> would raise <code>ValueError</code>.</p></div>
+<div class="callout trap"><span class="label">Trap</span><p><code>xs[1:]</code> needs something you can slice: a list, a tuple or <code>bytes</code>, but not a generator, which raises <code>TypeError</code>. <code>count_pairs</code> takes a <code>Sequence</code>, so slicing is allowed, and its test passes a tuple. For an iterable that cannot be sliced, <code>itertools.pairwise</code> gives the same pairs.</p></div>
+
+<h2>Ties, and choosing with a key</h2>
+<p>Each round of training picks the most frequent pair. Often two pairs are equally frequent, and then something has to decide. Here is what Python decides when you do not:</p>
+
+<div class="callout note"><span class="label">Python you need</span><p><strong><code>max(items, key=f)</code></strong> returns the item whose <code>f(item)</code> is largest, and among equals the <em>first</em> it met; <code>min</code> likewise for the smallest. <strong>Tuples compare item by item</strong>, from the left: the first items decide, and only if they are equal do the second items get a say. So <code>(91, "Ade") &lt; (91, "Ben")</code>, and <code>(2, "z") &lt; (3, "a")</code>.</p></div>
+
+<pre class="code" data-lang="python" data-file="ties.py" data-check="run"><code>from collections import Counter
+
+# The same six words, in two orders. "tea" and "cake" are tied at two each.
+first = Counter("tea cake jam tea cake bun".split())
+second = Counter("cake tea jam cake tea bun".split())
+print(first.most_common(1), second.most_common(1))
+
+scores = {"Priya": 82, "Ben": 91, "Ade": 91, "Chen": 77}
+print(max(scores, key=scores.get))  # the first 91 in the dict's order
+print(max(scores.items(), key=lambda item: (item[1], item[0])))  # 91, then the larger name
+print(min(scores.items(), key=lambda item: (-item[1], item[0])))  # 91, then the smaller name
+
+print((91, "Ade") &lt; (91, "Ben"), (116, 256) &lt; (256, 116), (97, 98) &lt; (97, 99))
+</code></pre>
+<pre class="output" data-for="ties.py"><code>[('tea', 2)] [('cake', 2)]
+Ben
+('Ben', 91)
+('Ade', 91)
+True True True
+</code></pre>
+<p>The first line is the problem: the same words, the same number of times, and <code>most_common(1)</code> names a different winner for each, because among equal counts it keeps the order of first sight. <code>max(scores, key=scores.get)</code> has the same habit, and returns Ben only because Ben comes before Ade in the dict.</p>
+<p>A tuple key fixes it. <code>(score, name)</code> makes <code>max</code> compare names only when scores are equal, but <code>max</code> then wants the <em>larger</em> name, "Ben". For "the highest score, and among those the smallest name", flip the score and take the minimum: <code>(-score, name)</code> is smallest for the highest score, then the smallest name. Neither tuple-key line depends on the dict's order.</p>
+<div class="callout trap"><span class="label">Trap</span><p>"Highest first, ties to the smallest" is two directions at once, and a single <code>max</code> with the key <code>(count, item)</code> breaks ties towards the <em>largest</em> item. Either negate the number and use <code>min</code>, as above, or write the tie rule out and test a tie on purpose.</p></div>
+<p>Training needs exactly this choice. The docstring of <code>train_bpe</code> says: among equally frequent pairs, choose the <strong>smallest pair</strong>, compared as tuples. Why not "whichever was counted first"? Because a dict's order depends on the order the chunks arrived in and on how you built the counts, so two correct trainers could learn different merges from the same text, and no test could name the right answer. The smaller pair depends only on the counts. (Some trainers do use "first seen"; decision 3 in <a href="../../../modules/02-tokenizer/README.md">the module README</a> records the choice.)</p>
+<p>The tuples hold ids, not letters: <code>(116, 256) &lt; (256, 116)</code> because 116 &lt; 256. In the next section those pairs spell "t" + "ea" and "ea" + "t". As strings "eat" would come first; as ids, <code>(116, 256)</code> does, and the ids are what count.</p>
+<div class="callout try"><span class="label">Try it</span><p>Type <code>ties.py</code> into <code>scratch/</code>, then swap Ben and Ade in the dict, so that Ade comes first. Before you run it, predict lines 2, 3 and 4.</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Line 2 becomes <code>Ade</code>: the first 91 in the dict's order is now Ade's. Lines 3 and 4 do not change, <code>('Ben', 91)</code> and <code>('Ade', 91)</code>, because a tuple key decides every tie from the values alone. That is the property the training rule needs.</p></details>
+
+<h2>Byte-pair encoding by hand</h2>
+<p>Now the whole idea, on a corpus small enough for paper. The rule, from the docstring of <code>train_bpe</code>: every chunk starts as its bytes, byte b being the token with id b. Each round, count every pair of neighbours in every chunk, choose the most frequent (the smaller pair on a tie), give it the next free id from 256, and replace it with that id everywhere. Merges never join one chunk to the next.</p>
+<p>The corpus is eight words, <code>tea eat seat tea teas eat seat tea</code>, each word one chunk, as in the test that trains on a paragraph split on spaces. The bytes: <code>a</code> is 97, <code>e</code> 101, <code>s</code> 115 and <code>t</code> 116. Counting the words first (the reason comes <a href="#count-each-word-once">two sections down</a>):</p>
+<table>
+<thead><tr><th>Word</th><th>Times</th><th>Bytes</th></tr></thead>
+<tbody>
+<tr><td>tea</td><td>3</td><td>116 101 97</td></tr>
+<tr><td>eat</td><td>2</td><td>101 97 116</td></tr>
+<tr><td>seat</td><td>2</td><td>115 101 97 116</td></tr>
+<tr><td>teas</td><td>1</td><td>116 101 97 115</td></tr>
+</tbody>
+</table>
+<p><strong>Round 1.</strong> Every neighbouring pair of every word, each counted as many times as its word appears:</p>
+<table>
+<thead><tr><th>Pair</th><th>Letters</th><th>Where it occurs</th><th>Count</th></tr></thead>
+<tbody>
+<tr><td>(101, 97)</td><td>e a</td><td>tea 3, eat 2, seat 2, teas 1</td><td><strong>8</strong></td></tr>
+<tr><td>(97, 116)</td><td>a t</td><td>eat 2, seat 2</td><td>4</td></tr>
+<tr><td>(116, 101)</td><td>t e</td><td>tea 3, teas 1</td><td>4</td></tr>
+<tr><td>(115, 101)</td><td>s e</td><td>seat 2</td><td>2</td></tr>
+<tr><td>(97, 115)</td><td>a s</td><td>teas 1</td><td>1</td></tr>
+</tbody>
+</table>
+<p>A check you can always make: the counts add up to 19, and the words hold 3 × 2 + 2 × 2 + 2 × 3 + 1 × 3 = 19 pairs (a word of n tokens has n − 1 pairs). <code>(101, 97)</code>, "ea", wins with 8 and becomes token <strong>256</strong>. Every "e a" in every word is replaced: tea is now <code>116 256</code>, eat <code>256 116</code>, seat <code>115 256 116</code> and teas <code>116 256 115</code>.</p>
+<p><strong>Round 2.</strong> Count again, on the new words:</p>
+<table>
+<thead><tr><th>Pair</th><th>Spells</th><th>Where it occurs</th><th>Count</th></tr></thead>
+<tbody>
+<tr><td>(116, 256)</td><td>t + ea</td><td>tea 3, teas 1</td><td><strong>4</strong></td></tr>
+<tr><td>(256, 116)</td><td>ea + t</td><td>eat 2, seat 2</td><td><strong>4</strong></td></tr>
+<tr><td>(115, 256)</td><td>s + ea</td><td>seat 2</td><td>2</td></tr>
+<tr><td>(256, 115)</td><td>ea + s</td><td>teas 1</td><td>1</td></tr>
+</tbody>
+</table>
+<p>A tie. The smaller pair is <code>(116, 256)</code>, because 116 &lt; 256, so "tea" becomes token <strong>257</strong>. Now tea is the single token <code>257</code>, teas is <code>257 115</code>, and eat and seat are unchanged.</p>
+<p><strong>Rounds 3 to 6</strong> go the same way, and the table of rounds tells the whole story:</p>
+<table>
+<thead><tr><th>Round</th><th>Counts (pair: count)</th><th>Winner</th><th>New id</th><th>Spells</th><th>The words after it</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>(101, 97): 8, (97, 116): 4, (116, 101): 4, (115, 101): 2, (97, 115): 1</td><td>(101, 97)</td><td>256</td><td>ea</td><td>t·ea, ea·t, s·ea·t, t·ea·s</td></tr>
+<tr><td>2</td><td>(116, 256): 4, (256, 116): 4, (115, 256): 2, (256, 115): 1</td><td>(116, 256), on the tie</td><td>257</td><td>tea</td><td>tea, ea·t, s·ea·t, tea·s</td></tr>
+<tr><td>3</td><td>(256, 116): 4, (115, 256): 2, (257, 115): 1</td><td>(256, 116)</td><td>258</td><td>eat</td><td>tea, eat, s·eat, tea·s</td></tr>
+<tr><td>4</td><td>(115, 258): 2, (257, 115): 1</td><td>(115, 258)</td><td>259</td><td>seat</td><td>tea, eat, seat, tea·s</td></tr>
+<tr><td>5</td><td>(257, 115): 1</td><td>(257, 115)</td><td>260</td><td>teas</td><td>tea, eat, seat, teas</td></tr>
+<tr><td>6</td><td>none</td><td></td><td></td><td></td><td>every word is one token: stop</td></tr>
+</tbody>
+</table>
+<p>The dots mark where one token ends and the next begins. Three things to notice. In round 4 the pair <code>(115, 256)</code>, "s" + "ea", has vanished: round 3 turned the "ea t" of seat into "eat", so seat now holds <code>(115, 258)</code> instead. Each round counts the words <em>as they are now</em>, and the counts change after every merge. Merges build on merges: 257 is made of 116 and 256, and 260 of 257 and 115. And training stopped after five merges because nothing was left to merge. Asked for a vocabulary of 300, this corpus gives five merges, not 44.</p>
+<div class="callout try"><span class="label">Try it</span><p>Change the corpus so that "eat" appears five times instead of two (tea 3, eat 5, seat 2, teas 1), and work rounds 1 to 3 on paper with the same columns. Which comes first now, "tea" or "eat"?</p></div>
+<details class="answer"><summary>Show the answer</summary><p>Round 1: (101, 97) 11, (97, 116) 7, (116, 101) 4, (115, 101) 2, (97, 115) 1; "ea" becomes 256 again. Round 2: (256, 116) 7, (116, 256) 4, (115, 256) 2, (256, 115) 1; no tie this time, and "eat" becomes 257. Round 3: (116, 256) 4, (115, 257) 2, (256, 115) 1; "tea" becomes 258. Five more copies of one word changed the order of the merges, and so the ids of the tokens.</p></details>
+
+<h2>Overlapping pairs</h2>
+<p>Pairs can overlap. "aaa" holds two pairs "a a", at positions 0 and 1 and at 1 and 2, sharing the middle a. Counting finds both; merging cannot use both, since once the first two a's are one token the middle a is gone. The contract's rule is the one you know from strings: <strong>scan from the left, the left occurrence wins, and the scan goes on after it</strong>. <code>str.replace</code> follows exactly that rule:</p>
+
+<pre class="code" data-lang="python" data-file="no_overlap.py" data-check="run"><code>for text in ["aaa", "aaaa", "aaaaa", "banana"]:
+    target = "ana" if text == "banana" else "aa"
+    print(f"{text!r:9} {target!r}: replace -&gt; {text.replace(target, 'X')!r:8} "
+          f"count -&gt; {text.count(target)}")
+</code></pre>
+<pre class="output" data-for="no_overlap.py"><code>'aaa'     'aa': replace -&gt; 'Xa'     count -&gt; 1
+'aaaa'    'aa': replace -&gt; 'XX'     count -&gt; 2
+'aaaaa'   'aa': replace -&gt; 'XXa'    count -&gt; 2
+'banana'  'ana': replace -&gt; 'bXna'   count -&gt; 1
+</code></pre>
+<p>"aaa" becomes "Xa", never "aX". "banana" holds "ana" twice, at positions 1 and 3, but they share an a, so <code>replace</code> takes the left one and <code>str.count</code> counts only the occurrences that do not overlap. Your <code>merge_pair</code> follows the same rule on lists of ids, and its docstring gives the examples: <code>[7, 7, 7]</code> becomes <code>[9, 7]</code>, and <code>[7, 7, 7, 7]</code> becomes <code>[9, 9]</code>.</p>
+<p>Counting is different. <code>count_pairs</code> counts <em>every</em> position, overlapping or not, so <code>[7, 7, 7]</code> has the pair <code>(7, 7)</code> twice. For a run of equal ids the two numbers drift apart:</p>
+<table>
+<thead><tr><th>A run of</th><th>Pairs counted (every position)</th><th>Merges made (left to right)</th><th>After the merge</th></tr></thead>
+<tbody>
+<tr><td>2 a's</td><td>1</td><td>1</td><td>X</td></tr>
+<tr><td>3 a's</td><td>2</td><td>1</td><td>X a</td></tr>
+<tr><td>4 a's</td><td>3</td><td>2</td><td>X X</td></tr>
+<tr><td>5 a's</td><td>4</td><td>2</td><td>X X a</td></tr>
+</tbody>
+</table>
+<p>That is not a contradiction: the count is how training <em>chooses</em> a pair, the merge how it <em>applies</em> one, and the contract fixes both, so every correct trainer agrees. After the scan no "a a" is left at all; a run of odd length leaves one lone a at its end.</p>
+<div class="callout trap"><span class="label">Trap</span><p>Scanning from the right gives a different answer: "aaa" would become "aX", and <code>[7, 7, 7]</code> would become <code>[7, 9]</code>. Both are fair rules, but they make different tokens, and only one matches the tests (and tiktoken, in milestone M5). Test the overlapping cases on purpose; they are where a wrong scan shows.</p></div>
+
+<h2>Count each word once</h2>
+<p>Real text repeats itself. The tea corpus had eight words but four different ones, and the tables counted "tea" once with a weight of 3. That does not change the answer: every copy of "tea" has the same pairs, and every merge changes every copy the same way. The docstring of <code>train_bpe</code> asks for it, and the saving decides whether training takes seconds or minutes.</p>
+
+<div class="callout note"><span class="label">Python you need</span><p><strong>What can be a dict key.</strong> A dict files each key under a number worked out from its contents, its <strong>hash</strong>. A list can change after it is stored, which would leave it filed under the wrong number, so a list cannot be a key: Python raises <code>TypeError: unhashable type: 'list'</code>. A tuple cannot change, so it can, and <code>tuple(ids)</code> turns a list into one. A string cannot change either, so another way is a dict keyed by the word itself, with its list of ids as the value.</p></div>
+<pre class="code" data-lang="python" data-file="hashable_keys.py" data-check="run"><code>times_seen = {(116, 101, 97): 3}  # a tuple of ids can be a key
+print(times_seen[(116, 101, 97)])
+try:
+    times_seen[[116, 101, 97]] = 3  # a list cannot
+except TypeError as error:
+    print("TypeError:", error)
+
+ids_of = {"tea": [116, 101, 97]}  # a str key, and a list as the value
+print(ids_of["tea"])
+</code></pre>
+<pre class="output" data-for="hashable_keys.py"><code>3
+TypeError: unhashable type: 'list'
+[116, 101, 97]
+</code></pre>
+
+<h3>A worked example: the letter e in a short text</h3>
+<p>Here is the same trick on a different count: how many times the letter e appears in a short text of your own, five lines about a kitchen with no punctuation, so that <code>split()</code> gives clean words. First walk every word; then walk each distinct word once and multiply by its count.</p>
+
+<pre class="code" data-lang="python" data-file="count_once.py" data-check="run"><code>from collections import Counter
+
+text = """
+the kettle is on the stove and the tea is in the pot
+the cat is on the mat and the mat is by the stove
+when the tea is ready the cat wakes and the dog wakes
+the dog wants the tea and the cat wants the mat
+and the kettle wants the stove and the stove is hot
+"""
+
+words = text.split()  # split on spaces and newlines
+counts = Counter(words)
+print(len(words), "words,", len(counts), "distinct")
+top, n = counts.most_common(1)[0]
+print(f"the most common, {top!r}, is {n} of them")
+
+# How many times does the letter e appear? Walk every word, or each distinct word once.
+every_word = sum(word.count("e") for word in words)
+weighed = sum(word.count("e") * times for word, times in counts.items())
+print("e:", every_word, "walking every word,", weighed, "weighing each distinct word")
+letters_all = sum(len(word) for word in words)
+letters_distinct = sum(len(word) for word in counts)
+print("letters read:", letters_all, "the first way,", letters_distinct, "the second")
+</code></pre>
+<pre class="output" data-for="count_once.py"><code>60 words, 18 distinct
+the most common, 'the', is 18 of them
+e: 33 walking every word, 33 weighing each distinct word
+letters read: 197 the first way, 62 the second
+</code></pre>
+<p>Sixty words, but only eighteen different ones, and "the" alone is eighteen of the sixty, three words in ten. Both ways count 33 e's, and the weighed way reads 62 letters instead of 197, about a third. A real text repeats far more, because its common words come back on every line while its vocabulary grows slowly: the longer the text, the bigger the saving.</p>
+<p>Then the saving is multiplied by the rounds, since training counts again for every merge. The test <code>test_train_bpe_three_hundred_merges_on_a_million_characters_in_ten_seconds</code> trains 300 merges on argparse's source ten times over: about 92,000 words, but only about 2,600 distinct. Its comment puts the difference at about one second when each distinct word is counted once, against about thirty-five when every word is walked, and the test stops your function after ten seconds ("still training after 10 s"). That difference is the difference between passing and not.</p>
+<p>In the real tokenizer, chunks come from GPT-2's split pattern, which keeps the space in front of a word, so " world" is one chunk: <a href="03-encoding-by-rank.html#gpt-2-s-split-pattern-piece-by-piece">chapter 3's</a> business. For training, a chunk is simply the unit that merges never cross.</p>
+
+<h2>What training gives you</h2>
+<p>When the rounds stop, training returns one thing: the list of the pairs it merged, in the order it merged them. For the tea corpus:</p>
+<pre class="code" data-lang="text"><code>merges = [(101, 97), (116, 256), (256, 116), (115, 258), (257, 115)]
+</code></pre>
+<p>Position r in that list is the merge's <strong>rank</strong>, and the rule of the whole module is that <strong>merge r makes the token whose id is 256 + r</strong>:</p>
+<table>
+<thead><tr><th>Rank r</th><th>merges[r]</th><th>Makes id 256 + r</th><th>Its bytes</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>(101, 97)</td><td>256</td><td>e a</td></tr>
+<tr><td>1</td><td>(116, 256)</td><td>257</td><td>t e a</td></tr>
+<tr><td>2</td><td>(256, 116)</td><td>258</td><td>e a t</td></tr>
+<tr><td>3</td><td>(115, 258)</td><td>259</td><td>s e a t</td></tr>
+<tr><td>4</td><td>(257, 115)</td><td>260</td><td>t e a s</td></tr>
+</tbody>
+</table>
+<p>Neither the ids nor the bytes are stored: the ids follow from the positions, and a token's bytes are its left part's followed by its right part's, so the last column follows from the list, top to bottom. The vocabulary has 256 + 5 = 261 tokens. The order matters: merge 1 uses token 256, which merge 0 made, so merge r may only use ids below 256 + r (the constructor of <code>Tokenizer</code> checks it), and <a href="03-encoding-by-rank.html">chapter 3</a> replays the merges in exactly this order to encode new text.</p>
+<p>GPT-2's tokenizer is the same kind of list, only longer: 50,000 merges, written one per line in <code>data/gpt2/merges.txt</code>. Here are the tokens that its first ten merges made, and its last.</p>
+<p><strong>From the oracle</strong>: each token's bytes, as tiktoken's GPT-2 encoding gives them.</p>
+<table>
+<thead><tr><th>Merge r</th><th>Makes id 256 + r</th><th>Its bytes</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>256</td><td><code>b' t'</code></td></tr>
+<tr><td>1</td><td>257</td><td><code>b' a'</code></td></tr>
+<tr><td>2</td><td>258</td><td><code>b'he'</code></td></tr>
+<tr><td>3</td><td>259</td><td><code>b'in'</code></td></tr>
+<tr><td>4</td><td>260</td><td><code>b're'</code></td></tr>
+<tr><td>5</td><td>261</td><td><code>b'on'</code></td></tr>
+<tr><td>6</td><td>262</td><td><code>b' the'</code></td></tr>
+<tr><td>7</td><td>263</td><td><code>b'er'</code></td></tr>
+<tr><td>8</td><td>264</td><td><code>b' s'</code></td></tr>
+<tr><td>9</td><td>265</td><td><code>b'at'</code></td></tr>
+<tr><td>…</td><td>…</td><td>…</td></tr>
+<tr><td>49,999</td><td>50,255</td><td><code>b' gazed'</code></td></tr>
+</tbody>
+</table>
+<p>The vocabulary has 50,257 ids in all. GPT-2's first lesson was to glue a space to a "t", then a space to an "a", then "h" to "e". Merge 6 already builds on two earlier ones: " the" is " t" (256) followed by "he" (258), the only way to make it from the tokens that existed by then. The last id, 50,256, is <code>&lt;|endoftext|&gt;</code>, which no merge makes. (GPT-2's single bytes have ids in another order, with "!" as 0; <a href="04-gpt2s-tokenizer.html">chapter 4</a> explains why.)</p>
+
+<div class="callout try"><span class="label">Write it</span><p><strong>The busiest hour.</strong> Open <a href="../../../drills/02-heaps-lists/warmups/busiest_hour.py">drills/02-heaps-lists/warmups/busiest_hour.py</a>: given a day's request times as <code>"HH:MM"</code> strings, return the hour with the most requests, the earlier hour on a tie. It needs this chapter's counting and its rule for ties. About ten lines, from the empty stub, in ten minutes. It gets one ledger row (set <code>02w</code>) and no redos.</p></div>
+<pre class="shell"><code>$ uv run pytest drills/02-heaps-lists/warmups/test_busiest_hour.py
+</code></pre>
+<details class="hint"><summary>Rung 1: where to look</summary><p>Read the docstring and the five tests first: which hour should win in <code>test_the_examples</code>, and why? Then <code>test_a_tie_goes_to_the_earlier_hour_whatever_the_order</code>, which lists the later hour first. Then re-read <a href="#counting-with-a-dict">counting with a dict</a> and the trap in <a href="#ties-and-choosing-with-a-key">ties, and choosing with a key</a>.</p></details>
+
+<div class="callout twin"><span class="label">In a real engine</span><p>Your <code>train_bpe</code> counts every pair again after each merge, which is the clearest way and fast enough for a few hundred merges. The BPE trainer of Hugging Face's <code>tokenizers</code> library does not recount: after each merge it updates only the pair counts that the merge changed, which saves most of the counting on a large corpus and tens of thousands of merges. That is stretch goal 2 in <a href="../../../modules/02-tokenizer/README.md">the module README</a>. A serving engine never trains at all. Training happens once, before the model is trained, and the merges travel with the model as files; vLLM tokenizes each prompt with the model's Hugging Face tokenizer before it schedules the request.</p></div>
+
+<h2>Check yourself</h2>
+<div class="quiz">
+<div class="q"><p>Why not give a model just the 256 byte tokens? Use the English sentence from the oracle's table in <a href="#the-problem-256-tokens-are-too-few">the problem</a> in your answer.</p><details class="answer"><summary>Answer</summary><p>Texts get long. The sentence is 73 bytes but 14 GPT-2 tokens, about five bytes a token, so byte tokens would make it about five times as long. The work done at every position (the lookups and the layers, most of GPT-2's computing at this length) grows with the length: about 5 times. Attention's pairwise scores grow with the square of the length: about (73 / 14)² ≈ 27 times the attention-score work. And the model's fixed window would hold a fifth as much text.</p></details></div>
+<div class="q"><p>What does <code>Counter("tea tea cake")</code> count, and what should you write to count the words?</p><details class="answer"><summary>Answer</summary><p>Its characters, spaces included: t 2, e 3, a 3, space 2, c 1, k 1. A string iterates one character at a time. To count words: <code>Counter("tea tea cake".split())</code>, which gives tea 2, cake 1.</p></details></div>
+<div class="q"><p>How many pairs does <code>zip(xs, xs[1:], strict=False)</code> give when <code>xs</code> has 7 items? 1 item? None?</p><details class="answer"><summary>Answer</summary><p>6, 0 and 0. It pairs each item with the next and stops when the shorter strip, <code>xs[1:]</code>, runs out.</p></details></div>
+<div class="q"><p>A round's counts are <code>{(101, 114): 9, (97, 98): 7, (32, 116): 9}</code>. Which pair wins under the module's rule? Why is <code>max(counts, key=counts.get)</code> not good enough?</p><details class="answer"><summary>Answer</summary><p><code>(32, 116)</code>: it is tied for the most frequent with <code>(101, 114)</code>, and it is the smaller tuple, since 32 &lt; 101. <code>max</code> with that key returns the first of the tied pairs in the dict's order, here <code>(101, 114)</code>, and the dict's order depends on how the counts were built.</p></details></div>
+<div class="q"><p>In the ids <code>[5, 5, 5, 5, 5]</code>, how many times does the pair <code>(5, 5)</code> occur by the counting rule, and what does replacing it with 9 by the merging rule give?</p><details class="answer"><summary>Answer</summary><p>Four times: every position counts, overlaps included. Merging from the left gives <code>[9, 9, 5]</code>: two merges, and the last 5 has no partner left.</p></details></div>
+<div class="q"><p>A text has 92,000 words, of which 2,600 are distinct. Roughly how many word visits do 300 rounds of training make if each round walks every word, and how many if it walks each distinct word once?</p><details class="answer"><summary>Answer</summary><p>300 × 92,000 = 27.6 million, against 300 × 2,600 = 780,000: about 35 times fewer. Every copy of a word has the same pairs, so its pairs are counted once and multiplied by its frequency.</p></details></div>
+<div class="q"><p>Training returned <code>[(104, 105), (256, 33)]</code>. Byte 104 is "h", 105 is "i" and 33 is "!". Which ids exist now, and what does each new one stand for?</p><details class="answer"><summary>Answer</summary><p>Ids 0 to 257: the 256 bytes, then 256 for merge 0, "hi", and 257 for merge 1, "hi" followed by "!", so "hi!". A vocabulary of 258.</p></details></div>
+<div class="q"><p>Why can merge number 3 never contain the id 260?</p><details class="answer"><summary>Answer</summary><p>Merge 3 makes 259, and 260 is only made by merge 4, later. When merge 3 is learned, the ids that exist are 0 to 258, so a merge r may only use ids below 256 + r.</p></details></div>
+</div>
+
+<h2>What you can do now</h2>
+<ul>
+<li>Explain, with numbers, why 256 byte tokens make texts too long, and which part of the cost grows with the length and which with its square.</li>
+<li>Count with <code>dict.get</code> and with <code>Counter</code>, and avoid counting characters by mistake.</li>
+<li>Walk a list two neighbours at a time with <code>zip(xs, xs[1:], strict=False)</code>, and say how many pairs it gives.</li>
+<li>Break ties with a tuple key, and say why the smaller pair wins instead of the first one counted.</li>
+<li>Train BPE by hand, round by round, and apply the left-to-right rule when pairs overlap.</li>
+<li>Say why each distinct word is counted once and weighed by its frequency, and how much work that saves.</li>
+<li>Read a list of merges: merge r makes id 256 + r, built from tokens that already existed.</li>
+</ul>
+</main>
+</body>
+</html>
