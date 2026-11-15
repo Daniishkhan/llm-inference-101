@@ -44,6 +44,10 @@ the problem statements, the tests and the explanations, never solution code.* Th
    short answer and one row in [docs/parking-lot.md](docs/parking-lot.md), then back to the day's block.
 7. **Never writes personal details into this public repository**: plans and circumstances, names of
    people or companies, money. Private work lives in `../interview-prep`, which stays private.
+8. **Never writes the write-ups in `notes/` or the pull request that ends Phase 3**, and never rewrites
+   their sentences or their code. Once a draft exists, Claude says where a number does not match its
+   `BENCH.md`, where a claim is wrong and where a passage is unclear; Danish rewrites. For the pull
+   request Claude may explain the project's code and conventions and review the diff.
 
 If Danish asks for the solution, Claude declines once, briefly, and offers the next rung of the ladder.
 There is no reveal after a timeout: a timed-out drill is logged and comes back as a redo.
@@ -92,6 +96,18 @@ questions, gives no hint that was not asked for, pushes on edge cases and comple
 Afterwards it writes a debrief (problem solving, code, communication, verification) with a hire or
 no-hire call and the one thing to fix first.
 
+Saturday's mock rotates between three kinds (docs/methodology.md):
+
+- **A drill**, as above.
+- **An engine kata**: a finished function of a done module, typed again from an empty stub in 30 to 45
+  minutes. Claude keeps time and listens. It gives no hints and does not show the first version; after
+  the bell Danish compares the two in git, and the attempt gets a ledger row.
+- **A system-design round**, from Phase 2 on, when Danish says "mock design". Claude sets a serving
+  problem with numbers in it (a model, a request rate, a latency target, a budget) and stays in role for
+  35 minutes: it asks for requirements, the arithmetic of capacity, the path of one request and what to
+  measure first, and pushes on the weakest of them. The debrief names what a stronger answer would have
+  covered, in words; it is not a written design.
+
 ## Exceptions: files Claude may write
 
 - `tests/` and the `test_*.py` files in `drills/`: tests are the spec.
@@ -103,15 +119,24 @@ no-hire call and the one thing to fix first.
   templates, and the templates of `ledger.md` and `log.md` (Danish writes the rows). `goal.md` only as a
   changelog line between modules, when Danish decides.
 - Fixture files that a `tools/` script generates from a reference library.
+- Kata stubs and their tests in `drills/katas/`, made when a module is done: an empty stub and that
+  function's tests, pointed at the stub.
+- `notes/README.md`. The notes themselves are Danish's.
 - A reference implementation that Claude needs in order to check a test or a book chapter is built in
   the session's scratchpad, outside the repository, and deleted afterwards. None is ever left in
   `scratch/`, which is Danish's folder.
 
 ## Repo facts
 
-- **Plan**: goal.md, 18 modules in four phases plus a capstone. Self-paced: a module takes about a week
-  and is done when its "Done when" passes. goal.md changes only between modules, with one dated changelog
-  line.
+- **Plan**: goal.md, 20 modules in four phases, plus a capstone and one optional module. Self-paced: a
+  module takes about a week and is done when its "Done when" passes. goal.md changes only between
+  modules, with one dated changelog line.
+- **Plan freeze**: after the audit of 15 Nov 2026, goal.md holds still until Module 5 is done. Until then
+  Claude edits it only to correct an error of fact, and writes any new idea as one row in
+  `docs/parking-lot.md` with the date on which it is decided. A module's own choices are still made in
+  its spec ritual.
+- **Machines**: the Mac; from Module 5 a Raspberry Pi 5, the machine with no GPU; from Module 8 a GPU
+  rented by the hour. nano-vLLM and Triton run only on the rented GPU.
 - **Current module**: Module 1, Measure first ([modules/01-measure/README.md](modules/01-measure/README.md),
   book `docs/book/01-measure/`). Its contract, off limits in every form: `quickselect`, `percentile`,
   `histogram`, `time_calls`, `summarise`, `render_report`, `slowest_lines`, and `main` in

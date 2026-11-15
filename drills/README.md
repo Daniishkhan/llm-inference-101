@@ -16,3 +16,9 @@ uv run pytest drills/01-arrays-hashing                         # a whole set
 ```
 
 Drills never run in CI: a redo empties a function, and that is meant to be red.
+
+## Katas
+
+An engine kata is a function of a finished module, typed again cold in 30 to 45 minutes
+([docs/methodology.md](../docs/methodology.md), "Engine katas"). Its stub and tests go in
+`drills/katas/`, and Claude prepares them when the module is done. There are none yet.

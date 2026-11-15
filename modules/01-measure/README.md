@@ -35,8 +35,8 @@ closures, `sys.settrace` and frames, `argparse`, rich, pytest and hypothesis.
 
 - vLLM's serving benchmark (`vllm bench serve`) reports the mean, median and p99 of time to first token
   (TTFT), time per output token and inter-token latency (ITL). Those are your p50 and p99, over a
-  different set of timings. Module 10's "Done when" is a p95, and you will measure it with this harness.
-- Percentiles over an endless stream (Module 13) need another trick, because you cannot keep every
+  different set of timings. Module 12's "Done when" is a p95, and you will measure it with this harness.
+- Percentiles over an endless stream (Module 8) need another trick, because you cannot keep every
   timing forever. That is where heaps come in (Find Median from Data Stream).
 - Your line timer is a tracing profiler: exact, and slow. A server under load is usually watched with a
   sampling profiler (py-spy, for example), which is cheap and approximate. Chapter 5 explains the

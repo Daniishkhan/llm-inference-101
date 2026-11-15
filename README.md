@@ -1,12 +1,13 @@
 # llm-inference-101: LLM inference in Python, typed by hand
 
-A self-paced course in 18 modules. It goes from a benchmark harness to a tokenizer, GPT-2 small in
-numpy, sampling and a KV cache; then to a mini serving engine with continuous batching, a paged KV
-cache, prefix caching, chunked prefill, speculative decoding and structured output; then to reading,
-tuning, quantising and fine-tuning for vLLM; and finally to serving open models behind a router, with
-retrieval, on more than one kind of hardware. Data structures and algorithms are learned where the
-engine needs them: quickselect for percentiles, a heap for top-k, a doubly linked list for free KV
-blocks, a radix tree for shared prefixes.
+A self-paced course in 20 modules. It goes from a benchmark harness to a tokenizer, GPT-2 small in
+numpy, sampling, a KV cache and a modern model's block in PyTorch; then to a mini serving engine with
+continuous batching, a paged KV cache, prefix caching, chunked prefill, speculative decoding and
+structured output, measured against real vLLM on a rented GPU; then to reading, tuning, quantising and
+fine-tuning for vLLM, and a GPU kernel written in Triton and in CUDA; and finally to serving open models
+behind a router, and one model run on a GPU, a Mac and a Raspberry Pi. Data structures and algorithms
+are learned where the engine needs them: quickselect for percentiles, a heap for top-k, a doubly linked
+list for free KV blocks, a radix tree for shared prefixes.
 
 > **Every line in `src/llm101/` and `drills/` is typed by hand.** Claude writes the specs, the tests and
 > the book, and reviews finished code, but never writes the solution (see [CLAUDE.md](CLAUDE.md)).
@@ -16,7 +17,7 @@ blocks, a radix tree for shared prefixes.
 
 | | |
 |---|---|
-| [goal.md](goal.md) | The spine: the goal, the ground rules, the 18 modules, the patterns table, the reading |
+| [goal.md](goal.md) | The spine: the goal, the ground rules, the 20 modules, the patterns table, the reading |
 | [docs/methodology.md](docs/methodology.md) | How a day and a module run: blocks, the spec ritual, drills and the ledger, reviews |
 | [docs/setup.md](docs/setup.md) | This Mac, the first-time steps, and what arrives with which module |
 | [CLAUDE.md](CLAUDE.md) | The tutor rules Claude follows in this repo |
@@ -26,6 +27,7 @@ blocks, a radix tree for shared prefixes.
 | [drills/](drills/) | Classic problems by pattern, a stub and its tests each, typed against the clock |
 | [ledger.md](ledger.md) | Every drill attempt: minutes, hints, lookups, the two redo dates |
 | [log.md](log.md) | Five lines a session, and a measurement at the end of each module |
+| [notes/](notes/README.md) | Four short write-ups with measurements, in your own words |
 | [docs/parking-lot.md](docs/parking-lot.md) | Ideas waiting for a decision date |
 
 ## Quick start
@@ -55,29 +57,33 @@ A module takes about a week and is done when its "Done when" passes ([goal.md](g
 
 | # | Module | You build | Pattern | Status |
 |---|---|---|---|---|
-| | **Phase 1: one model, one request (Mac)** | | | |
+| | **Phase 1: one model, one request (Mac; the Pi from Module 5)** | | | |
 | 1 | Measure first | A benchmark harness: p50, p95, p99, throughput, a terminal histogram, a line timer | Arrays and hashing; quickselect | **In progress** (from Mon 16 Nov 2026) |
 | 2 | Tokenizer | BPE: train, encode, decode; GPT-2's tokenizer reproduced | Hash maps, heaps, linked lists | Not started |
 | 3 | Forward pass | GPT-2 small in numpy from its safetensors file, with greedy generation | Matrix shapes; complexity | Not started |
 | 4 | Sampling | Temperature, top-k, top-p, repetition penalty, stop strings; a live probability chart | Heaps, quickselect, prefix sums, binary search, sliding window | Not started |
-| 5 | KV cache | The cache, and tokens per second with and without it | Dynamic arrays, ring buffers | Not started |
-| | **Phase 2: many requests, a mini engine (Mac)** | | | |
-| 6 | Serving loop | An async server for `/v1/completions` and `/v1/chat/completions` that streams | Queues, state machines | Not started |
-| 7 | Continuous batching | A step-level scheduler and an animation of batch slots | Greedy, intervals | Not started |
-| 8 | Paged KV cache | A block allocator with alloc, free and fork, and a live block map | Doubly linked lists | Not started |
-| 9 | Prefix caching | Chained block hashes and a radix tree, compared on a chat workload | Hashing, LRU, tries | Not started |
-| 10 | Scheduling and chunked prefill | Decode-first scheduling with chunked prefill and priorities | Heaps, greedy, sliding windows | Not started |
-| 11 | Speculative decoding and structured output | N-gram drafts, and a JSON mode from token masks | Hashing, two pointers, stacks, graphs, tries | Not started |
+| 5 | KV cache | The cache, and tokens per second with and without it, on the Mac and on the Pi | Dynamic arrays, ring buffers | Not started |
+| 6 | The modern block, in PyTorch | Your forward pass and cache in PyTorch; Qwen3-0.6B's block, batched and matched to the reference | Shapes with a batch dimension | Not started |
+| | **Phase 2: many requests, a mini engine (Mac; the first rented GPU in Module 8)** | | | |
+| 7 | Serving loop | An async server for `/v1/completions` and `/v1/chat/completions` that streams | Queues, state machines | Not started |
+| 8 | Load generator and a first GPU baseline | One load generator against your server on the Mac and vLLM on a rented GPU; a profile of one decode step | Streaming percentiles | Not started |
+| 9 | Continuous batching | A step-level scheduler and an animation of batch slots | Greedy, intervals | Not started |
+| 10 | Paged KV cache | A block allocator with alloc, free and fork, and a live block map | Doubly linked lists | Not started |
+| 11 | Prefix caching | Chained block hashes and a radix tree, compared on a chat workload | Hashing, LRU, tries | Not started |
+| 12 | Scheduling and chunked prefill | Decode-first scheduling with chunked prefill and priorities | Heaps, greedy, sliding windows | Not started |
+| 13 | Speculative decoding and structured output | N-gram drafts, and a JSON mode from token masks | Hashing, two pointers, stacks, graphs, tries | Not started |
 | | **Phase 3: real vLLM (GPU)** | | | |
-| 12 | Read nano-vLLM, then vLLM | One request traced end to end, and a one-page map | Reading code | Not started |
-| 13 | Performance and tuning | A load generator and a tuning report | Binary search on the answer; streaming percentiles | Not started |
-| 14 | Quantization | One model served at three precisions; int4 packing | Bit manipulation | Not started |
-| 15 | Fine-tuning and multi-LoRA serving | A LoRA, served beside three others on one base model | Hashing, LRU | Not started |
+| 14 | Read nano-vLLM, then vLLM | One request traced end to end, and a one-page map | Reading code | Not started |
+| 15 | Tuning and profiling | A tuning report: the highest request rate that meets a latency target, with a profile | Binary search on the answer | Not started |
+| 16 | Quantization | One model served at three precisions; int4 packing | Bit manipulation | Not started |
+| 17 | Fine-tuning and multi-LoRA serving | A LoRA, served beside three others on one base model | Hashing, LRU | Not started |
+| 18 | Kernels: Triton, then CUDA | One fused kernel in Triton and again in CUDA, compared with PyTorch | Reading code | Not started |
+| | *Phase 3 ends with* | One pull request to vLLM or a project beside it, taken through review | | Not started |
 | | **Phase 4: serving open models for real** | | | |
-| 16 | The front door | A router that routes by prefix, with a terminal dashboard | Consistent hashing, heaps, a token bucket | Not started |
-| 17 | RAG serving | Exact and IVF top-k search, served behind the router | Heaps, k-means, graph search | Not started |
-| 18 | Other hardware | One model on four kinds of hardware: cost per million tokens and latency | Careful measurement | Not started |
-| | **Capstone** | One repo: the engine, the router, the RAG pipeline, the hardware report, a write-up | | Not started |
+| 19 | The front door, deployed | A router that routes by prefix, with a terminal dashboard; then containers, metrics and autoscaling | Consistent hashing, heaps, a token bucket | Not started |
+| 20 | One model, three machines, four runtimes | One model on a rented GPU, the Mac and a Raspberry Pi: speed, memory, cost, agreement | Careful measurement | Not started |
+| | **Capstone** | The write-up of record: the engine, the router and the three-machine report as one piece | | Not started |
+| | *Optional* | RAG serving: exact and IVF top-k search, served behind the router | Heaps, k-means, graph search | Not started |
 
 ## Measurements
 
@@ -102,6 +108,7 @@ tests/mNN/          each module's tests (the spec)
 modules/NN-slug/    each module's README (the frozen spec) and BENCH.md
 drills/             classic problems by pattern
 docs/               methodology, setup, parking lot, the book
+notes/              your four short write-ups
 scratch/            your folder for the book's examples
 tools/              book check, book server, Pages build, CI helper, hook installer
 ```

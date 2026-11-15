@@ -12,6 +12,16 @@
 | git, gh | git 2.56.0; gh 2.103.3, signed in as `Daniishkhan` |
 | Editor | Zed, with edit predictions and completion off for this project (`.zed/settings.json`) |
 
+## The other two machines
+
+| | |
+|---|---|
+| The Raspberry Pi | A Pi 5 with 4 GB of memory or less: four CPU cores and no GPU. It joins in Module 5. GPT-2 small is about 0.5 GB of weights, so your numpy engine fits. Its exact model, memory and operating system are recorded here at Module 5's ritual |
+| The rented GPU | By the hour, from Module 8 on. The card, its memory, the image and the hourly price are recorded here the first time you rent one |
+
+A number without its machine and date is not evidence, and from Module 5 on there is more than one
+machine.
+
 ## The first time
 
 ```sh
@@ -53,10 +63,15 @@ is used. Claude adds them in that module's spec ritual.
 | Module 3 | safetensors, huggingface_hub | Loading GPT-2's weights |
 | Module 3 | GPT-2 small's `model.safetensors` (about 550 MB) into `models/`, which git ignores | The weights |
 | Module 3 | torch and transformers (development only; torch from the CPU index on CI) | Reference logits that your numpy model is checked against |
-| Module 6 | fastapi, uvicorn, httpx | The serving loop and its clients |
-| Phase 2 | Qwen3-0.6B (about 1.5 GB); PyTorch on the Mac's GPU (MPS) | The modern open model of goal.md |
-| Phase 3 | A GPU rented by the hour, or a free notebook GPU; vLLM | Real vLLM |
-| Module 18 | Google's TPU Research Cloud, an AMD GPU by the hour | Other hardware |
+| Module 5 | The Raspberry Pi: uv, Python 3.13 and a clone of this repository, reached over ssh | The machine with no GPU. Its numbers get their own column in `BENCH.md` from here on |
+| Module 6 | torch as a dependency of your own code; Qwen3-0.6B (about 1.5 GB) | The modern block, in PyTorch on the Mac's GPU (MPS) |
+| Module 7 | fastapi, uvicorn, httpx | The serving loop and its clients |
+| Module 8 | A GPU rented by the hour, with vLLM on it | The first GPU baseline |
+| Module 14 | nano-vLLM in its own environment on the rented GPU | It needs CUDA and Python below 3.13, and this project pins 3.13 |
+| Module 18 | Triton and the CUDA toolkit, on the rented GPU | Triton runs only on Linux with an NVIDIA or AMD GPU |
+| Module 20 | llama.cpp's Python bindings; MLX | One model on the GPU, the Mac and the Pi |
+| Module 20, stretch | An AMD GPU by the hour; Google's TPU Research Cloud | Only if you can get one |
 
-**The TPU Research Cloud gives access by application** (goal.md, Links). Apply at the start of Phase 3,
-so that the grant is there by Module 18, and plan the TPU run around the dates it gives.
+**The TPU Research Cloud gives access to researchers, by application** (goal.md, Links). It is a
+stretch goal of Module 20. If you want that row in the table, apply at the start of Phase 3 and plan the
+run around the dates it gives.

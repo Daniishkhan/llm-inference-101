@@ -140,7 +140,7 @@ print(dict(counts))
 </div>
 
 <div class="callout twin"><span class="label">In a real engine</span>
-<p>vLLM's prefix cache is this pattern at its centre. Each full block of a prompt's tokens gets a hash, built from the tokens and the hash of the block before it, and the block pool (<code>vllm/v1/core/block_pool.py</code>) keeps a dict from that hash to the cached block. A new request that starts with the same system prompt looks its blocks up and skips their computation. You build the same thing in Module 9.</p>
+<p>vLLM's prefix cache is this pattern at its centre. Each full block of a prompt's tokens gets a hash, built from the tokens and the hash of the block before it, and the block pool (<code>vllm/v1/core/block_pool.py</code>) keeps a dict from that hash to the cached block. A new request that starts with the same system prompt looks its blocks up and skips their computation. You build the same thing in Module 11.</p>
 </div>
 
 <div class="callout try"><span class="label">Try it</span>

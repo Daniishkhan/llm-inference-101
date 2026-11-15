@@ -558,7 +558,7 @@ ModuleNotFoundError: No module named 'weather'
 <p>With <code>-m</code>, Python imports the package first (so <code>__init__.py</code> runs and the import works), then runs <code>__main__.py</code> with <code>__name__</code> set to <code>"__main__"</code>. Run as a plain file, Python looks for imports in the file's own folder, <code>weather/</code>, and among the installed packages, and finds no <code>weather</code> in either. That is why the course says <code>uv run python -m llm101.bench</code>: <code>uv sync</code> installed <code>llm101</code> as a package, so <code>-m</code> finds it anywhere in the repository. The given <code>src/llm101/bench/__main__.py</code> already ends with <code>if __name__ == "__main__":</code>; what <code>main</code> does is M5.</p>
 
 <h2>A first look at rich.live</h2>
-<p>Everything so far prints once. Later modules draw pictures that change while the program runs: Module 7's batch slots, Module 8's map of memory blocks. rich's <strong>Live</strong> redraws a renderable in place instead of printing new lines. A rain-water tank filling:</p>
+<p>Everything so far prints once. Later modules draw pictures that change while the program runs: Module 9's batch slots, Module 10's map of memory blocks. rich's <strong>Live</strong> redraws a renderable in place instead of printing new lines. A rain-water tank filling:</p>
 
 <pre class="code" data-lang="python" data-file="live_tank.py" data-check="run"><code>import time
 
@@ -583,9 +583,9 @@ with Live(tank(0, 200), refresh_per_second=10) as live:
 </code></pre>
 <pre class="output" data-for="live_tank.py"><code>tank ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇ 200 of 200 litres</code></pre>
 
-<p>Inside <code>with Live(...) as live:</code>, each <code>live.update(...)</code> replaces what is shown, and in your terminal one line grows for a second. In this book, and in any output that is not a terminal, only the last picture is printed, because a file cannot be redrawn. Module 7 comes back to it.</p>
+<p>Inside <code>with Live(...) as live:</code>, each <code>live.update(...)</code> replaces what is shown, and in your terminal one line grows for a second. In this book, and in any output that is not a terminal, only the last picture is printed, because a file cannot be redrawn. Module 9 comes back to it.</p>
 
-<div class="callout twin"><span class="label">In a real engine</span><p>A running vLLM server reports on itself as it works: every few seconds it logs a line with the average prompt and generation throughput in tokens per second, the number of requests running and waiting, and how full the KV cache is (the <code>LoggingStatLogger</code> in <code>vllm/v1/metrics/loggers.py</code>). Those are plain log lines, not rich, and they are the first thing to read when a server is slow. This course draws its own pictures with exactly the tools of this chapter: Module 7's animation of batch slots, Module 8's live block map of the KV cache, and Module 16's dashboard in front of several replicas are all a <code>Table</code>, some bars and a <code>Live</code>.</p></div>
+<div class="callout twin"><span class="label">In a real engine</span><p>A running vLLM server reports on itself as it works: every few seconds it logs a line with the average prompt and generation throughput in tokens per second, the number of requests running and waiting, and how full the KV cache is (the <code>LoggingStatLogger</code> in <code>vllm/v1/metrics/loggers.py</code>). Those are plain log lines, not rich, and they are the first thing to read when a server is slow. This course draws its own pictures with exactly the tools of this chapter: Module 9's animation of batch slots, Module 10's live block map of the KV cache, and Module 19's dashboard in front of several replicas are all a <code>Table</code>, some bars and a <code>Live</code>.</p></div>
 
 <h2>Check yourself</h2>
 <div class="quiz">

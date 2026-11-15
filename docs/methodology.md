@@ -3,6 +3,10 @@
 The plan is [goal.md](../goal.md); the tutor's rules are [CLAUDE.md](../CLAUDE.md). This page is the
 routine that carries both. It changes only between modules, with a dated line at the bottom.
 
+**The plan holds still until Module 5 is done.** Until then goal.md is not reopened: an idea gets one
+row in [docs/parking-lot.md](parking-lot.md) with the date on which it is decided, and the day's
+block goes on.
+
 ## The day (8 hours, Monday to Saturday)
 
 goal.md's session has four steps: drill, build, measure, log. The day keeps them in that order and
@@ -19,8 +23,14 @@ reading that feeds the build.
 
 - **Sunday is off, every week.** Eight hours a day only holds with one day that is not part of it.
 - **An appointment that cannot move replaces whichever block it lands on.**
-- **Saturday's drill block is a mock round**: say "mock" and Claude interviews you on a fresh problem
-  from a pattern you have already done (CLAUDE.md, "Mock rounds").
+- **Saturday's drill block is a mock round**, and it rotates (CLAUDE.md, "Mock rounds"):
+  1. *A drill.* Say "mock" and Claude interviews you on a fresh problem from a pattern you have done.
+  2. *An engine kata* ("Engine katas", below).
+  3. *From Phase 2 on, an inference system-design round.* Say "mock design". Claude gives a serving
+     problem with numbers in it; you talk for 35 minutes: requirements, the arithmetic of capacity, the
+     path of one request, what you would measure first.
+- **From Module 7 on, Friday's read block gives 30 minutes to one merged pull request** in vLLM
+  ("Reading reference code", below).
 - **Stop the build block on time**, even mid-bug. Write the bug down in log.md and come back tomorrow.
   Bugs you sleep on are faster.
 
@@ -87,12 +97,38 @@ a stub and a test file in `drills/<set>/`. Each module's README names its set.
 
 Drills never run in CI: a redo empties a function, and that is meant to be red.
 
+## Engine katas
+
+An interview asks in 45 minutes for what a module took you a week to build. A kata closes that gap: a
+function you have already finished, typed again from an empty stub, cold.
+
+1. **When.** A module's katas open when the module is done. Claude prepares them then: a stub in
+   `drills/katas/` and that function's tests, pointed at the stub. Your finished code in `src/` is not
+   touched, so CI stays green.
+2. **Time box.** 30 to 45 minutes, said out loud, like a drill.
+3. **No hints.** If you are stuck at the bell, log a timeout. Afterwards, and only afterwards, compare
+   with your first version in git.
+4. **The ledger.** A kata gets a row like any drill, with the set written as `kata m01`, and comes back
+   after 2 days and after 7.
+
 ## The review ritual
 
 After each milestone, or at least once a day, and for the whole module at its end: commit first, then
 ask Claude for the review (CLAUDE.md, "What a review contains": correctness, complexity, clarity, idioms,
 performance, the real engine, three questions). Write the three questions and your answers into log.md.
 Do not act on review notes before the next build block; let them settle.
+
+## Write-ups
+
+goal.md asks for four short pieces, in your own words, in [notes/](../notes/README.md): after Phase 1,
+after the GPU baseline in Module 8, after Phase 2 and after Phase 3.
+
+- **Numbers first.** The headline measurement is in the first two sentences, with its machine and date.
+  Every number comes from a `BENCH.md`.
+- **Under 800 words**, with one table or chart, what surprised you, and what you would measure next.
+- **Two hours**, taken from that day's block 5.
+- **Claude does not write or rewrite them.** Ask for a check once a draft exists: Claude says where a
+  number does not match its `BENCH.md`, where a claim is wrong and where a passage is unclear. You rewrite.
 
 ## The log
 
@@ -128,8 +164,20 @@ them to know **what** the answer must be, never to show **how** to write it. Rea
 piece only after your own version of that piece passes its tests, and then write in log.md what they did
 better. Phase 3 is reading vLLM on purpose, and it comes after you have built your own engine.
 
+**Running** a reference engine is not reading it. Module 8 measures real vLLM from the outside, as a
+server you send requests to, before you have built your own batching.
+
+**One merged pull request a week, from Module 7 on.** In Friday's read block, take 30 minutes for one
+merged pull request in vLLM, in the area whose tests you have just turned green. Write three lines in
+log.md: what it changed, why, and one question you would have asked in review. This is how the pull
+request that ends Phase 3 gets found: by the time you choose it in Module 14 you have read a dozen.
+That pull request is typed by you. Claude may explain the project's code and its conventions and may
+review your diff, and never writes it.
+
 ---
 
-*Changelog:* 2026-11-15 first version, from cpp-101's methodology (spec ritual, red-green-commit,
+*Changelog:* 2026-11-15, after the audit of goal.md the same day: the plan holds still until Module 5 is
+done; Saturday's mock rotates between a drill, an engine kata and a system-design round; engine katas;
+the four write-ups; one merged pull request a week from Module 7 on. 2026-11-15 first version, from cpp-101's methodology (spec ritual, red-green-commit,
 review, retrieval, slips) and interview-prep's rules (hands only, time boxes, the ledger and its redos,
 mock rounds, the private block).
