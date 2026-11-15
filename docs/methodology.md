@@ -17,7 +17,7 @@ reading that feeds the build.
 |---|---|---|
 | **1. Drill** | 1 h | Redos due in the [ledger](../ledger.md) first, then one or two new problems on the module's pattern. Typed by hand, timed, said out loud |
 | **2. Private** | 1 h | Kept in `../interview-prep`, outside this repository. It comes second so that it is never the block that gets skipped |
-| **3. Read** | 1 h 30 | Today's book chapter. Every example is typed into `scratch/` and run, not copied. Check-yourself questions are answered before the answers are opened |
+| **3. Read** | 1 h 30 | Today's book chapter, by cover and retype: read a program, cover it, type it into `scratch/` from memory, then compare and run it. Check-yourself questions are answered before the answers are opened |
 | **4. Build** | 3 h | The day's milestone, red to green. No Claude in this block except to decode an error message |
 | **5. Measure, review, log** | 1 h 30 | Run the measurement (from Module 2 on, with your Module 1 harness), commit, ask for the review, five lines in [log.md](../log.md), five rows of [CONCEPTS.md](../CONCEPTS.md) out loud |
 
@@ -31,6 +31,9 @@ reading that feeds the build.
      path of one request, what you would measure first.
 - **From Module 7 on, Friday's read block gives 30 minutes to one merged pull request** in vLLM
   ("Reading reference code", below).
+- **Cover and retype.** Copying a program from the page trains your fingers. Rebuilding it from memory
+  trains what an interview asks for. If the read block is running out, type the remaining programs
+  with the page open: every program is still typed, and the ones you rebuilt are the ones that count.
 - **Stop the build block on time**, even mid-bug. Write the bug down in log.md and come back tomorrow.
   Bugs you sleep on are faster.
 
@@ -78,8 +81,17 @@ commits that each turn a milestone green is the record a reviewer wants to see.
 
 ## Drills and the ledger
 
-The drills are the classic problems from the patterns table in goal.md, set in Claude's own words, each
-a stub and a test file in `drills/<set>/`. Each module's README names its set.
+The drills are the classic problems from the patterns table in goal.md and others like them, set in
+Claude's own words, each a stub and a test file in `drills/<set>/`. Each module's README names its set.
+
+**A set has six problems.** Four are on the module's pattern, in rising difficulty. Two are for review:
+they use a pattern from an earlier set and do not say which, because an interview does not say either.
+Naming the pattern afterwards, in the ledger, is part of those two drills. Six a week, each redone
+twice, is about what the drill hour holds: roughly 80 problems by week 13 and 120 by the end.
+
+**From set 02 on, a set also has one debugging drill**: a short program with a failing test or a slow
+path. You have 20 minutes to find the fault, say why it is one, and fix it. It gets one ledger row and
+no redos.
 
 1. **Hands only.** Nothing writes code but you: no agent, no completion, no paste. Looking up syntax in
    the Python docs is allowed and gets written down; the list of lookups is the next morning's warm-up.
@@ -88,12 +100,18 @@ a stub and a test file in `drills/<set>/`. Each module's README names its set.
 3. **Out loud.** Say what you are doing while you solve. An interview is graded on what the interviewer
    hears.
 4. **The ledger.** Every attempt gets a row in [ledger.md](../ledger.md): minutes, rungs, lookups,
-   result (`green`, `green+hint` or `timeout`).
-5. **Redos.** Two days and seven days after the first attempt, empty the function (git keeps your first
+   runs, result (`green`, `green+hint` or `timeout`).
+5. **Dry-run before you run.** When you think you are done, walk two inputs through your code by hand,
+   one of them an edge case. Only then run the tests, and count the runs until green. An interview
+   often has no tests to lean on, so the aim is green on the first run.
+6. **Redos.** Two days and seven days after the first attempt, empty the function (git keeps your first
    version) and type it again, cold. A problem you cannot redo is not solved yet.
-6. **A timeout has no reveal.** The problem stays open and comes back at the +2 day redo, with the rungs
+7. **A timeout has no reveal.** The problem stays open and comes back at the +2 day redo, with the rungs
    you have not used yet.
-7. **One commit per solved drill**, with the minutes in the message: `pair_with_sum: 11 min, no hints`.
+8. **One commit per solved drill**, with the minutes in the message: `pair_with_sum: 11 min, no hints`.
+9. **Redos come first.** A new problem that does not fit in the hour waits for the next drill block,
+   and the last ones of a set may spill into the next module's first days. A redo is never skipped to
+   make room for a new problem.
 
 Drills never run in CI: a redo empties a function, and that is meant to be red.
 
@@ -117,6 +135,22 @@ After each milestone, or at least once a day, and for the whole module at its en
 ask Claude for the review (CLAUDE.md, "What a review contains": correctness, complexity, clarity, idioms,
 performance, the real engine, three questions). Write the three questions and your answers into log.md.
 Do not act on review notes before the next build block; let them settle.
+
+## Readiness
+
+Each Saturday, in the review, Claude works out three numbers from the ledger with you and writes them
+at its foot:
+
+1. Of your last ten new problems, how many were green inside the time box with no rungs.
+2. The median minutes of those ten.
+3. Of the redos that fell due this week, how many were green on the first run.
+
+**You are ready for a coding screen** when the first number is 8 or more and at least five of the ten
+had a time box of 30 minutes or longer. Until then the numbers say what to work on: rungs point at a
+pattern, long minutes at fluency, many runs at checking your own code.
+
+A few weeks before you expect coding screens, add two timed sessions a week on a real interview
+platform, in the private block. By then the unfamiliar part is the editor, not the problems.
 
 ## Write-ups
 
@@ -176,7 +210,11 @@ review your diff, and never writes it.
 
 ---
 
-*Changelog:* 2026-11-15, after the audit of goal.md the same day: the plan holds still until Module 5 is
+*Changelog:* 2026-11-15, after an audit of the lesson structure the same day: a set has six problems,
+two of them for review with the pattern not named; a debugging drill from set 02 on; cover and retype
+in the read block; a dry run and a count of test runs; three readiness numbers each Saturday; from
+Module 2 on, one "write it" exercise and at most eight programs a chapter (docs/book/assets/SPEC.md).
+2026-11-15, after the audit of goal.md the same day: the plan holds still until Module 5 is
 done; Saturday's mock rotates between a drill, an engine kata and a system-design round; engine katas;
 the four write-ups; one merged pull request a week from Module 7 on. 2026-11-15 first version, from cpp-101's methodology (spec ritual, red-green-commit,
 review, retrieval, slips) and interview-prep's rules (hands only, time boxes, the ledger and its redos,

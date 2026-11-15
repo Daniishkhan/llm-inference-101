@@ -17,6 +17,7 @@ list for free KV blocks, a radix tree for shared prefixes.
 
 | | |
 |---|---|
+| [todo.md](todo.md) | The next steps, in order |
 | [goal.md](goal.md) | The spine: the goal, the ground rules, the 20 modules, the patterns table, the reading |
 | [docs/methodology.md](docs/methodology.md) | How a day and a module run: blocks, the spec ritual, drills and the ledger, reviews |
 | [docs/setup.md](docs/setup.md) | This Mac, the first-time steps, and what arrives with which module |
@@ -99,6 +100,7 @@ Each module keeps its numbers in its own `BENCH.md`, with the machine, the date 
 ```
 README.md           the map (this file)
 goal.md             the spine
+todo.md             the next steps, in order
 CLAUDE.md           tutor rules: explain, set problems, test, review; never solve
 CONCEPTS.md         concept graph
 ledger.md, log.md   your drill ledger and your log

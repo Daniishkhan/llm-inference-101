@@ -74,23 +74,23 @@
 <thead><tr><th>Day</th><th>Drill (block 1)</th><th>Read (block 3)</th><th>Build (block 4)</th></tr></thead>
 <tbody>
 <tr><td>1, Mon 16 Nov</td><td>The 20-minute spec ritual, then set 00, the diagnostic: six problems, cold, 2 hours this once</td><td>This chapter, and <a href="01-two-clocks.html">01 Two clocks</a></td><td><strong>M1</strong> <code>time_calls</code> (2 hours today, because the drill block took 2)</td></tr>
-<tr><td>2, Tue 17 Nov</td><td><code>group_anagrams</code></td><td><a href="02-tails-and-percentiles.html">02 Tails and percentiles</a></td><td><strong>M2</strong> <code>histogram</code></td></tr>
+<tr><td>2, Tue 17 Nov</td><td><code>group_anagrams</code>, then <code>tidy_path</code></td><td><a href="02-tails-and-percentiles.html">02 Tails and percentiles</a></td><td><strong>M2</strong> <code>histogram</code></td></tr>
 <tr><td>3, Wed 18 Nov</td><td><code>sort_colours</code>, and the redos of set 00 that fall due (+2 days)</td><td><a href="03-partition-and-select.html">03 Partition and select</a></td><td><strong>M3</strong> <code>quickselect</code>, and start <strong>M4</strong> <code>percentile</code></td></tr>
-<tr><td>4, Thu 19 Nov</td><td><code>longest_streak</code>, and the <code>group_anagrams</code> redo</td><td><a href="04-pictures-in-the-terminal.html">04 Pictures in the terminal</a></td><td>Finish <strong>M4</strong>, then <strong>M5</strong>: <code>summarise</code>, <code>render_report</code> and <code>main</code></td></tr>
-<tr><td>5, Fri 20 Nov</td><td>The <code>sort_colours</code> redo</td><td><a href="05-where-the-time-goes.html">05 Where the time goes</a></td><td><strong>M6</strong> <code>slowest_lines</code>, and <code>--profile</code></td></tr>
+<tr><td>4, Thu 19 Nov</td><td>The redos of day 2, then <code>longest_streak</code></td><td><a href="04-pictures-in-the-terminal.html">04 Pictures in the terminal</a></td><td>Finish <strong>M4</strong>, then <strong>M5</strong>: <code>summarise</code>, <code>render_report</code> and <code>main</code></td></tr>
+<tr><td>5, Fri 20 Nov</td><td>The <code>sort_colours</code> redo, then <code>count_stretches</code>, then <code>free_slots</code> if the hour allows</td><td><a href="05-where-the-time-goes.html">05 Where the time goes</a></td><td><strong>M6</strong> <code>slowest_lines</code>, and <code>--profile</code></td></tr>
 <tr><td>6, Sat 21 Nov</td><td>The mock round: say "mock" to Claude Code</td><td><a href="06-boxes-and-arrays.html">06 Boxes and arrays</a></td><td><strong>M7</strong> the Experiment in <code>BENCH.md</code>, and the module review</td></tr>
 </tbody>
 </table>
-<p>The <strong>spec ritual</strong> is twenty minutes with the README: read it, settle each item of its last section, "Decisions for the spec ritual", and freeze it with a commit (<code>Module 1: spec frozen</code>). After that a requirement can only move to "Stretch", in writing, with the date. The <strong>redos</strong> come from <code>ledger.md</code>: two and seven days after a first attempt, you empty the function and type it again, cold. Set 01 is on the module's pattern, <strong>arrays and hashing</strong>, plus the partition step behind quickselect, which is why <code>sort_colours</code> comes on day 3, just before M3. <a href="07-drills.html">Chapter 7</a> teaches each pattern on a different problem first.</p>
+<p>The <strong>spec ritual</strong> is twenty minutes with the README: read it, settle each item of its last section, "Decisions for the spec ritual", and freeze it with a commit (<code>Module 1: spec frozen</code>). After that a requirement can only move to "Stretch", in writing, with the date. The <strong>redos</strong> come from <code>ledger.md</code>: two and seven days after a first attempt, you empty the function and type it again, cold. Set 01 is on the module's pattern, <strong>arrays and hashing</strong>, plus the partition step behind quickselect, which is why <code>sort_colours</code> comes on day 3, just before M3. Two of the set's six problems are review: they do not say which pattern they need, and naming it is part of the drill. <a href="07-drills.html">Chapter 7</a> teaches each pattern on a different problem first.</p>
 
 <h3>The five blocks of a day</h3>
 <p>A day is eight hours, Monday to Saturday, in five blocks, always in this order (<code>docs/methodology.md</code>, "The day"). Sunday is off, every week.</p>
 <table>
 <thead><tr><th>Block</th><th>Length</th><th>What</th></tr></thead>
 <tbody>
-<tr><td>1. Drill</td><td>1 h</td><td>Redos due in the ledger first, then the day's new problem. Typed by hand, timed, said out loud.</td></tr>
+<tr><td>1. Drill</td><td>1 h</td><td>Redos due in the ledger first, then the day's new problems. Typed by hand, timed, said out loud.</td></tr>
 <tr><td>2. Private</td><td>1 h</td><td>Kept in <code>../interview-prep</code>, outside this repository. It comes second so that it is never the block that gets skipped.</td></tr>
-<tr><td>3. Read</td><td>1 h 30</td><td>The day's chapter of this book, every example typed into <code>scratch/</code> and run.</td></tr>
+<tr><td>3. Read</td><td>1 h 30</td><td>The day's chapter of this book, by cover and retype: read a program, cover it, type it into <code>scratch/</code> from memory, compare, run.</td></tr>
 <tr><td>4. Build</td><td>3 h</td><td>The day's milestone, red to green. No Claude in this block except to decode an error message.</td></tr>
 <tr><td>5. Measure, review, log</td><td>1 h 30</td><td>Commit, ask for the review, five lines in <code>log.md</code>, five rows of <code>CONCEPTS.md</code> explained out loud.</td></tr>
 </tbody>
@@ -132,12 +132,13 @@ E   NotImplementedError: TODO(you)
 <p><code>-k time_calls</code> keeps the tests whose name contains <code>time_calls</code>; <code>-x</code> stops at the first failure. Read from the top: the test <code>test_time_calls_records_n_calls</code>, line 19 of <code>tests/m01/test_timing.py</code>, called <code>time_calls</code> with a function that does nothing and <code>n=7</code>; that went into <code>src/llm101/bench/timing.py</code>, line 49, where the stub raised. The line starting with <code>E</code> is the error itself. It reports no bug: the function has not been written. Almost every red test today fails this way.</p>
 <p>Four fail differently. Two read your source instead of calling it, checking that <code>summarise</code> calls your <code>percentile</code> and that <code>percentile</code> calls your <code>quickselect</code>; they fail with their own message, such as <code>AssertionError: summarise computes p50, p95 and p99 with your percentile()</code>. Two run the whole program, <code>python -m llm101.bench</code>, and fail because it stops with the <code>NotImplementedError</code> traceback.</p>
 
-<h3>Four tests that pass on day one</h3>
-<p>Before you have typed anything, four tests are green. Two are in <code>tests/m01</code> (the <code>.</code> in the histogram and quickselect lines above), and two are in the drills, which you see when you run everything with <code>uv run pytest</code>, which ends <code>4 passed</code>:</p>
+<h3>Five tests that pass on day one</h3>
+<p>Before you have typed anything, five tests are green. Two are in <code>tests/m01</code> (the <code>.</code> in the histogram and quickselect lines above), and three are in the drills, which you see when you run everything with <code>uv run pytest</code>, which ends <code>5 passed</code>:</p>
 <ul>
 <li><code>test_stats_does_not_import_numpy</code>: <code>stats.py</code> must not import numpy.</li>
 <li><code>test_stats_does_not_sort</code>: <code>stats.py</code> must not call <code>sorted()</code> or <code>.sort()</code>.</li>
 <li><code>test_it_does_not_sort</code>, twice: the drills <code>longest_streak</code> and <code>sort_colours</code> must not sort either.</li>
+<li><code>test_it_does_not_hand_the_work_to_a_library</code>: the drill <code>tidy_path</code> must not import <code>os</code>, <code>posixpath</code> or <code>pathlib</code>.</li>
 </ul>
 <p>Each reads the code and checks for something a correct solution must <em>not</em> do. A stub does nothing, so it never does the forbidden thing. These tests are there to stay green, and they start to mean something the moment you start typing.</p>
 
@@ -160,7 +161,7 @@ E   NotImplementedError: TODO(you)
 
 <h2>How to read this book</h2>
 <ul>
-<li><strong>Type the examples.</strong> Each program is complete and was run before it was printed. Type it into <code>scratch/</code> under the name shown with it and run it with <code>uv run python scratch/NAME.py</code>. Typing, not pasting: the typos are part of the lesson.</li>
+<li><strong>Cover and retype the examples.</strong> Each program is complete and was run before it was printed. Read it until you could explain every line, cover it, and type it into <code>scratch/</code> from memory, under the name shown with it. Then compare it with the page and run it with <code>uv run python scratch/NAME.py</code>. Copying trains your fingers; rebuilding from memory trains what an interview asks for. If the read block is running out, type the rest with the page open. Typing, not pasting, either way: the typos are part of the lesson.</li>
 <li><strong>Compare the output.</strong> Most programs show their exact output. Where a program prints a time, it is one run on the M5: your numbers will differ, the shape should not.</li>
 <li><strong>Answer before you open.</strong> Say or write your answer to a "Try it" or "Check yourself" before you unfold it. A wrong guess you correct is worth more than a right answer you read.</li>
 <li><strong>The callouts</strong> have one job each. <em>First principle</em>: what the machine does. <em>Analogy</em>: a picture, and where it stops being true. <em>Trap</em>: a mistake, where you would make it. <em>Python you need</em>: a construct refreshed. <em>In a real engine</em>: where vLLM or a similar engine does the same.</li>
@@ -187,7 +188,7 @@ E   NotImplementedError: TODO(you)
 <div class="quiz">
 <div class="q"><p>Why is the benchmark harness the first thing you build, before any part of an inference engine?</p><details class="answer"><summary>Answer</summary><p>Because every later module has a Measure step, and every number in it comes from this harness. A tokenizer, a KV cache or a batching scheduler is only "faster" once it has been measured, many calls at a time, with the machine and the date written next to the result.</p></details></div>
 <div class="q"><p>A friend says "my function takes 12 ms". What three things would you ask before you believe it?</p><details class="answer"><summary>Answer</summary><p>How many times it was run (one timing is an anecdote), what was reported (the mean, the median, the slowest?), and on which machine, on which day, under which conditions (power, other programs, warm-up). A number without its machine and date is not evidence.</p></details></div>
-<div class="q"><p>Four tests pass before you have written anything. What do they check, and why do they pass?</p><details class="answer"><summary>Answer</summary><p>They read the source and check what it must not do: <code>stats.py</code> must not import numpy or sort, and <code>longest_streak</code> and <code>sort_colours</code> must not sort. A stub does nothing, so it never breaks those rules. They begin to matter once you start typing.</p></details></div>
+<div class="q"><p>Five tests pass before you have written anything. What do they check, and why do they pass?</p><details class="answer"><summary>Answer</summary><p>They read the source and check what it must not do: <code>stats.py</code> must not import numpy or sort, <code>longest_streak</code> and <code>sort_colours</code> must not sort, and <code>tidy_path</code> must not import a path library. A stub does nothing, so it never breaks those rules. They begin to matter once you start typing.</p></details></div>
 <div class="q"><p>A test fails with <code>E   NotImplementedError: TODO(you)</code>. Is there a bug in your code?</p><details class="answer"><summary>Answer</summary><p>No. The function has not been written yet: its body is still the stub's <code>raise</code>. The traceback above that line shows which test called which function, and on which line.</p></details></div>
 <div class="q"><p>It is day 3 of the module. Which drills belong in block 1, and in which order?</p><details class="answer"><summary>Answer</summary><p>The redos first: the set 00 problems you first solved on day 1, which fall due at +2 days, with your ledger as the list. Then the day's new problem, <code>sort_colours</code>, which also prepares the partition step of M3.</p></details></div>
 </div>
@@ -198,7 +199,7 @@ E   NotImplementedError: TODO(you)
 <li>State the rule, and where hints and the tutor fit around it.</li>
 <li>Read the "Done when" list and know which tests and files close the module.</li>
 <li>Plan the six days and the five blocks of each.</li>
-<li>Set up the repository, read a red test, and explain the four that pass on day one.</li>
+<li>Set up the repository, read a red test, and explain the five that pass on day one.</li>
 <li>Find your way around the repository, and follow the four steps when you are stuck.</li>
 </ul>
 </main>

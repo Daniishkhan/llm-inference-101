@@ -10,6 +10,8 @@ Given a list of words, put the anagrams together and return the list of groups:
 - inside a group, the words keep their input order;
 - a word that appears twice appears twice in its group.
 
+The list you are given must come back unchanged.
+
     group_anagrams(["stop", "cat", "pots", "act", "tops", "dog"])
         ->  [["stop", "pots", "tops"], ["cat", "act"], ["dog"]]
     group_anagrams(["", ""])  ->  [["", ""]]

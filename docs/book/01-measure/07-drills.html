@@ -16,14 +16,14 @@
 <main>
 <p class="chapter-kicker">Practice</p>
 <h1>Drills</h1>
-<p class="lede">The nine small problems of this module, and the eight patterns behind them, each taught on a different problem. At the end you can name the pattern a drill needs, and you know where to look, the idea and the shape for every one of them, without a line of its solution.</p>
+<p class="lede">The twelve small problems of this module, and the nine patterns behind them, each taught on a different problem. At the end you can name the pattern a drill needs, and you know where to look, the idea and the shape for every one of them, without a line of its solution.</p>
 
 <div class="callout note"><span class="label">In this chapter</span>
 <ul>
 <li>How a drill runs: hands only, a time box, out loud, a row in the ledger, two redos.</li>
-<li>The order of this module: set 00 cold on day 1, then set 01 on days 2 to 4.</li>
-<li>Eight patterns, each on a problem of its own: remembering what you have seen, grouping by a key, a set for membership, runs, a stack, intervals, a sliding window, and the three piles of a partition.</li>
-<li>The nine drills, each with its stub, its time box and three rungs of its hint ladder, folded away.</li>
+<li>The order of this module: set 00 cold on day 1, then set 01 on days 2 to 5.</li>
+<li>Nine patterns, each on a problem of its own: remembering what you have seen, grouping by a key, a set for membership, runs, a stack, intervals, a sliding window, a running total, and the three piles of a partition.</li>
+<li>The twelve drills, each with its stub, its time box and three rungs of its hint ladder, folded away. Two of them do not say which pattern they need.</li>
 </ul>
 </div>
 
@@ -50,19 +50,21 @@ $ uv run pytest drills/01-arrays-hashing
 </div>
 
 <h2>The order of this module</h2>
-<p>Two sets, nine problems. The first set measures where you start; the second is the module's own pattern.</p>
+<p>Two sets, twelve problems. The first set measures where you start. The second is the module's own pattern, with two review problems mixed in.</p>
 <table>
 <thead><tr><th>Day</th><th>Set</th><th>Problems</th><th>Time</th></tr></thead>
 <tbody>
 <tr><td>1</td><td><a href="../../../drills/00-diagnostic/README.md">00, the diagnostic</a></td><td><code>run_length</code>, <code>top_endpoints</code>, <code>pair_with_sum</code>, <code>balanced</code>, <code>merge_intervals</code>, <code>moving_average</code>, in that order</td><td>Two hours, this once</td></tr>
-<tr><td>2</td><td><a href="../../../drills/01-arrays-hashing/README.md">01, arrays and hashing</a></td><td><code>group_anagrams</code></td><td>25 minutes, then redos</td></tr>
+<tr><td>2</td><td><a href="../../../drills/01-arrays-hashing/README.md">01, arrays and hashing</a></td><td><code>group_anagrams</code>, then <code>tidy_path</code></td><td>25 minutes each</td></tr>
 <tr><td>3</td><td>01</td><td><code>sort_colours</code>, before milestone M3</td><td>25 minutes, then the redos of day 1</td></tr>
-<tr><td>4</td><td>01</td><td><code>longest_streak</code></td><td>30 minutes, then redos</td></tr>
+<tr><td>4</td><td>01</td><td><code>longest_streak</code></td><td>The redos of day 2, then 30 minutes</td></tr>
+<tr><td>5</td><td>01</td><td><code>count_stretches</code>, then <code>free_slots</code></td><td>The redo of day 3, then 35 and 30 minutes, as far as the hour goes</td></tr>
 <tr><td>6</td><td></td><td>A mock round: say "mock", and Claude interviews you on a fresh problem</td><td>The drill block</td></tr>
 </tbody>
 </table>
 <p><strong>The diagnostic is cold.</strong> Do set 00 on day 1 before you read the pattern sections of this chapter. It is a measurement, not a test: how long each problem takes you today and what you had to look up, before any teaching. Six problems with time boxes that add up to 115 minutes, one after the other; stop each one at green or at its bell, whichever comes first, and move on. Unfinished is a result too. When all six are done, or two hours have passed, ask Claude for the review.</p>
-<p><strong>Then read the patterns.</strong> From day 2 on, read the pattern section that a drill needs before its first attempt (each drill below names its section), and read the sections of the diagnostic's problems before their +2 day redos. <code>sort_colours</code> comes on day 3 because it is the partition step that your quickselect (M3) is built on.</p>
+<p><strong>Redos come first.</strong> A new problem that does not fit in the hour waits for the next drill block, and the last ones of a set may spill into the first days of the next module. A redo is never skipped to make room for a new problem.</p>
+<p><strong>Then read the patterns.</strong> From day 2 on, read the pattern section that a drill needs before its first attempt (each drill below names its section, except the two review drills, which leave that to you), and read the sections of the diagnostic's problems before their +2 day redos. <code>sort_colours</code> comes on day 3 because it is the partition step that your quickselect (M3) is built on.</p>
 
 <h2>Remembering what you have seen</h2>
 <p>A surprising number of problems have the same core: as you walk through the input once, you need to know whether you have met something before, or how many times, or where. Without a memory, the only way to answer "have I seen this word before?" is to walk back over everything behind you, and that walk gets longer with every step. With a <strong>set</strong> (which remembers only that you saw a thing) or a <strong>dict</strong> (which remembers a value for each thing: a count, a position), the question costs the same small amount of time however much you have seen.</p>
@@ -510,6 +512,32 @@ Ben is next
 </code></pre>
 </div>
 
+<h2>A running total</h2>
+<p>How much rain fell from day 1 to day 3? You can add those days up each time you are asked. Or you can keep, once, the <strong>total so far</strong> after every day. Then the rain of any stretch is one subtraction: the total at its end, minus the total just before its start.</p>
+<pre class="code" data-lang="python" data-file="rain_so_far.py" data-check="run"><code>rain_mm = [0, 4, 12, 3, 0, 0, 9, 15, 2, 1]
+
+so_far = [0]  # so_far[k] is the rain of the first k days
+for mm in rain_mm:
+    so_far.append(so_far[-1] + mm)
+print(so_far)
+
+
+def rain_between(first_day, last_day):
+    return so_far[last_day + 1] - so_far[first_day]
+
+
+print("days 1 to 3:", rain_between(1, 3), "mm; checked the slow way:", sum(rain_mm[1:4]))
+print("days 6 to 8:", rain_between(6, 8), "mm; checked the slow way:", sum(rain_mm[6:9]))
+print("the whole list:", rain_between(0, 9), "mm")
+</code></pre>
+<pre class="output" data-for="rain_so_far.py"><code>[0, 0, 4, 16, 19, 19, 19, 28, 43, 45, 46]
+days 1 to 3: 19 mm; checked the slow way: 19
+days 6 to 8: 26 mm; checked the slow way: 26
+the whole list: 46 mm
+</code></pre>
+<p>The list of totals is one longer than the list of days, because it starts with a 0: the total before any day at all. That 0 is what lets a stretch that begins on day 0 work like every other stretch, with no special case. Building the totals costs one pass. After that every question costs one subtraction, however long the stretch.</p>
+<p>A sliding window answers "how much in each stretch of this one width". Running totals answer "how much in any stretch", and they still work when some numbers are negative, where a window that grows and shrinks does not.</p>
+
 <h2>The three piles of a partition</h2>
 <p>The last pattern of this module has its own chapter, <a href="03-partition-and-select.html">Partition and select</a>, so here is only the picture. Take a hand of cards and choose one of them, the <strong>pivot</strong>. Now deal every card onto one of three piles: smaller than the pivot, equal to it, larger than it.</p>
 <table>
@@ -602,7 +630,8 @@ Ben is next
 </details>
 
 <h2>Set 01: arrays and hashing</h2>
-<p>The module's own pattern, one problem a day from day 2, after the redos that the ledger says are due. Stubs and tests in <a href="../../../drills/01-arrays-hashing/README.md">drills/01-arrays-hashing/</a>. Two of the test files read your code and fail if <code>longest_streak</code> or <code>sort_colours</code> calls <code>sorted()</code> or <code>.sort()</code>.</p>
+<p>The module's own pattern, one or two problems a day from day 2, after the redos that the ledger says are due. Stubs and tests in <a href="../../../drills/01-arrays-hashing/README.md">drills/01-arrays-hashing/</a>. Three of the test files read your code: they fail if <code>longest_streak</code> or <code>sort_colours</code> calls <code>sorted()</code> or <code>.sort()</code>, or if <code>tidy_path</code>'s file imports <code>os</code>, <code>posixpath</code> or <code>pathlib</code>.</p>
+<p>Four of the six are on the module's pattern. The other two, <code>tidy_path</code> and <code>free_slots</code>, are <strong>review</strong>: each needs a pattern you met in set 00, and nothing here says which until you open rung 2. An interview does not name the pattern either. Work out which it is before you type, and write it in the ledger's Pattern column afterwards.</p>
 
 <h3>group_anagrams</h3>
 <p><strong>Pattern:</strong> grouping by a key into a dict of lists; the key is the whole problem (<a href="#grouping-by-a-key-into-a-dict-of-lists">Grouping by a key into a dict of lists</a>). Day 2.</p>
@@ -643,8 +672,48 @@ Ben is next
 <p>Three positions are enough to mark the four regions: where the next 0 goes, the element you are looking at, and where the next 2 goes. They start at the front, the front and the back. One <code>while</code> loop that runs until the position you are looking at passes the one where the next 2 goes; inside, three branches, one per colour, each with a swap (tuple assignment swaps two elements in one line). Work out on paper which positions move in each branch. The 2 branch is the odd one: think about what you know, and do not know, about the element that a swap brings back from the far end. Test <code>[2, 0]</code>, <code>[1, 0]</code> and <code>[2, 2, 2]</code> first, with the positions written under the list.</p>
 </details>
 
+<h3>count_stretches</h3>
+<p><strong>Pattern:</strong> a running total, together with remembering which totals you have seen (<a href="#a-running-total">A running total</a>, <a href="#remembering-what-you-have-seen">Remembering what you have seen</a>). Day 5.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/01-arrays-hashing/count_stretches.py">drills/01-arrays-hashing/count_stretches.py</a> · <strong>Time box:</strong> 35 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's last paragraph ("in one pass"), then <code>test_negative_numbers_bring_the_sum_back</code>, <code>test_one_number_that_is_the_target</code> and <code>test_two_hundred_thousand_numbers_in_two_seconds</code> in <a href="../../../drills/01-arrays-hashing/test_count_stretches.py">test_count_stretches.py</a>. With negative numbers in the list, can a stretch that is already too big become right again by growing?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Keep a running total as you walk the list. The sum of a stretch is the total at its end minus the total just before its start. So a stretch that ends where you stand adds up to the target exactly when some earlier total equals the total now, minus the target. You do not need to know where those earlier totals were, only how many times each value has occurred so far. And the total before the first number, which is zero, has occurred once before you begin.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A dict from a total to the number of times you have seen it, which starts with one entry: zero, seen once. One loop over the numbers, and inside it three steps in this order: add the number to the running total; look up the total minus the target and add what you find to the answer; record the total you now stand on. Say out loud why the look-up comes before the record. Work <code>[5]</code> with target 5, <code>[0, 0, 0]</code> with target 0 and <code>[1, -1, 1, -1]</code> with target 0 on paper before you run anything.</p>
+</details>
+
+<h3>tidy_path</h3>
+<p><strong>Pattern:</strong> not said here. This is a review drill: the pattern is one from set 00, and naming it is part of the drill. Day 2, after <code>group_anagrams</code>.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/01-arrays-hashing/tidy_path.py">drills/01-arrays-hashing/tidy_path.py</a> · <strong>Time box:</strong> 25 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the four bullet points of the docstring, then <code>test_up_past_the_root_and_down_again</code>, <code>test_three_dots_is_a_name</code> and <code>test_only_slashes</code> in <a href="../../../drills/01-arrays-hashing/test_tidy_path.py">test_tidy_path.py</a>. Write <code>/a/./b/../../c/</code> on paper as its pieces between the slashes. What do you know after reading each piece, and what do two dots do to what you know?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>The pieces between the slashes are instructions, read from left to right. A name means "go down into this folder". Two dots mean "undo the last going-down that has not been undone yet", and the last thing not yet undone is the top of a stack (<a href="#a-stack">A stack</a>). An empty piece or a single dot means nothing. What is left on the stack at the end, from the bottom up, is the path.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>Split the string on the slash. That gives an empty string wherever two slashes met, and at both ends. A list used as a stack, and one loop over the pieces with three cases: skip it, pop if there is anything to pop, or push. At the end, join what is on the stack with slashes and put one slash in front, which also gives the right answer for an empty stack. Test <code>/</code>, <code>/../</code> and <code>/...</code> first.</p>
+</details>
+
+<h3>free_slots</h3>
+<p><strong>Pattern:</strong> not said here. This is a review drill: the pattern is one from set 00, and naming it is part of the drill. Day 5, after <code>count_stretches</code>, or the first drill block of Module 2 if the hour is over.</p>
+<p><strong>Stub:</strong> <a href="../../../drills/01-arrays-hashing/free_slots.py">drills/01-arrays-hashing/free_slots.py</a> · <strong>Time box:</strong> 30 minutes.</p>
+<details class="hint"><summary>Rung 1: where to look</summary>
+<p>Read the docstring's second paragraph ("no two slots touch or overlap"), then <code>test_periods_that_overlap_or_touch_leave_no_slot_between_them</code>, <code>test_a_period_inside_another</code> and <code>test_periods_that_stick_out_past_the_day</code> in <a href="../../../drills/01-arrays-hashing/test_free_slots.py">test_free_slots.py</a>. Draw the day of the second example as a line and shade the busy minutes. In what order would you like the periods to be handed to you?</p>
+</details>
+<details class="hint"><summary>Rung 2: the idea in words</summary>
+<p>Sort the periods by where they start (<a href="#intervals">Intervals</a>). Then walk through the day with one marker: the first minute that you do not yet know to be busy. It begins at the start of the day. Take the periods in order. If a period starts after the marker, the minutes from the marker to that start are free, and that is a slot. Either way, the marker moves to the period's end if that is later than where it stands. When the periods run out, whatever lies between the marker and the end of the day is the last slot.</p>
+</details>
+<details class="hint"><summary>Rung 3: the shape</summary>
+<p>A sorted copy of the periods, so that the list you were given stays as it was. One marker and one list of slots. One loop. A slot is recorded only when it is longer than zero, and it never reaches past the end of the day: a period that sticks out, or lies wholly outside the day, must not carry the marker or the end of a slot past the day's edges. After the loop, one more check for the stretch up to the end of the day. Test an empty list, a full day, and two periods that only touch the ends of the day first.</p>
+</details>
+
 <h2>Check yourself</h2>
 <div class="quiz">
+<div class="q"><p>The list of running totals is one longer than the list of numbers, and it starts with a 0. What breaks if you leave that 0 out?</p><details class="answer"><summary>Answer</summary><p>Every stretch that begins at the first number. The sum of a stretch is the total at its end minus the total just before its start, and before the first number that total is 0. Without it there is nothing to subtract, so you need a special case for those stretches, or you silently miss them.</p></details></div>
 <div class="q"><p>Why can a tuple be the key of a dict, and a list not?</p><details class="answer"><summary>Answer</summary><p>A dict files each key under its hash. A list can change after it is stored, and its hash would change with it, so the dict would look in the wrong slot. A tuple cannot change, so its hash is fixed. Python refuses lists as keys with <code>TypeError: unhashable type: 'list'</code>.</p></details></div>
 <div class="q"><p>In <code>last_seen.py</code>, what would every gap be if the line <code>last_seen[word] = position</code> moved to the top of the loop body, and why?</p><details class="answer"><summary>Answer</summary><p>0. The dict would already hold the current position when it was asked for the previous one, and <code>position - position</code> is 0. Every "seen before?" question must be asked before the memory is updated.</p></details></div>
 <div class="q"><p>You need to answer "is x in my collection?" 50,000 times against 50,000 numbers. Roughly how many steps does a list take, and a set?</p><details class="answer"><summary>Answer</summary><p>A list looks at up to 50,000 items per question (about half of them on average for numbers that are there, all of them for numbers that are not): up to 2.5 billion steps. A set does about one hash and one jump per question: about 50,000 steps, plus 50,000 to build it.</p></details></div>
@@ -657,12 +726,13 @@ Ben is next
 <h2>What you can do now</h2>
 <ul>
 <li>Run a drill by the rules: hands only, timed, out loud, a ledger row, two redos and no reveal.</li>
-<li>Say in what order this module's nine drills come, and why the diagnostic is done cold.</li>
+<li>Say in what order this module's twelve drills come, why the diagnostic is done cold, and why redos come before new problems.</li>
 <li>Remember what you have seen with a set or a dict, and say why the lookup comes before the store.</li>
 <li>Group items into a dict of lists by a key that you choose, and pick a key that can be hashed.</li>
 <li>Choose a set over a list for membership, and estimate the difference in steps.</li>
 <li>Walk a sequence comparing neighbours, evaluate an expression with a stack, test intervals for overlap after sorting them, and slide a window with a running sum.</li>
-<li>Draw the three piles of a partition, and name the pattern each of the nine drills needs.</li>
+<li>Answer "how much in this stretch?" with one subtraction of two running totals, and say what the 0 at the front is for.</li>
+<li>Draw the three piles of a partition, and name the pattern each of the twelve drills needs, the two review drills included.</li>
 </ul>
 </main>
 </body>

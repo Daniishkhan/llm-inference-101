@@ -37,7 +37,7 @@ guarded = [
     "slowest_lines", "Timings", "Report",
     # Drills, sets 00 and 01
     "encode", "top_endpoints", "pair_with_sum", "is_balanced", "merge", "MovingAverage",
-    "group_anagrams", "longest_streak", "sort_colours",
+    "group_anagrams", "longest_streak", "sort_colours", "count_stretches", "tidy_path", "free_slots",
 ]
 
 [tool.pytest.ini_options]

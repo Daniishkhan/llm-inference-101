@@ -10,8 +10,8 @@ Danish: about seven years of Python, the last two in applied AI work (open model
 with vLLM). Typing code by hand is the skill being rebuilt, alongside data structures and algorithms.
 Matrices and probability get a physical picture before a formula. Wants first principles, analogies that say where they
 break, and no assumed knowledge of anything the chapter needs. Machine: MacBook, Apple M5 (4 performance
-and 6 efficiency cores), macOS 26, Python 3.13 with uv. Examples are typed into `scratch/` and run with
-`uv run python scratch/NAME.py`.
+and 6 efficiency cores), macOS 26, Python 3.13 with uv. Each program is read, covered, typed into `scratch/` from
+memory, compared with the page and run with `uv run python scratch/NAME.py`.
 
 ## The one rule (from CLAUDE.md)
 
@@ -21,7 +21,8 @@ it must **never** contain a working implementation, a sketch, pseudo-code or a "
 - a contract function of any module (Module 1: `time_calls`, `summarise`, `quickselect`, `percentile`,
   `histogram`, `render_report`, `slowest_lines`, and the `main` of `python -m llm101.bench`);
 - a drill (`drills/`: `encode`, `top_endpoints`, `pair_with_sum`, `is_balanced`, `merge`,
-  `MovingAverage`, `group_anagrams`, `longest_streak`, `sort_colours`).
+  `MovingAverage`, `group_anagrams`, `longest_streak`, `sort_colours`, `count_stretches`, `tidy_path`,
+  `free_slots`).
 
 Teach each mechanism on a **different problem**, one step away, with its own names. Each module's
 section at the end of this file has a table: *Mechanism, Teach it with, Never*. `tools/book-check.py`
@@ -58,13 +59,20 @@ the rule: a block that solves the same problem under another name breaks the rul
    callouts per chapter, each followed by `details.hint` or `details.answer`. "Trap" callouts sit where
    the mistake happens.
 6. A worked example on a different problem from the module's contract.
-7. One "In a real engine" callout (class `twin`), where it is genuine.
-8. "Check yourself": a `div.quiz` with 5 to 8 questions (explain, predict, or work out a number), each
+7. From Module 2 on, one **"Write it"** near the end (a `div.callout.try` with that label): a function
+   of about ten lines, written from an empty file in ten minutes, on the chapter's mechanism and on a
+   problem that is neither a contract function nor a drill. Its stub and three to five tests go in
+   `drills/<set>/warmups/`, its name goes in `guarded` in `pyproject.toml`, and it gets one ledger row
+   and no redos. A chapter with a "Write it" has at most three "Try it" callouts.
+8. One "In a real engine" callout (class `twin`), where it is genuine.
+9. "Check yourself": a `div.quiz` with 5 to 8 questions (explain, predict, or work out a number), each
    answer in a `details.answer`.
-9. "What you can do now": 4 to 8 bullets that mirror "In this chapter".
+10. "What you can do now": 4 to 8 bullets that mirror "In this chapter".
 
 **Length:** 2,000 to 3,500 words of prose per concept chapter, code not counted. A chapter is one read
-block (90 minutes), with its examples typed. **Python you need** boxes (`div.callout.note` with that
+block (90 minutes), with its programs rebuilt from memory. From Module 2 on a concept chapter has at
+most eight complete programs: Module 1's chapters have ten to seventeen, which is more than the block
+holds when each one is covered and retyped. **Python you need** boxes (`div.callout.note` with that
 label) refresh a construct in a few lines where a chapter first leans on it (closures, `nonlocal`,
 `try`/`finally`, dataclasses, f-string formats such as `:,` and `.2f`, `python -m`).
 
@@ -76,6 +84,8 @@ label) refresh a construct in a few lines where a chapter first leans on it (clo
 - **Drills**: one `h3` per drill (the tutor panel puts its rung box after each `h3`), with: the
   pattern in one sentence, a link to the stub, the time box, and rungs 1 to 3 of the ladder as
   `details.hint` blocks ("Rung 1: where to look", "Rung 2: the idea in words", "Rung 3: the shape").
+  A review drill does not name its pattern: its pattern line says so, and the name first appears
+  inside rung 2.
   No solution in any form, folded or not. Before the drills, one `h2` per pattern that teaches the
   pattern on a different problem, with a complete worked example.
 - **Build**: "The spec, restated" (short, linking the README), "Setup: read the red", then one `h2` per

@@ -20,11 +20,15 @@ the problem statements, the tests and the explanations, never solution code.* Th
   signatures, docstrings and given types, whose bodies `raise NotImplementedError("TODO(you)")`), pytest
   and hypothesis tests, the fixtures and the `tools/` scripts that make them, the book, the docs, CI.
 - **Sets drills**: a statement in Claude's own words (never copied from a problem site), a stub, its
-  tests and a time box.
+  tests and a time box. A set has six problems: four on the module's pattern and two for review, whose
+  pattern is not named anywhere outside rung 2. From set 02 on a set also has one debugging drill: a
+  short program with a failing test or a slow path. That program is never a contract function or the
+  answer to another drill, and Danish finds, explains and fixes the fault.
 - **Gives hint ladders**, one rung per request, naming the rung (below).
 - **Reviews** finished work once its tests are green and it is committed (below).
 - **Plays interviewer** when Danish says "mock" (below).
-- **Keeps the books honest**: ledger rows, redo dates, `log.md`, the status column of `CONCEPTS.md`.
+- **Keeps the books honest**: ledger rows, redo dates, `log.md`, the status column of `CONCEPTS.md`,
+  and each Saturday the three readiness numbers at the foot of the ledger.
 
 ## What Claude never does here
 
@@ -86,7 +90,7 @@ After the tests are green and the work is committed, Claude reads the module (`s
 
 A review never contains a corrected version of a contract function or a drill. For a drill, Claude also
 names the follow-up an interviewer would ask next and fills in the ledger row with Danish (minutes, rungs,
-lookups, the two redo dates).
+lookups, runs, the two redo dates).
 
 ## Mock rounds
 
@@ -122,6 +126,8 @@ Saturday's mock rotates between three kinds (docs/methodology.md):
 - Kata stubs and their tests in `drills/katas/`, made when a module is done: an empty stub and that
   function's tests, pointed at the stub.
 - `notes/README.md`. The notes themselves are Danish's.
+- `todo.md`, the next steps in order: Claude adds or removes a step when the plan or the method
+  changes, and Danish ticks the boxes.
 - A reference implementation that Claude needs in order to check a test or a book chapter is built in
   the session's scratchpad, outside the repository, and deleted afterwards. None is ever left in
   `scratch/`, which is Danish's folder.
@@ -142,7 +148,7 @@ Saturday's mock rotates between three kinds (docs/methodology.md):
   `histogram`, `time_calls`, `summarise`, `render_report`, `slowest_lines`, and `main` in
   `src/llm101/bench/__main__.py`. Also off limits: every function in `drills/` (`encode`,
   `top_endpoints`, `pair_with_sum`, `is_balanced`, `merge`, `MovingAverage`, `group_anagrams`,
-  `longest_streak`, `sort_colours`).
+  `longest_streak`, `sort_colours`, `count_stretches`, `tidy_path`, `free_slots`).
 - **Language**: Python 3.13, managed with uv. **Tests**: pytest and hypothesis (`uv run pytest <path>`).
   **Lint and format**: ruff, checked by the pre-commit hook (`tools/install-hooks.sh`). Claude never runs
   `ruff --fix`, `ruff format` or any other rewriting tool on `src/` or `drills/`.

@@ -163,7 +163,7 @@ FAILED scratch/test_thermometer.py::test_freezing_point - assert 23.0 == 32
 </code></pre>
 
 <div class="callout trap"><span class="label">Trap</span>
-<p>A test that passes on day one is not a test you have passed. In this module four tests are green before you type anything: they read your code and check that <code>stats.py</code> neither imports numpy nor sorts, and that two drills do not sort. They are green because the stubs do nothing, and their job is to stay green.</p>
+<p>A test that passes on day one is not a test you have passed. In this module five tests are green before you type anything: they read your code and check that <code>stats.py</code> neither imports numpy nor sorts, that two drills do not sort, and that a third does not import a path library. They are green because the stubs do nothing, and their job is to stay green.</p>
 </div>
 
 <h2>Reading hypothesis output</h2>
@@ -328,6 +328,8 @@ RecursionError: maximum recursion depth exceeded
 <tr><td><code>render_report returns the report; the caller prints it</code></td><td><code>render_report</code> printed something.</td><td>Return the renderable; let the caller print it.</td><td><a href="04-pictures-in-the-terminal.html">4</a></td></tr>
 <tr><td><code>helper's own lines appear</code>, <code>only lines of one_slow_line itself</code></td><td>The line timer counted lines of functions that the traced function called.</td><td>Only lines of the traced function's own frame count.</td><td><a href="05-where-the-time-goes.html">5</a></td></tr>
 <tr><td><code>do it without sorting (see the docstring)</code>, <code>swap elements instead (see the docstring)</code></td><td>The drills <code>longest_streak</code> or <code>sort_colours</code> call <code>sorted()</code> or <code>.sort()</code>.</td><td>The point of both drills is to do without.</td><td><a href="07-drills.html">7</a></td></tr>
+<tr><td><code>do it by hand (see the docstring)</code></td><td>The drill <code>tidy_path</code> imports <code>os</code>, <code>posixpath</code> or <code>pathlib</code>.</td><td>The point of the drill is to do without.</td><td><a href="07-drills.html">7</a></td></tr>
+<tr><td><code>still running after 2 s: trying every start with every end is too slow</code></td><td>The drill <code>count_stretches</code> does work that grows with the square of the list's length. The test stops it after two seconds.</td><td>One pass over the list. The pattern is in <a href="07-drills.html#a-running-total">A running total</a>.</td><td><a href="07-drills.html">7</a></td></tr>
 <tr><td><code>took … s: a loop inside a loop is too slow here</code></td><td><code>pair_with_sum</code> compares every pair.</td><td>One pass that remembers what it has seen.</td><td><a href="07-drills.html">7</a></td></tr>
 <tr><td><code>Failed: DID NOT RAISE ValueError</code></td><td>The code accepted input that the docstring says it must refuse: an empty list, <code>n &lt; 1</code>, <code>q</code> outside 0 to 100.</td><td>Check the input at the top of the function and <code>raise ValueError("...")</code>.</td><td>above</td></tr>
 </tbody>

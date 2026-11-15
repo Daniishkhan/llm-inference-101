@@ -103,9 +103,10 @@ then turn its milestone green. The days are a guide, not a deadline.
 Commit after each one: `M1: time_calls green`. Stuck? The hint ladders are in book chapter 8, folded
 away. Ask Claude for one rung at a time.
 
-On day one, four tests pass before you type anything: the ones that read your code and check that
-`stats.py` neither imports numpy nor sorts, and that the two drills `longest_streak` and
-`sort_colours` do not sort. They pass because the stubs do nothing; they are there to stay green.
+On day one, five tests pass before you type anything: the ones that read your code and check that
+`stats.py` neither imports numpy nor sorts, that the two drills `longest_streak` and `sort_colours`
+do not sort, and that the drill `tidy_path` does not import a path library. They pass because the
+stubs do nothing; they are there to stay green.
 
 ## Done when
 
@@ -129,9 +130,11 @@ in a test function.*
 
 - **Day 1:** set 00, [the diagnostic](../../drills/00-diagnostic/README.md): six problems, cold, two
   hours this once.
-- **Then set 01**, [arrays and hashing](../../drills/01-arrays-hashing/README.md): `group_anagrams`
-  (day 2), `sort_colours` (day 3, before M3), `longest_streak` (day 4), and the redos that the ledger says
-  are due.
+- **Then set 01**, [arrays and hashing](../../drills/01-arrays-hashing/README.md), six problems:
+  `group_anagrams` and `tidy_path` (day 2), `sort_colours` (day 3, before M3), `longest_streak` (day 4),
+  `count_stretches` and `free_slots` (day 5). `tidy_path` and `free_slots` are review: they do not say
+  which pattern they need. Redos come first every day, and a new problem that does not fit in the hour
+  waits for the next drill block.
 - **Saturday:** the drill block is a mock round.
 
 ## Stretch goals (only after "Done when")
