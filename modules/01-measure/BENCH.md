@@ -21,11 +21,13 @@ loop, and how many bytes does each keep per number?
 - a list of a million floats keeps about ___ bytes per number, and a numpy array about ___, because
 
 **Measurement.** With your harness: `time_calls`, then `summarise`, at least 100 recorded calls each.
+Run the whole script three times. The table takes the run whose p50 is in the middle, and the "p50
+range" column takes the lowest and the highest p50 of the three (chapter 6, "Is it really faster?").
 
-| What | n | p50 | p95 | p99 | Throughput (calls/s) | CPU share |
-|---|---|---|---|---|---|---|
-| A Python loop over a list | | | | | | |
-| numpy, one vectorised expression | | | | | | |
+| What | n | p50 | p50 range, 3 runs | p95 | p99 | Throughput (calls/s) | CPU share |
+|---|---|---|---|---|---|---|---|
+| A Python loop over a list | | | | | | | |
+| numpy, one vectorised expression | | | | | | | |
 
 | What | Bytes in total | Bytes per number | How you measured it |
 |---|---|---|---|

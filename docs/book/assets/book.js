@@ -511,6 +511,63 @@
   }
 
   // ---------- keyboard ----------
+  // ---------- stepped figures: <figure class="steps"> with <div class="step" data-label> ----------
+  // One step is shown at a time, with a numbered track and Back / Next under it. The left and
+  // right arrow keys move between steps while the figure has the focus (elsewhere they turn the
+  // chapter). Without this script every step is shown, one under the other.
+  function buildSteps() {
+    document.querySelectorAll('figure.steps').forEach((fig) => {
+      const steps = Array.from(fig.querySelectorAll(':scope > .step'));
+      if (steps.length < 2) return;
+      let at = 0;
+      const now = document.createElement('div');
+      now.className = 'steps-now';
+      now.setAttribute('aria-live', 'polite');
+      fig.insertBefore(now, steps[0]);
+      const nav = document.createElement('div');
+      nav.className = 'steps-nav';
+      const mk = (cls, text) => { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text; return b; };
+      const back = mk('steps-btn back', 'Back');
+      const next = mk('steps-btn next', 'Next');
+      const track = document.createElement('ol');
+      track.className = 'steps-track';
+      steps.forEach((s, i) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.innerHTML = '<span class="n">' + (i + 1) + '</span><span class="t">' + esc(s.dataset.label || '') + '</span>';
+        b.addEventListener('click', () => show(i));
+        li.appendChild(b);
+        track.appendChild(li);
+      });
+      nav.append(back, track, next);
+      const cap = fig.querySelector(':scope > figcaption');
+      fig.insertBefore(nav, cap);
+      function show(i) {
+        at = Math.max(0, Math.min(steps.length - 1, i));
+        steps.forEach((s, j) => s.classList.toggle('is-active', j === at));
+        Array.from(track.children).forEach((li, j) => {
+          li.classList.toggle('is-active', j === at);
+          li.classList.toggle('is-done', j < at);
+          li.firstChild.setAttribute('aria-current', j === at ? 'step' : 'false');
+        });
+        now.innerHTML = '<span class="of">Step ' + (at + 1) + ' / ' + steps.length + '</span>' + esc(steps[at].dataset.label || '');
+        back.disabled = at === 0;
+        next.disabled = at === steps.length - 1;
+      }
+      back.addEventListener('click', () => show(at - 1));
+      next.addEventListener('click', () => show(at + 1));
+      fig.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.stopPropagation();
+        e.preventDefault();
+        show(at + (e.key === 'ArrowRight' ? 1 : -1));
+      });
+      fig.classList.add('js');
+      show(0);
+    });
+  }
+
   function keys() {
     document.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input, textarea, select, [contenteditable]')) return;
@@ -548,6 +605,7 @@
     buildChapterEnd();
     buildToc();
     buildPopover();
+    buildSteps();
     keys();
     watchScroll();
     centreCurrentInSidebar();

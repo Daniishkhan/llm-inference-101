@@ -16,81 +16,102 @@
 <main>
 <p class="chapter-kicker">Chapter 8</p>
 <h1>Build the harness</h1>
-<p class="lede">Seven milestones, one at a time, from red to green. At the end, <code>python -m llm101.bench --profile</code> times a function, draws the spread of its times and names its slowest line, and every line that does it is one you typed.</p>
+<p class="lede">The page for your build block. Each day you open one milestone and take it from its first red test to its commit. By Saturday, <code>python -m llm101.bench --profile</code> times a function, draws the spread of its times and names its slowest line, and every line that does it is one you typed.</p>
 
-<div class="callout note"><span class="label">In this chapter</span>
-<ul>
-<li>The spec, restated: what you build, in which order, after which chapter.</li>
-<li>Setup: build nothing, run the tests, and read the red.</li>
-<li>Milestones 1 to 7. Each has its goal, what to re-read, the tests that turn green, a four-rung hint ladder, the common bugs, when it is done, and the commit message.</li>
-<li>When you are stuck: the debugger, rerunning failures, and what to do with hypothesis's failing test case.</li>
-<li>Make it yours: the stretch goals.</li>
-<li>The review and the log, which close the module.</li>
-</ul>
+<div class="callout note"><span class="label">How to use this chapter</span>
+<p>Do not read it from top to bottom. On day 1, read the next two sections, about five minutes, then start Milestone 1. On every other day, open only that day's milestone: each one stands on its own.</p>
 </div>
 
-<h2>The spec, restated</h2>
-<p>The full spec is the module's <a href="../../../modules/01-measure/README.md">README</a>, and it wins wherever this chapter is shorter. The <strong>contract</strong> is the set of stubs in <a href="../../../src/llm101/bench/">src/llm101/bench/</a>: names, signatures, the two dataclasses <code>Timings</code> and <code>Report</code>, and docstrings that are part of the spec. The tests in <a href="../../../tests/m01/">tests/m01/</a> are the same spec written as code. Every function body is yours.</p>
+<h2>The harness, one piece a day</h2>
+<p>The harness is the package <a href="../../../src/llm101/bench/">src/llm101/bench/</a>. Its stubs and its two dataclasses, <code>Timings</code> and <code>Report</code>, are given, and you write the functions. Here is the path a measurement takes through them, with the milestone that writes each one (<code>└</code> means "calls"):</p>
+
+<pre class="code" data-lang="text"><code> demo()            the workload
+   │
+   │  M1 time_calls
+   ▼
+ Timings           each call's time
+   │
+   │  M5 summarise
+   │   └ M4 percentile
+   │      └ M3 quickselect
+   ▼
+ Report            p50, p95, p99 …
+   │
+   │  M5 render_report
+   │   └ M2 histogram
+   ▼
+ your screen       printed by M5 main
+
+ demo()
+   │
+   │  M6 slowest_lines
+   ▼
+ its slowest lines, with --profile
+</code></pre>
+
+<p>The order is fixed because the pieces call each other: a piece you skip comes back later as a failure that seems to belong to something else.</p>
 
 <table>
-<thead><tr><th>Milestone</th><th>What</th><th>File</th><th>Read first</th><th>Day</th></tr></thead>
+<thead><tr><th>Day</th><th>Milestone</th><th>After it, your harness can</th></tr></thead>
 <tbody>
-<tr><td>M1</td><td><code>time_calls</code></td><td><code>timing.py</code></td><td><a href="01-two-clocks.html">Chapter 1</a></td><td>1</td></tr>
-<tr><td>M2</td><td><code>histogram</code></td><td><code>stats.py</code></td><td><a href="02-tails-and-percentiles.html">Chapter 2</a></td><td>2</td></tr>
-<tr><td>M3</td><td><code>quickselect</code></td><td><code>stats.py</code></td><td><a href="03-partition-and-select.html">Chapter 3</a>, and the drill <code>sort_colours</code></td><td>3</td></tr>
-<tr><td>M4</td><td><code>percentile</code></td><td><code>stats.py</code></td><td>Chapters 2 and 3</td><td>3 to 4</td></tr>
-<tr><td>M5</td><td><code>summarise</code>, <code>render_report</code>, <code>main</code></td><td><code>timing.py</code>, <code>report.py</code>, <code>__main__.py</code></td><td><a href="04-pictures-in-the-terminal.html">Chapter 4</a></td><td>4</td></tr>
-<tr><td>M6</td><td><code>slowest_lines</code>, and <code>--profile</code></td><td><code>lines.py</code>, <code>__main__.py</code></td><td><a href="05-where-the-time-goes.html">Chapter 5</a></td><td>5</td></tr>
-<tr><td>M7</td><td>The Experiment</td><td><code>BENCH.md</code></td><td><a href="06-boxes-and-arrays.html">Chapter 6</a></td><td>6</td></tr>
+<tr><td>1</td><td><a href="#milestone-1-time-calls">M1 <code>time_calls</code></a></td><td>time any function, call by call, on two clocks</td></tr>
+<tr><td>2</td><td><a href="#milestone-2-histogram">M2 <code>histogram</code></a></td><td>count numbers into bins, exactly as numpy does</td></tr>
+<tr><td>3</td><td><a href="#milestone-3-quickselect">M3 <code>quickselect</code></a></td><td>find any position of a list in order, without sorting it</td></tr>
+<tr><td>3 to 4</td><td><a href="#milestone-4-percentile">M4 <code>percentile</code></a></td><td>give p50, p95 and p99: the first half of "Done when"</td></tr>
+<tr><td>4</td><td><a href="#milestone-5-summarise-render-report-and-main">M5 <code>summarise</code>, <code>render_report</code>, <code>main</code></a></td><td>print its report, with <code>python -m llm101.bench</code></td></tr>
+<tr><td>5</td><td><a href="#milestone-6-slowest-lines">M6 <code>slowest_lines</code></a></td><td>name the slowest line, with <code>--profile</code>: the second half of "Done when"</td></tr>
+<tr><td>6</td><td><a href="#milestone-7-the-experiment">M7 the Experiment</a></td><td>answer a question about speed with your own numbers</td></tr>
 </tbody>
 </table>
 
-<p>Four rules hold for every milestone:</p>
-<ul>
-<li><code>stats.py</code> imports no numpy and never calls <code>sorted()</code> or <code>.sort()</code>. Two tests read the file to check. numpy is the tests' <strong>oracle</strong>, the trusted answer your code is compared with; it is not your tool.</li>
-<li>The tests are fixed. If you believe one is wrong, say so to Claude: it fixes the test, never your code, and only when the test contradicts the spec.</li>
-<li>One milestone at a time, in this order. Each one leans on the one before.</li>
-<li>One commit per milestone, with the message the milestone gives. M7 has one more: its prediction, committed before the measurement.</li>
-</ul>
+<p>The module's <a href="../../../modules/01-measure/README.md">README</a> is the full spec, and it wins wherever this page is shorter; the tests in <a href="../../../tests/m01/">tests/m01/</a> are the same spec, written as code.</p>
 
-<div class="callout note"><span class="label">How to use the ladders</span>
-<p>Each milestone has four rungs, folded away. Open one rung, close it, and try again for at least ten minutes before you open the next. The rungs get closer each time: where to look, then the idea in words, then the shape, then the same mechanism on a different problem. None of them is the answer. Write the highest rung you used in <a href="../../../log.md">log.md</a>. The tutor panel can also compose a prompt that asks Claude for your next rung; that counts the same. There is no rung 5. After rung 4, reread the chapter, or commit what you have and ask Claude for a review of it.</p>
+<h2>A build block, step by step</h2>
+<p>Every milestone runs the same loop. Setup, and your first look at the red, were in chapter 0 (<a href="00-start-here.html#first-time-setup">First-time setup</a>).</p>
+<ol>
+<li><strong>Before you type: ten minutes, no code.</strong> Read the milestone down to its questions, open the stub and read its docstring, then answer the questions on paper.</li>
+<li><strong>Run the milestone's tests with <code>-x</code>.</strong> It stops at the first failure, so you see one problem at a time. That red test is your first job.</li>
+<li><strong>Read the failure, then the test.</strong> The lines that start with <code>E</code> show what was false, with the value on each side. The test is a few lines long and says exactly what it wants.</li>
+<li><strong>Make that one test pass, and run again.</strong> The next red test is the next job. Stuck for ten minutes: open the milestone's common bugs, or the next rung of its ladder.</li>
+<li><strong>All green: commit</strong>, with the message the milestone gives. If the pre-commit hook refuses the formatting, <code>uv run ruff format</code> on the file it names fixes it.</li>
+</ol>
+<p>Two rules hold every day. <strong>The tests are fixed</strong>: if one looks wrong, tell Claude, who fixes a test only when it contradicts the spec, and never touches your code. <strong>The block ends on time</strong>, even mid-bug: write the bug in log.md and stop. A bug you sleep on goes faster.</p>
+
+<div class="callout note"><span class="label">The hint ladder</span>
+<p>Each milestone has four rungs, folded away: where to look, the idea in words, the shape, and the same mechanism on a different problem. None of them is the answer. Open one, then try for ten minutes before you open the next. With the tutor on, the button under the ladder copies a prompt that asks Claude for your next rung instead; it counts the same. Write the highest rung you used in <a href="../../../log.md">log.md</a>. There is no rung 5: after rung 4, reread the milestone's "Read first" and make the problem smaller (<a href="#when-a-test-will-not-turn-green">When a test will not turn green</a>).</p>
 </div>
 
-<h2>Setup: read the red</h2>
-<p>Before you type anything, run the tests and look at what fails. The red is the list of things you are about to build.</p>
-
-<pre class="shell"><code>$ cd ~/Desktop/projects/llm-inference-101
-$ uv sync
-$ tools/install-hooks.sh
-$ uv run pytest tests/m01 -q
-</code></pre>
-
-<p>Almost every test fails. Most failures look like this one:</p>
-
-<pre class="code" data-lang="text"><code>FAILED tests/m01/test_timing.py::test_time_calls_records_n_calls - NotImplementedError: TODO(you)
-</code></pre>
-
-<p>That means the test called your function, and your function said it is not written yet. Three other kinds of red show up on day one:</p>
-<ul>
-<li><strong>Two tests that read your code</strong> fail with their own message: <em>summarise computes p50, p95 and p99 with your percentile()</em>, and <em>percentile finds its values with your quickselect()</em>. They turn green when you build each function on the one before it.</li>
-<li><strong>Two tests run the program</strong> (<code>python -m llm101.bench</code>) as a separate process. They fail with the traceback of <code>main</code>'s <code>NotImplementedError</code> in their report.</li>
-<li><strong>Two tests already pass</strong>: <code>test_stats_does_not_import_numpy</code> and <code>test_stats_does_not_sort</code>. They pass because the stubs do nothing. They are there to stay green while you write. With the drills included, <code>uv run pytest</code> shows three more of the same kind.</li>
-</ul>
-
-<p>Run one milestone at a time, and stop at the first failure:</p>
-
-<pre class="shell"><code>$ uv run pytest tests/m01 -k time_calls -x
-$ uv run pytest tests/m01/test_histogram.py -x
-</code></pre>
-
-<p><code>-k time_calls</code> runs only the tests whose names contain <code>time_calls</code>. <code>-x</code> stops at the first failure, so the screen shows one problem, not forty. In a failure, read the lines that start with <code>E</code>: pytest prints the expression that was false and the values on each side of it.</p>
-
 <h2>Milestone 1: time_calls</h2>
-<p><strong>Goal.</strong> <code>time_calls(fn, n, warmup=0)</code> calls <code>fn</code> <code>warmup + n</code> times. It returns a <code>Timings</code> with the wall time and the CPU time of each of the last <code>n</code> calls, in whole nanoseconds, in the order of the calls. A count below 1, or a negative warm-up, raises <code>ValueError</code>.</p>
-<p><strong>Re-read.</strong> <a href="01-two-clocks.html">Chapter 1</a>: the two clocks, warm-up, and functions as values. The docstring of <code>time_calls</code> in <a href="../../../src/llm101/bench/timing.py">timing.py</a>.</p>
-<p><strong>Turns green.</strong> <code>uv run pytest tests/m01 -k time_calls</code>, twelve tests.</p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> A stopwatch for any function. <code>time_calls(fn, n, warmup)</code> calls <code>fn</code> <code>warmup + n</code> times and keeps the wall time and the CPU time of each of the last <code>n</code> calls, in whole nanoseconds. Every number the harness prints starts here. Day 1, in <a href="../../../src/llm101/bench/timing.py">src/llm101/bench/timing.py</a>.</p>
+<p><strong>Read first.</strong> Chapter 1's <a href="01-two-clocks.html#three-clocks-in-the-time-module">Three clocks in the time module</a>, <a href="01-two-clocks.html#warm-up">Warm-up</a> and <a href="01-two-clocks.html#functions-are-values">Functions are values</a>. Then the docstring of <code>time_calls</code>, and the <code>Timings</code> dataclass above it.</p>
+<p><strong>Before you type.</strong> On paper, from the docstring:</p>
+<ol>
+<li><code>time_calls(f, n=5, warmup=3)</code>: how many times is <code>f</code> called, and how many numbers does each list hold?</li>
+<li>Which function reads each clock, and in what unit?</li>
+<li>What does <code>time_calls(f, n=0)</code> do? And why does the docstring pass <code>lambda: f(x)</code>, not <code>f(x)</code>?</li>
+</ol>
+<details class="answer"><summary>Answers</summary>
+<p>1. Eight calls, and five numbers in each list: one per recorded call, from the last five.</p>
+<p>2. <code>time.perf_counter_ns()</code> for the wall clock and <code>time.process_time_ns()</code> for the CPU clock, both in whole nanoseconds.</p>
+<p>3. It raises <code>ValueError</code>, because <code>n</code> is below 1. <code>fn</code> takes no arguments, so a call that needs one is packed into a lambda; <code>f(x)</code> would call <code>f</code> at once and hand over its result (chapter 1, "Functions are values").</p>
+</details>
+
+<p><strong>The tests.</strong></p>
+<pre class="shell"><code>$ uv run pytest tests/m01 -k time_calls -x
+</code></pre>
+<p>Twelve tests. The first, <code>test_time_calls_records_n_calls</code>, times a function that does nothing and checks only that each list holds <code>n</code> numbers: start there. The two clocks come in the middle, and three bad counts come last.</p>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common bugs: the symptom, then the cause</summary>
+<ul>
+<li><code>assert 5 == 8</code> in the warm-up test: the warm-up loop is missing.</li>
+<li>A recorded time of about 50 ms in <code>test_time_calls_does_not_record_the_warmup_calls</code>: the warm-up calls went into the lists.</li>
+<li><code>test_time_calls_records_whole_nanoseconds</code> fails: you used <code>time.perf_counter()</code>, which gives seconds as a float, instead of <code>time.perf_counter_ns()</code>, which gives whole nanoseconds. Or you divided somewhere.</li>
+<li>The busy function shows almost no CPU time: the CPU clock is read once around the whole loop, or not at all.</li>
+<li><code>Failed: DID NOT RAISE</code> for <code>n = 0</code>: there is no check, or it tests <code>n &lt; 0</code> where the docstring says below 1.</li>
+<li>You used <code>time.time_ns()</code>: the clock test fails, and chapter 1 says why it is the wrong clock for durations.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
 <p>Read <code>test_time_calls_calls_fn_warmup_plus_n_times</code> and <code>test_time_calls_does_not_record_the_warmup_calls</code> side by side. One counts the calls and the other times them. Which calls happen, and which are kept? Then read <code>test_time_calls_reads_the_two_clocks_its_docstring_names</code>. It looks for two names in your code, and the docstring does not count.</p>
@@ -101,7 +122,7 @@ $ uv run pytest tests/m01/test_histogram.py -x
 </details>
 
 <details class="hint"><summary>Rung 3: the shape</summary>
-<p>One check at the top that raises <code>ValueError</code>. Then two loops, one after the other. The first is for the warm-up, with a loop variable you never use (call it <code>_</code>). The second is for the recorded calls, with two empty lists made before it. Inside the second loop: four clock readings around one call, and two appends. Return <code>Timings(wall_ns=..., cpu_ns=...)</code> with keywords. Make <code>test_time_calls_records_n_calls</code> green first, with a function that does nothing.</p>
+<p>One check at the top that raises <code>ValueError</code>. Then two loops, one after the other. The first is for the warm-up, with a loop variable you never use (call it <code>_</code>). The second is for the recorded calls, with two empty lists made before it. Inside the second loop: four clock readings around one call, and two appends. Return <code>Timings(wall_ns=..., cpu_ns=...)</code> with keywords. Make <code>test_time_calls_records_n_calls</code> green first: it times a function that does nothing.</p>
 </details>
 
 <details class="hint"><summary>Rung 4: the same mechanism on a different problem</summary>
@@ -122,7 +143,7 @@ for number, lap_ns in enumerate(laps_ns, start=1):
     print(f"lap {number}: {lap_ns / 1e6:5.1f} ms")
 print(f"total: {sum(laps_ns) / 1e6:.1f} ms")
 </code></pre>
-<p>One run on the M5; yours will differ:</p>
+<p>One run on the Mac (Apple M5); yours will differ:</p>
 <pre class="output"><code>lap 1:  23.4 ms
 lap 2:  19.6 ms
 lap 3:  32.6 ms
@@ -133,26 +154,41 @@ total: 121.1 ms
 <p>Your <code>time_calls</code> differs in three ways. The thing timed is <code>fn()</code>. The readings come in pairs around each call, not in a chain. And there are two clocks, not one.</p>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li><code>assert 5 == 8</code> in the warm-up test: the warm-up loop is missing.</li>
-<li>A recorded time of about 50 ms in <code>test_time_calls_does_not_record_the_warmup_calls</code>: the warm-up calls went into the lists.</li>
-<li><code>test_time_calls_records_whole_nanoseconds</code> fails: you used <code>time.perf_counter()</code>, which gives seconds as a float, instead of <code>time.perf_counter_ns()</code>, which gives whole nanoseconds. Or you divided somewhere.</li>
-<li>The busy function shows almost no CPU time: the CPU clock is read once around the whole loop, or not at all.</li>
-<li><code>Failed: DID NOT RAISE</code> for <code>n = 0</code>: there is no check, or it tests <code>n &lt; 0</code> where the docstring says below 1.</li>
-<li>You used <code>time.time_ns()</code>: the clock test fails, and chapter 1 says why it is the wrong clock for durations.</li>
-</ul>
-<p><strong>Done when.</strong> <code>uv run pytest tests/m01 -k time_calls</code> is all green.</p>
-<p><strong>Commit.</strong> <code>M1: time_calls green</code></p>
+<p><strong>Done.</strong> All twelve green: commit <code>M1: time_calls green</code>. Then watch it work: in <code>uv run python</code>, import <code>time_calls</code> from <code>llm101.bench.timing</code> and time <code>lambda: sum(range(100_000))</code> five times. Those ten numbers are the first your harness has measured.</p>
 
 <h2>Milestone 2: histogram</h2>
-<p><strong>Goal.</strong> <code>histogram(values, bins)</code> returns the same counts and the same edges as <code>numpy.histogram(values, bins)</code>.</p>
-<p><strong>Re-read.</strong> <a href="02-tails-and-percentiles.html">Chapter 2</a>: histograms, edges, the right-edge rule, and the floating-point surprises. The four rules in the docstring of <code>histogram</code> in <a href="../../../src/llm101/bench/stats.py">stats.py</a>.</p>
-<p><strong>Turns green.</strong> <code>uv run pytest tests/m01/test_histogram.py</code></p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> The shape of a spread. <code>histogram(values, bins)</code> cuts the range of the values into bins of equal width and counts the values in each, exactly as <code>numpy.histogram</code> does. M5 draws one bar per bin from these counts. Day 2, in <a href="../../../src/llm101/bench/stats.py">src/llm101/bench/stats.py</a>.</p>
+<p><code>stats.py</code> has two rules of its own, each checked by a test that reads the file: it imports no numpy, and it never calls <code>sorted()</code> or <code>.sort()</code>. numpy is the tests' <strong>oracle</strong>, the trusted answer yours is compared with; it is not your tool.</p>
+<p><strong>Read first.</strong> Chapter 2's <a href="02-tails-and-percentiles.html#histograms-the-shape-of-a-distribution">Histograms: the shape of a distribution</a>, with <a href="02-tails-and-percentiles.html#looking-with-numpy-histogram">Looking with numpy.histogram</a> and <a href="02-tails-and-percentiles.html#floating-point-surprises">Floating-point surprises</a>. Then the docstring of <code>histogram</code>: four rules and one example.</p>
+<p><strong>Before you type.</strong> On paper:</p>
+<ol>
+<li>Work the docstring's example by hand: <code>histogram([1, 2, 2, 3, 9], 4)</code>. Write <code>lo</code>, <code>hi</code> and the step, then the five edges, then the bin of each value. Do you get <code>[3, 1, 0, 1]</code>?</li>
+<li><code>histogram([7], 4)</code>: what are the edges, and which bin holds the 7?</li>
+</ol>
+<details class="answer"><summary>Answers</summary>
+<p>1. <code>lo</code> is 1, <code>hi</code> is 9 and the step is 2, so the edges are 1, 3, 5, 7 and 9. The values 1, 2 and 2 fall in the first bin, from 1 up to 3; the 3 sits on an edge and goes right, into the second; the 9 is the last edge, which the last bin includes. That gives <code>[3, 1, 0, 1]</code>.</p>
+<p>2. <code>lo</code> equals <code>hi</code>, so the range widens to 6.5 to 7.5, and the step is 0.25: edges 6.5, 6.75, 7.0, 7.25 and 7.5. The 7 sits exactly on the inner edge 7.0 and goes to the bin on its right, the third: <code>[0, 0, 1, 0]</code>.</p>
+</details>
+
+<p><strong>The tests.</strong></p>
+<pre class="shell"><code>$ uv run pytest tests/m01/test_histogram.py -x
+</code></pre>
+<p>Fifteen tests. The first is the example you have just worked by hand, and the last two compare yours with numpy on random input. <code>test_stats_does_not_import_numpy</code> passes already: keep it green.</p>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common bugs: the symptom, then the cause</summary>
+<ul>
+<li>The counts add up to one less than the number of values: the largest value fell outside. The last bin includes its right edge.</li>
+<li><code>IndexError: list index out of range</code> on the largest value: its division gives exactly <code>bins</code>. Clamp it into the last bin.</li>
+<li><code>test_histogram_decides_membership_with_the_edges</code> fails, or counts are off by one in two neighbouring bins in the hypothesis tests: a floating-point division put a value in the neighbouring bin. Check the guess against the edges (chapter 2).</li>
+<li>Counts off by one although the edges look right: the tests compare edges to within a millionth of a millionth but counts exactly, so edges that differ from numpy's in the last digits show up as a value in the wrong bin. Compute the step once and use <code>lo + i * step</code>. Adding the step again and again, or computing <code>lo + i * (hi - lo) / bins</code>, rounds differently.</li>
+<li><code>ZeroDivisionError</code> when all the values are equal: widen the range first.</li>
+<li><code>test_stats_does_not_import_numpy</code> turns red: numpy crept into <code>stats.py</code>. It belongs in the tests only.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
-<p>The docstring has four rules, and each one has a test. Work <code>test_histogram_the_docstring_example</code> on paper: <code>lo</code>, <code>hi</code>, <code>step</code>, the five edges, then the bin of each of the five values. Then do the same for <code>test_histogram_a_value_on_an_inner_edge_goes_to_the_right</code>.</p>
+<p>The docstring has four rules, and each one has a test: pair them up. Then work <code>test_histogram_a_value_on_an_inner_edge_goes_to_the_right</code> on paper, the way you worked the docstring's example: the edges first, then the bin of each value. Which rule does it check, and which bin does your code choose for the 1?</p>
 </details>
 
 <details class="hint"><summary>Rung 2: the idea in words</summary>
@@ -189,23 +225,37 @@ for hour, count in enumerate(counts):
 </code></pre>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li>The counts add up to one less than the number of values: the largest value fell outside. The last bin includes its right edge.</li>
-<li><code>IndexError: list index out of range</code> on the largest value: its division gives exactly <code>bins</code>. Clamp it into the last bin.</li>
-<li><code>test_histogram_decides_membership_with_the_edges</code> fails, or counts are off by one in two neighbouring bins in the hypothesis tests: a floating-point division put a value in the neighbouring bin. Check the guess against the edges (chapter 2).</li>
-<li>Counts off by one although the edges look right: the tests compare edges to within a millionth of a millionth but counts exactly, so edges that differ from numpy's in the last digits show up as a value in the wrong bin. Compute the step once and use <code>lo + i * step</code>. Adding the step again and again, or computing <code>lo + i * (hi - lo) / bins</code>, rounds differently.</li>
-<li><code>ZeroDivisionError</code> when all the values are equal: widen the range first.</li>
-<li><code>test_stats_does_not_import_numpy</code> turns red: numpy crept into <code>stats.py</code>. It belongs in the tests only.</li>
-</ul>
-<p><strong>Done when.</strong> <code>uv run pytest tests/m01/test_histogram.py</code> is all green.</p>
-<p><strong>Commit.</strong> <code>M2: histogram green</code></p>
+<p><strong>Done.</strong> All fifteen green: commit <code>M2: histogram green</code>.</p>
 
 <h2>Milestone 3: quickselect</h2>
-<p><strong>Goal.</strong> <code>quickselect(values, k)</code> returns the k-th smallest value, counting from 0. It does not sort, it does not change the list it was given, and it does not slow down on a list that is already in order.</p>
-<p><strong>Re-read.</strong> <a href="03-partition-and-select.html">Chapter 3</a>, all of it. Do the drill <code>sort_colours</code> first (<a href="07-drills.html">chapter 7</a>): its three-way partition is the step this milestone repeats.</p>
-<p><strong>Turns green.</strong> <code>uv run pytest tests/m01/test_quickselect.py</code></p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> One position of a list in order, found without sorting the list. <code>quickselect(values, k)</code> returns the k-th smallest value, counting from 0. Your percentiles stand on it: the p99 of a thousand timings is the value at one position of them in order. Day 3, in <code>stats.py</code>.</p>
+<p><strong>Read first.</strong> Chapter 3's <a href="03-partition-and-select.html#selection-by-hand">Selection, by hand</a> and <a href="03-partition-and-select.html#why-three-piles">Why three piles</a>, again, just before you start, and the drill <a href="07-drills.html#sort-colours">sort_colours</a> from this morning: its three piles are the step this milestone repeats. Then the docstring of <code>quickselect</code>.</p>
+<p><strong>Before you type.</strong> On paper, from the docstring:</p>
+<ol>
+<li>What is <code>quickselect([7, 1, 5, 3], 2)</code>? And <code>quickselect([2, 2, 1], 1)</code>?</li>
+<li>Which error does <code>quickselect([], 0)</code> raise, and which does <code>quickselect([1, 2, 3], 3)</code>?</li>
+</ol>
+<details class="answer"><summary>Answers</summary>
+<p>1. In order, the first list is 1, 3, 5, 7, and position 2 holds 5. The second is 1, 2, 2 in order, so position 1 holds 2: repeats count.</p>
+<p>2. <code>ValueError</code> for no values at all, and <code>IndexError</code> for a <code>k</code> outside <code>range(3)</code>, which runs from 0 to 2.</p>
+</details>
+
+<p><strong>The tests.</strong></p>
+<pre class="shell"><code>$ uv run pytest tests/m01/test_quickselect.py -x
+</code></pre>
+<p>Fifteen tests. The docstring's examples come first. The last is a speed test: it fails if numbers in rising or in falling order take ten times as long as the same numbers shuffled. <code>test_stats_does_not_sort</code> passes already: keep it green.</p>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common bugs: the symptom, then the cause</summary>
+<ul>
+<li>A <code>RecursionError</code>, or the speed test fails on input in rising or in falling order: the pivot is the first or the last value. Choose it at random.</li>
+<li>The loop never ends when values repeat: with only two groups (smaller, and larger or equal), a list of equal values never shrinks. Use three.</li>
+<li>Off by one: <code>k</code> counts from 0, so <code>quickselect([7, 1, 5, 3], 0)</code> is 1.</li>
+<li><code>test_quickselect_does_not_change_its_input</code> fails: you partitioned the caller's list. Work on <code>list(values)</code>, which also turns a tuple into a list.</li>
+<li><em>stats.py selects; it never sorts</em>: there is a <code>sorted()</code> or <code>.sort()</code> somewhere in <code>stats.py</code>, even in a helper.</li>
+<li><code>ValueError</code> against <code>IndexError</code>: no values is a <code>ValueError</code>. A <code>k</code> outside <code>range(len(values))</code>, negative ones included, is an <code>IndexError</code>.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
 <p>Read <code>test_quickselect_all_values_equal</code> and <code>test_quickselect_with_many_repeats</code>. What happens to your piles when every value is the same? Then read the message in <code>test_quickselect_ordered_input_is_not_the_worst_case</code>: it asks you a question.</p>
@@ -232,26 +282,39 @@ for hour, count in enumerate(counts):
 <p>Count the work. Each round looked once at every value it still had: 9 + 6 + 4 = 19 looks. Sorting nine values takes about 9 × log₂ 9, which is about 29. Now take the same task on the ordered list 1 to 9, with the first value as the pivot every time. Each round throws away one value: the rounds look at 9, 8, 7, 6 and 5 values, 35 in all, and the answer comes in round 5. On a million ordered values that pattern costs about 375,000 million looks (chapter 3's 3n&sup2;/8). That is the question the speed test asks.</p>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li>A <code>RecursionError</code>, or the speed test fails on input in rising or in falling order: the pivot is the first or the last value. Choose it at random.</li>
-<li>The loop never ends when values repeat: with only two groups (smaller, and larger or equal), a list of equal values never shrinks. Use three.</li>
-<li>Off by one: <code>k</code> counts from 0, so <code>quickselect([7, 1, 5, 3], 0)</code> is 1.</li>
-<li><code>test_quickselect_does_not_change_its_input</code> fails: you partitioned the caller's list. Work on <code>list(values)</code>, which also turns a tuple into a list.</li>
-<li><em>stats.py selects; it never sorts</em>: there is a <code>sorted()</code> or <code>.sort()</code> somewhere in <code>stats.py</code>, even in a helper.</li>
-<li><code>ValueError</code> against <code>IndexError</code>: no values is a <code>ValueError</code>. A <code>k</code> outside <code>range(len(values))</code>, negative ones included, is an <code>IndexError</code>.</li>
-</ul>
-<p><strong>Done when.</strong> <code>uv run pytest tests/m01/test_quickselect.py</code> is all green.</p>
-<p><strong>Commit.</strong> <code>M3: quickselect green</code></p>
+<p><strong>Done.</strong> All fifteen green: commit <code>M3: quickselect green</code>.</p>
 
 <h2>Milestone 4: percentile</h2>
-<p><strong>Goal.</strong> <code>percentile(values, q)</code> matches <code>numpy.percentile(values, q)</code> for every <code>q</code> from 0 to 100, and finds its values with your quickselect. With it, the first half of the module's "Done when" passes.</p>
-<p><strong>Re-read.</strong> <a href="02-tails-and-percentiles.html">Chapter 2</a>: percentiles by rank, and linear interpolation between two readings. <a href="03-partition-and-select.html">Chapter 3</a>. The worked numbers in the docstring of <code>percentile</code>.</p>
-<p><strong>Turns green.</strong> <code>uv run pytest tests/m01/test_percentile.py</code>, including <code>test_done_when_percentiles_match_numpy_on_random_data</code>.</p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> p50, p95 and p99. <code>percentile(values, q)</code> gives the value q% of the way along the list in order, by numpy's default method, and finds the one or two values it needs with your quickselect. Day 3 or 4, in <code>stats.py</code>.</p>
+<p><strong>Read first.</strong> Chapter 2's <a href="02-tails-and-percentiles.html#percentiles-by-rank">Percentiles by rank</a> and <a href="02-tails-and-percentiles.html#reading-between-two-readings">Reading between two readings</a>. Then the docstring of <code>percentile</code>, which works its numbers for you.</p>
+<p><strong>Before you type.</strong> On paper:</p>
+<ol>
+<li>Work the docstring's <code>q = 90</code> on <code>[40, 10, 30, 20]</code> by hand: <code>n</code>, then <code>h</code>, then the two neighbours by rank, then how far along the gap. Do you get 37.0?</li>
+<li><code>q = 0</code> and <code>q = 100</code> on the same list: what is <code>h</code>, what is the answer, and how many values does each need?</li>
+</ol>
+<details class="answer"><summary>Answers</summary>
+<p>1. <code>n</code> is 4, so <code>h = 3 × 0.90 = 2.7</code>. In order the values are 10, 20, 30, 40: positions 2 and 3 hold 30 and 40, and 0.7 of the way from 30 to 40 is 37.0.</p>
+<p>2. <code>q = 0</code> gives <code>h = 0</code>, the smallest value, 10; <code>q = 100</code> gives <code>h = 3</code>, the largest, 40. Each <code>h</code> is a whole number, so each needs one value, not two.</p>
+</details>
+
+<p><strong>The tests.</strong></p>
+<pre class="shell"><code>$ uv run pytest tests/m01/test_percentile.py -x
+</code></pre>
+<p>Fourteen tests. The docstring's examples come first. Near the end, one test reads your code for a call to quickselect, and the last two compare yours with numpy. The first of those two, <code>test_done_when_percentiles_match_numpy_on_random_data</code>, is half of the module's "Done when".</p>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common bugs: the symptom, then the cause</summary>
+<ul>
+<li><code>IndexError</code> at <code>q = 100</code>: <code>h</code> is <code>n - 1</code>, the largest rank, and there is no rank after it to ask for.</li>
+<li><code>h</code> computed as <code>n * q / 100</code>: at <code>q = 100</code> it asks for rank <code>n</code>, which does not exist. Positions run from 0 to <code>n - 1</code>.</li>
+<li><em>percentile finds its values with your quickselect()</em>: <code>percentile</code> sorted a copy, or found its values some other way.</li>
+<li>No <code>ValueError</code> for <code>q = 100.1</code>: check <code>q</code> before anything else.</li>
+<li>The docstring's <code>q = 90</code> example gives 33 where it should give 37, and hypothesis finds more: the two weights are the wrong way round. At <code>h = 2.7</code> the answer is 0.7 of the way from the value at position 2 to the value at position 3, so the value at 3 gets the weight 0.7.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
-<p>Work <code>q = 90</code> on <code>[40, 10, 30, 20]</code> by hand, the way the docstring does: <code>n</code>, then <code>h</code>, then the two neighbours by rank, then how far along the gap. Then read <code>test_percentile_on_an_exact_position</code>. What is <code>h</code> there, and how many values do you need to find?</p>
+<p>Read <code>test_percentile_between_two_values</code> and <code>test_percentile_on_an_exact_position</code>, and work each one by hand the way you worked the docstring's <code>q = 90</code>. What is <code>h</code> in each, and how many values do you need to find?</p>
 </details>
 
 <details class="hint"><summary>Rung 2: the idea in words</summary>
@@ -266,25 +329,43 @@ for hour, count in enumerate(counts):
 <p>Chapter 2 reads a temperature between two hourly readings: the earlier reading, plus the fraction of the hour that has passed, times the change over that hour. Percentile is the same interpolation. The two readings are the values at two ranks, found by quickselect, and the fraction of the hour is the fraction part of <code>h</code>.</p>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li><code>IndexError</code> at <code>q = 100</code>: <code>h</code> is <code>n - 1</code>, the largest rank, and there is no rank after it to ask for.</li>
-<li><code>h</code> computed as <code>n * q / 100</code>: at <code>q = 100</code> it asks for rank <code>n</code>, which does not exist. Positions run from 0 to <code>n - 1</code>.</li>
-<li><em>percentile finds its values with your quickselect()</em>: <code>percentile</code> sorted a copy, or found its values some other way.</li>
-<li>No <code>ValueError</code> for <code>q = 100.1</code>: check <code>q</code> before anything else.</li>
-<li>The docstring's <code>q = 90</code> example gives 33 where it should give 37, and hypothesis finds more: the two weights are the wrong way round. At <code>h = 2.7</code> the answer is 0.7 of the way from the value at position 2 to the value at position 3, so the value at 3 gets the weight 0.7.</li>
-</ul>
-<p><strong>Done when.</strong> <code>uv run pytest tests/m01/test_percentile.py</code> is all green. That is the first half of "Done when".</p>
-<p><strong>Commit.</strong> <code>M4: percentile green</code></p>
+<p><strong>Done.</strong> All fourteen green: commit <code>M4: percentile green</code>. The first half of "Done when" passes.</p>
 
 <h2>Milestone 5: summarise, render_report and main</h2>
-<p><strong>Goal.</strong> <code>summarise</code> turns <code>Timings</code> into a <code>Report</code>. <code>render_report</code> draws the report and a histogram of the wall times as something rich can print. <code>main</code> is the program. After this milestone, <code>uv run python -m llm101.bench</code> shows your harness measuring <code>demo()</code>.</p>
-<p><strong>Re-read.</strong> <a href="04-pictures-in-the-terminal.html">Chapter 4</a>: tables, text, groups, bars in proportion, recording a console, returning instead of printing, square brackets, argparse, and <code>python -m</code>. The docstrings of <code>summarise</code> (in <code>timing.py</code>) and <code>render_report</code> (in <a href="../../../src/llm101/bench/report.py">report.py</a>), and the Spec section of the README.</p>
-<p><strong>Turns green.</strong> <code>uv run pytest tests/m01 -k summarise</code> and <code>uv run pytest tests/m01/test_report.py</code>. Then check by eye: <code>uv run python -m llm101.bench --n 300 --bins 15</code>.</p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> The program, in three small pieces, in this order. <code>summarise</code> turns <code>Timings</code> into a <code>Report</code>, in <code>timing.py</code>. <code>render_report</code> draws a report as a table and a histogram and returns it without printing, in <a href="../../../src/llm101/bench/report.py">report.py</a>. <code>main</code> reads the command line, times <code>demo()</code> and prints the report, in <a href="../../../src/llm101/bench/__main__.py">__main__.py</a>. Day 4.</p>
+<p><strong>Read first.</strong> For <code>summarise</code>: its docstring and the <code>Report</code> dataclass. For <code>render_report</code>: chapter 4's <a href="04-pictures-in-the-terminal.html#table-rows-and-columns">Table</a>, <a href="04-pictures-in-the-terminal.html#group-several-things-printed-as-one">Group</a>, <a href="04-pictures-in-the-terminal.html#bars-that-mean-something">Bars that mean something</a>, <a href="04-pictures-in-the-terminal.html#choosing-a-unit">Choosing a unit</a> and <a href="04-pictures-in-the-terminal.html#a-worked-example-the-weather-report">the weather report</a>, then its docstring. For <code>main</code>: chapter 4's <a href="04-pictures-in-the-terminal.html#arguments-on-the-command-line-argparse">argparse</a> and <a href="04-pictures-in-the-terminal.html#running-a-package-as-a-program">Running a package as a program</a>, and the Spec section of the module <a href="../../../modules/01-measure/README.md">README</a>.</p>
+<p><strong>Before you type.</strong> On paper:</p>
+<ol>
+<li>Work the docstring example of <code>summarise</code> by hand: <code>Timings(wall_ns=[1_000_000, 3_000_000], cpu_ns=[1_000_000, 1_000_000])</code>. What are the mean, the p95, the throughput and the CPU share?</li>
+<li>A histogram's four bins hold 80, 20, 1 and 0 values. With a <code>bar_width</code> of 40, how long is each bar?</li>
+</ol>
+<details class="answer"><summary>Answers</summary>
+<p>1. The mean is 2,000,000 ns. The p95 sits at <code>h = 0.95</code>, 0.95 of the way from 1,000,000 to 3,000,000: 2,900,000 ns. Two calls in 4,000,000 ns, which is 0.004 s, make 500 calls per second, and the CPU share is 2,000,000 / 4,000,000 = 0.5.</p>
+<p>2. 40 for the fullest bin, then <code>round(20 / 80 * 40)</code>, which is 10. The third is <code>round(0.5)</code>, which is 0, but a count that is not zero gets at least one character, so 1. The empty bin gets no bar.</p>
+</details>
+
+<p><strong>The tests.</strong> One command per piece, in this order:</p>
+<pre class="shell"><code>$ uv run pytest tests/m01 -k summarise -x
+$ uv run pytest tests/m01/test_report.py -x
+$ uv run python -m llm101.bench --n 300 --bins 15
+</code></pre>
+<p>Five tests for <code>summarise</code>, then six for <code>render_report</code>; the last of those runs the program, so it waits for <code>main</code>. The third command is for your eyes: your harness, measuring <code>demo()</code>.</p>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common bugs: the symptom, then the cause</summary>
+<ul>
+<li><code>test_render_report_rounds_half_a_character_the_way_round_does</code> fails with 13 where 12 was expected: use <code>round()</code>, as the docstring and the test do. Python's <code>round()</code> takes a half to the even neighbour (<code>round(2.5)</code> is 2), and <code>int(x + 0.5)</code> does not.</li>
+<li>A bin with a count of 1 among thousands has no bar: a count that is not zero gets at least one character.</li>
+<li><code>test_render_report_returns_it_and_prints_nothing</code> fails: <code>render_report</code> printed. Return the renderable instead.</li>
+<li>The labels test fails: the table's labels must contain the words p50, p95, p99 and throughput.</li>
+<li><code>ZeroDivisionError</code> in <code>summarise</code>: the zero total is handled after the division instead of before it.</li>
+<li><code>python -m llm101.bench</code> prints nothing: the last two lines of <code>__main__.py</code> call <code>main()</code>, and they must stay.</li>
+<li><code>error: unrecognized arguments: --n</code>: check the names you gave <code>add_argument</code>.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
-<p>For <code>summarise</code>, work the docstring example by hand, then read <code>test_summarise_with_no_time_at_all</code>. For <code>render_report</code>, read the two helpers at the top of <code>test_report.py</code>. <code>printed()</code> is how the tests see your output. <code>expected_bars()</code> is the docstring's bar rule, written as code with numpy's counts.</p>
+<p>For <code>summarise</code>, read <code>test_summarise_with_no_time_at_all</code>: what should a report hold when no time passed at all? For <code>render_report</code>, read the two helpers at the top of <code>test_report.py</code>. <code>printed()</code> is how the tests see your output. <code>expected_bars()</code> is the docstring's bar rule, written as code with numpy's counts.</p>
 </details>
 
 <details class="hint"><summary>Rung 2: the idea in words</summary>
@@ -299,24 +380,39 @@ for hour, count in enumerate(counts):
 <p>Chapter 4's weather report is this milestone on rainfall: a table of the numbers, bars in proportion to the largest, and a renderable returned to the caller, which prints it. Your version has timings in place of rainfall and your histogram's bins in place of the months.</p>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li><code>test_render_report_rounds_half_a_character_the_way_round_does</code> fails with 13 where 12 was expected: use <code>round()</code>, as the docstring and the test do. Python's <code>round()</code> takes a half to the even neighbour (<code>round(2.5)</code> is 2), and <code>int(x + 0.5)</code> does not.</li>
-<li>A bin with a count of 1 among thousands has no bar: a count that is not zero gets at least one character.</li>
-<li><code>test_render_report_returns_it_and_prints_nothing</code> fails: <code>render_report</code> printed. Return the renderable instead.</li>
-<li>The labels test fails: the table's labels must contain the words p50, p95, p99 and throughput.</li>
-<li><code>ZeroDivisionError</code> in <code>summarise</code>: the zero total is handled after the division instead of before it.</li>
-<li><code>python -m llm101.bench</code> prints nothing: the last two lines of <code>__main__.py</code> call <code>main()</code>, and they must stay.</li>
-<li><code>error: unrecognized arguments: --n</code>: check the names you gave <code>add_argument</code>.</li>
-</ul>
-<p><strong>Done when.</strong> <code>-k summarise</code> and <code>test_report.py</code> are green, and the program prints the table and the histogram.</p>
-<p><strong>Commit.</strong> <code>M5: the report on screen</code></p>
+<p><strong>Done.</strong> Both test commands green and the report on your screen: commit <code>M5: the report on screen</code>.</p>
 
 <h2>Milestone 6: slowest_lines</h2>
-<p><strong>Goal.</strong> <code>slowest_lines(fn, *args, **kwargs)</code> runs <code>fn</code> once under a line tracer and returns <code>(line number, seconds)</code> for each line of <code>fn</code>'s own body, slowest first. With <code>--profile</code>, the program prints the slowest lines of <code>demo()</code>, at most five. With it, the second half of the module's "Done when" passes.</p>
-<p><strong>Re-read.</strong> <a href="05-where-the-time-goes.html">Chapter 5</a>: events, frames, the global tracer and the local one, <code>sys.gettrace</code>, <code>try</code> and <code>finally</code>, and the call counter. The docstring of <code>slowest_lines</code> in <a href="../../../src/llm101/bench/lines.py">lines.py</a>. For the tracer's variables, the closures in <a href="01-two-clocks.html">chapter 1</a>.</p>
-<p><strong>Turns green.</strong> <code>uv run pytest tests/m01/test_slowest_lines.py</code>, including <code>test_done_when_it_names_the_slow_line_of_a_test_function</code>. Then <code>uv run python -m llm101.bench --n 100 --profile</code>.</p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> Where the time goes inside one function. <code>slowest_lines(fn, *args, **kwargs)</code> runs <code>fn</code> once under a line tracer that you build on <code>sys.settrace</code>, and returns the seconds of each line of <code>fn</code>'s own body, slowest first. Then <code>--profile</code> in <code>main</code> prints the slowest lines of <code>demo()</code>, at most five. Day 5, in <a href="../../../src/llm101/bench/lines.py">lines.py</a> and <code>__main__.py</code>.</p>
+<p><strong>Read first.</strong> Chapter 5's <a href="05-where-the-time-goes.html#how-tracing-works-sys-settrace">How tracing works</a>, <a href="05-where-the-time-goes.html#choosing-which-frames-to-trace">Choosing which frames to trace</a>, <a href="05-where-the-time-goes.html#worked-example-counting-calls-per-function">Counting calls per function</a> and <a href="05-where-the-time-goes.html#put-the-old-tracer-back">Put the old tracer back</a>; chapter 1's <a href="01-two-clocks.html#functions-are-values">Functions are values</a>, for closures and <code>nonlocal</code>. Then the docstring of <code>slowest_lines</code>.</p>
+<p><strong>Before you type.</strong> Open <code>demo()</code> in <code>__main__.py</code>: four lines. On paper:</p>
+<ol>
+<li>Which line do you expect to be the slowest, and why?</li>
+<li><code>slowest_lines(demo)</code> returns pairs of a line number and its seconds. Which line should come first, and can any line of <code>" ".join</code> or <code>sum</code> appear?</li>
+</ol>
+<details class="answer"><summary>Answers</summary>
+<p>1. <code>squares = [i * i for i in range(20_000)]</code>: twenty thousand multiplications, each one run by the interpreter. The other lines make a short list, join a thousand strings and add up a list, and all of that work happens inside fast C code.</p>
+<p>2. The <code>squares</code> line comes first. No line of <code>join</code> or <code>sum</code> can appear: only <code>fn</code>'s own lines are listed, and the time of a function that <code>fn</code> calls counts toward the line of <code>fn</code> that called it.</p>
+</details>
+
+<p><strong>The tests.</strong></p>
+<pre class="shell"><code>$ uv run pytest tests/m01/test_slowest_lines.py -x
+$ uv run python -m llm101.bench --n 100 --profile
+</code></pre>
+<p>Nine tests. The first is the "Done when" test, and the last runs the program with <code>--profile</code>, so it waits for your change to <code>main</code>. The functions they time sit at the top of the test file, each with its slow line marked. The second command is for your eyes.</p>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common bugs: the symptom, then the cause</summary>
+<ul>
+<li><code>helper</code>'s own lines appear in the callee test: the global tracer follows every frame. Follow only <code>fn</code>'s code.</li>
+<li>The slow line shows almost no time, and the line after it shows a lot: the time between two events went to the line that was starting, not to the one that had just run.</li>
+<li>The loop test fails: each run of a line replaced its total instead of adding to it.</li>
+<li>The two tracer tests fail with <em>the tracer that was there before slowest_lines must be back afterwards</em>: you switched tracing off with <code>sys.settrace(None)</code>, or put nothing back when <code>fn</code> raised. Remember <code>sys.gettrace()</code> first and restore it in a <code>finally</code> (chapter 5, the Trap).</li>
+<li><code>UnboundLocalError</code> inside the tracer: you assigned to a variable of the enclosing function without <code>nonlocal</code>.</li>
+<li>With <code>--profile</code>, the line number appears but its text does not: rich read the square brackets in the source line as markup (chapter 4).</li>
+<li>Even tiny lines look slow: the tracer's own cost is inside every measurement (chapter 5, <a href="05-where-the-time-goes.html#what-tracing-costs">What tracing costs</a>). It lands on every line alike, so the slow line still stands out.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
 <p>Read the three patient functions at the top of <code>test_slowest_lines.py</code>. For each one, predict which line should come first, and why. Then read <code>test_slowest_lines_a_callee_counts_toward_the_line_that_called_it</code>. Which frames must your tracer look inside, and which must it leave alone?</p>
@@ -334,27 +430,34 @@ for hour, count in enumerate(counts):
 <p>Chapter 5's call counter is the same mechanism. It is a tracer installed with <code>sys.settrace</code>, put back with <code>try</code> and <code>finally</code>, that keeps a total per key in a dict. It counts calls per function name, from the call event. Yours adds up time per line number, from the events inside one frame.</p>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li><code>helper</code>'s own lines appear in the callee test: the global tracer follows every frame. Follow only <code>fn</code>'s code.</li>
-<li>The slow line shows almost no time, and the line after it shows a lot: the time between two events went to the line that was starting, not to the one that had just run.</li>
-<li>The loop test fails: each run of a line replaced its total instead of adding to it.</li>
-<li>The two tracer tests fail with <em>the tracer that was there before slowest_lines must be back afterwards</em>: you switched tracing off with <code>sys.settrace(None)</code>, or put nothing back when <code>fn</code> raised. Remember <code>sys.gettrace()</code> first and restore it in a <code>finally</code> (chapter 5, the Trap).</li>
-<li><code>UnboundLocalError</code> inside the tracer: you assigned to a variable of the enclosing function without <code>nonlocal</code>.</li>
-<li>With <code>--profile</code>, the line number appears but its text does not: rich read the square brackets in the source line as markup (chapter 4).</li>
-<li>Even tiny lines look slow: the tracer's own cost is inside every measurement (chapter 5). It lands on every line alike, so the slow line still stands out.</li>
-</ul>
-<p><strong>Done when.</strong> <code>test_slowest_lines.py</code> is all green, and <code>--profile</code> names the line that makes <code>squares</code> first. Both halves of "Done when" now pass.</p>
-<p><strong>Commit.</strong> <code>M6: slowest_lines green</code></p>
+<p><strong>Done.</strong> All nine green, and <code>--profile</code> names the <code>squares</code> line first: commit <code>M6: slowest_lines green</code>. Both halves of "Done when" now pass.</p>
 
 <h2>Milestone 7: the Experiment</h2>
-<p><strong>Goal.</strong> <a href="../../../modules/01-measure/BENCH.md">BENCH.md</a> answers its question: a prediction written first, a measurement made with your harness, and two sentences of explanation.</p>
-<p><strong>Re-read.</strong> <a href="06-boxes-and-arrays.html">Chapter 6</a>, all of it, and the template in BENCH.md.</p>
-<p><strong>Turns green.</strong> No test. The Experiment is done when every cell of BENCH.md is filled, and git shows that the prediction came first, because you committed it before you measured.</p>
-<p><strong>The hint ladder.</strong></p>
+<p><strong>What you build.</strong> Nothing new: you use the harness on a real question. <a href="../../../modules/01-measure/BENCH.md">BENCH.md</a> asks how much faster numpy is than a Python loop at summing the squares of a million numbers, and how many bytes each keeps per number. A prediction first, then a measurement, then two sentences on why. Day 6.</p>
+<p><strong>Read first.</strong> <a href="06-boxes-and-arrays.html">Chapter 6</a>, with <a href="06-boxes-and-arrays.html#is-it-really-faster-comparing-two-measurements">"Is it really faster?"</a> last, and the template in BENCH.md.</p>
+<p><strong>Before you type.</strong> Write the prediction in BENCH.md, a number and a reason for each blank, and commit it on its own, <code>M7: prediction</code>, before anything runs. Only a guess written down first can surprise you, and the commit shows that it came first.</p>
+
+<p><strong>The steps.</strong> No test turns green here: BENCH.md is the checklist.</p>
+<ol>
+<li>Measure with your harness: <code>time_calls</code>, then <code>summarise</code>, at least 100 recorded calls each way. Run the whole script three times. The table takes the run whose p50 is in the middle, and the range of the three p50s.</li>
+<li>Measure the bytes per number, the two ways the template names.</li>
+<li>Write two sentences: why the ratio is what it is, and what surprised you.</li>
+<li>Copy the headline number into the Measurements table of the top-level <a href="../../../README.md">README</a>.</li>
+</ol>
+
+<p><strong>If you are stuck.</strong></p>
+<details class="hint"><summary>Common mistakes: the symptom, then the cause</summary>
+<ul>
+<li>The list is built inside the timed function: you timed the building, not the summing.</li>
+<li><code>n</code> of 3: three calls cannot give a p99 worth reading (chapter 2).</li>
+<li>Numbers taken on battery, or with a video playing: plug in and close what you can (<a href="../../../docs/setup.md">docs/setup.md</a>, "Measuring on this Mac").</li>
+<li>One run of each, and a ratio with no range: run the whole script three times and write down the lowest and the highest p50 (chapter 6, "Is it really faster?").</li>
+<li>A prediction edited after the run: the commit before the measurement is what makes it a prediction.</li>
+</ul>
+</details>
 
 <details class="hint"><summary>Rung 1: where to look</summary>
-<p>Read the question in BENCH.md and write the prediction now, with a reason for each number, before you read on. Commit it on its own: <code>M7: prediction</code>.</p>
+<p>The template in BENCH.md says what to measure and with what. Chapter 6's <a href="06-boxes-and-arrays.html#the-sum-of-a-million-numbers-three-ways">The sum of a million numbers, three ways</a> made a smaller version of this measurement, once, with <code>perf_counter_ns</code>, and <a href="06-boxes-and-arrays.html#worked-example-counting-the-bytes-by-hand">Counting the bytes by hand</a> counted the memory. Which of their steps change when your harness does the timing?</p>
 </details>
 
 <details class="hint"><summary>Rung 2: the idea in words</summary>
@@ -369,37 +472,32 @@ for hour, count in enumerate(counts):
 <p>Chapter 6's measured example is this experiment with one timing instead of a hundred, and with the sum instead of the sum of the squares.</p>
 </details>
 
-<p><strong>Common bugs.</strong></p>
-<ul>
-<li>The list is built inside the timed function: you timed the building, not the summing.</li>
-<li><code>n</code> of 3: three calls cannot give a p99 worth reading (chapter 2).</li>
-<li>Numbers taken on battery, or with a video playing: plug in and close what you can (<a href="../../../docs/setup.md">docs/setup.md</a>, "Measuring on this Mac").</li>
-<li>A prediction edited after the run: the commit before the measurement is what makes it a prediction.</li>
-</ul>
-<p><strong>Done when.</strong> BENCH.md is complete, its headline number is in the Measurements table of the top-level <a href="../../../README.md">README</a>, and the module's five lines are in log.md.</p>
-<p><strong>Commit.</strong> <code>M7: the Experiment</code></p>
+<p><strong>Done.</strong> Every cell of BENCH.md filled, its headline number in the README, and git showing the prediction before the measurement: commit <code>M7: the Experiment</code>.</p>
 
-<h2>When you are stuck</h2>
+<h2>When a test will not turn green</h2>
+<p>You have read the test and the docstring twice, and the red will not move. Make the problem smaller: three values instead of a thousand, in a file in <code>scratch/</code>. Four tools help:</p>
+<ul>
+<li><code>uv run pytest tests/m01 -x -vv -k NAME</code> runs one test and prints all it can about the failure.</li>
+<li><code>uv run pytest --lf</code> runs only the tests that failed last time.</li>
+<li><code>breakpoint()</code> on a line of your function stops the test there, at the debugger's prompt: <code>p name</code> prints a variable, <code>n</code> runs the next line, <code>c</code> carries on and <code>q</code> quits.</li>
+<li>A hypothesis failure prints a <strong>failing test case</strong> (older versions call it the falsifying example): the smallest input it found that breaks your code. Call your function on it in a scratch file, and print each step.</li>
+</ul>
+
+<div class="callout trap"><span class="label">Trap</span><p>Do not make a test pass by bending your code around one failing example, such as an <code>if</code> for <code>values == [0.0, 1.0]</code>. Hypothesis will find the next one, and the review will find the <code>if</code>. A failing test case is a clue to the rule your code gets wrong.</p></div>
+
+<p>For quickselect and histogram, a table on paper often beats a print: one row per round or per value, one column per thing your code knows at that step. The appendix has the rest: <a href="09-appendix.html#reading-pytest-s-output">Reading pytest's output</a>, <a href="09-appendix.html#reading-hypothesis-output">Reading hypothesis output</a>, and <a href="09-appendix.html#the-errors-of-this-module">The errors of this module</a>, with each message's cause and fix.</p>
+
+<h2>When the module is done</h2>
+<p>When every box of "Done when" in the module <a href="../../../modules/01-measure/README.md">README</a> is ticked and M7 is committed:</p>
 <ol>
-<li>Re-read the test that fails, and the docstring of the function in the stub.</li>
-<li>Reproduce the smallest version of the problem in <code>scratch/</code>.</li>
-<li>Open one more rung of the ladder above, or ask Claude for it, and say which rung you are on.</li>
-<li>Only once the tests are green, ask for a review.</li>
+<li>Ask Claude for the review of the whole module (<a href="../../../CLAUDE.md">CLAUDE.md</a>, "What a review contains"). State the complexity of quickselect and of histogram first.</li>
+<li>Write its three questions, and your answers, in log.md.</li>
+<li>Add <code>"m01"</code> to <code>done</code> under <code>[tool.llm101]</code> in <code>pyproject.toml</code>. From then on CI keeps your Module 1 tests green, because later modules lean on this code.</li>
+<li>Set Module 1 to done in the README's modules table, and write the module's five lines in log.md.</li>
+<li>If the week has room, take one stretch goal below. Then comes the spec ritual for Module 2, the tokenizer.</li>
 </ol>
 
-<p>Four tools help with step 2:</p>
-<ul>
-<li><code>uv run pytest tests/m01 -x -vv -k NAME</code> runs one test and prints as much as it can about the failure.</li>
-<li><code>uv run pytest --lf</code> runs only the tests that failed last time.</li>
-<li><code>breakpoint()</code> on a line of your function stops the test there and gives you the debugger prompt. Type <code>p name</code> to print a variable, <code>n</code> to run the next line, <code>c</code> to carry on and <code>q</code> to quit.</li>
-<li>A hypothesis failure prints a <strong>failing test case</strong> (older versions call it the falsifying example): the smallest input it could find that breaks your code, such as <code>test_done_when_percentiles_match_numpy_on_random_data(values=[0.0, 1.0], q=50.0)</code>. Copy those values into a scratch file, call your function on them, and print what happens at each step.</li>
-</ul>
-
-<div class="callout trap"><span class="label">Trap</span><p>Do not make a test pass by bending your code around one failing example: an <code>if</code> for <code>values == [0.0, 1.0]</code>. Hypothesis will find the next one, and the review will find the <code>if</code>. A falsifying example is a clue about the rule your code gets wrong.</p></div>
-
-<p>For quickselect and histogram, a table on paper often beats a print statement: the rows are the rounds or the values, and the columns are what your code knows at each step.</p>
-
-<h2>Make it yours</h2>
+<h3>Make it yours</h3>
 <p>Only after "Done when" passes. These are the README's stretch goals:</p>
 <ol>
 <li><strong><code>deep_sizeof(obj)</code></strong>: the bytes of an object and of everything it holds, counting a shared object once, by keeping a set of the <code>id()</code>s you have seen. Compare a list of a million floats with a numpy array.</li>
@@ -407,21 +505,12 @@ for hour, count in enumerate(counts):
 <li><strong><code>python -m llm101.bench module:function</code></strong>: benchmark any function by name.</li>
 </ol>
 
-<h2>The review and the log</h2>
-<p>When "Done when" passes and the last milestone is committed:</p>
-<ol>
-<li>Ask Claude for the review of the whole module (<a href="../../../CLAUDE.md">CLAUDE.md</a>, "What a review contains"). You state the complexity of quickselect and of histogram first.</li>
-<li>Write its three questions and your answers into log.md.</li>
-<li>Add <code>"m01"</code> to <code>done</code> under <code>[tool.llm101]</code> in <code>pyproject.toml</code>. From then on CI keeps your Module 1 tests green, because later modules will lean on this code.</li>
-<li>Set Module 1 to done in the README's modules table, and write the module's five lines in log.md.</li>
-<li>Then comes the spec ritual for Module 2, the tokenizer.</li>
-</ol>
-
 <div class="callout twin"><span class="label">In a real engine</span><p>Module 12 is done when "p95 inter-token latency improves on a mix of long and short prompts". You will measure that p95 with the functions you have just written. vLLM's serving benchmark does the same job for a real server: it reports the median and p99 of time to first token and of inter-token latency, which are percentiles of timings like yours.</p></div>
 
 <h2>Check yourself</h2>
 <div class="quiz">
 <div class="q"><p>Why does <code>time_calls</code> read the clocks inside the loop, around each call, rather than once before the loop and once after it?</p><details class="answer"><summary>Answer</summary><p>Two readings around the whole loop give only the total, and so only the mean. Percentiles and histograms need the time of each call, and the slow ones are exactly what a total hides.</p></details></div>
+<div class="q"><p><code>summarise</code> belongs to M5, but its tests cannot all pass before two earlier milestones are green. Which two, and why?</p><details class="answer"><summary>Answer</summary><p>M4 and M3. <code>summarise</code> computes p50, p95 and p99 with your <code>percentile</code>, and <code>percentile</code> finds its values with your <code>quickselect</code>. A test reads <code>summarise</code>'s code to check that it calls <code>percentile</code>, so a shortcut through numpy or a sort fails too.</p></details></div>
 <div class="q"><p>You time 50 calls. Which calls decide the p99?</p><details class="answer"><summary>Answer</summary><p>The position is <code>h = 49 × 0.99 = 48.51</code>, between ranks 48 and 49, so the p99 lies between the second-slowest and the slowest call, a little past halfway. Two calls decide it, which is why 50 calls give a shaky p99.</p></details></div>
 <div class="q"><p>Why does a random pivot make an ordered list harmless? Is there still an input that makes your quickselect slow?</p><details class="answer"><summary>Answer</summary><p>The random choice does not depend on the order of the input, so no order is bad on purpose: every list gets the same average, about four times n looks. Any single run can still be unlucky, but a long unlucky streak is as rare as a long run of sixes, and gets rarer the longer it is.</p></details></div>
 <div class="q"><p>If the slow line of <code>demo()</code> moved into a helper function that <code>demo()</code> calls, which line would <code>slowest_lines(demo)</code> name?</p><details class="answer"><summary>Answer</summary><p>The line of <code>demo()</code> that calls the helper. The tracer leaves the helper's frame alone, so the helper's whole time falls between two events of <code>demo</code>'s frame.</p></details></div>
@@ -436,6 +525,7 @@ for hour, count in enumerate(counts):
 <li>Compute a percentile exactly the way numpy does, and prove it with property tests.</li>
 <li>Find the slowest line of a function with a tracer you wrote yourself.</li>
 <li>Run an experiment the honest way: prediction first, then measurement, then explanation.</li>
+<li>Take a function from its first red test to its commit, one test at a time.</li>
 </ul>
 </main>
 </body>

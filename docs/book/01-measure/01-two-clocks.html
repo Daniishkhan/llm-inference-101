@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>01 · Two clocks — Measure first</title>
-<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/book.css?v=2">
 <link rel="stylesheet" href="../assets/tutor.css?v=1">
 <script src="../assets/theme.js?v=1"></script>
 <script defer src="book-config.js?v=1"></script>
-<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/book.js?v=2"></script>
 <script defer src="../assets/tutor.js?v=1"></script>
 </head>
 <body>
@@ -398,6 +398,84 @@ print(f"wall {wall_ms:.1f} ms, cpu {cpu_ms:.1f} ms, waiting {wall_ms - cpu_ms:.1
 <p>The prediction held, and wall time minus CPU time recovers the waiting: the 100 ms that was asked for and the 10 ms by which this sleep overshot. That subtraction is a tool on its own: when a real program is slow, it tells you how much of the slowness is waiting (for a disk, a network, a lock), which no faster arithmetic will fix. (Strictly, the difference is time off the core: mostly waiting for something, but also any time spent ready to run while another process held the core.)</p>
 <div class="callout try"><span class="label">Try it</span><p>Change the sleep to <code>time.sleep(0.3)</code> and keep the loop. Work out the new CPU share on paper first, then run it.</p></div>
 <details class="answer"><summary>Show the answer</summary><p>CPU time stays about 75 ms, because the work did not change. Wall time grows to about 75 + 300 plus a little overshoot, say 380 ms. The share falls to about 75 / 380, roughly 0.2. Waiting dilutes the share; it never changes the CPU time.</p></details>
+
+<p>Here are the four jobs of this chapter side by side, as the two clocks saw them:</p>
+<figure class="steps" aria-label="Two clocks on four jobs.">
+<div class="step" data-label="The kettle">
+<svg class="viz" viewBox="0 0 720 168" role="img" aria-label="The kettle: wall 205 ms, all of it waiting; CPU 0.04 ms.">
+<text x="0" y="42">wall</text>
+<rect class="viz-seg viz-wait viz-grow" style="animation-delay:0.00s" x="64" y="22" width="462.3" height="30" rx="3"/><text class="viz-in" x="295.2" y="42" text-anchor="middle">waiting</text>
+<text class="viz-small" x="536.3" y="42">205.06 ms</text>
+<text x="0" y="86">CPU</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.00s" x="64" y="66" width="1.5" height="30" rx="3"/>
+<text class="viz-small" x="74.1" y="86">0.04 ms · share 0.00</text>
+<line class="viz-axis" x1="64" y1="118" x2="560" y2="118"/>
+<line class="viz-axis" x1="64" y1="118" x2="64" y2="123"/><text class="viz-small" x="64" y="138" text-anchor="middle">0 ms</text>
+<line class="viz-axis" x1="176.7" y1="118" x2="176.7" y2="123"/><text class="viz-small" x="176.7" y="138" text-anchor="middle">50 ms</text>
+<line class="viz-axis" x1="289.5" y1="118" x2="289.5" y2="123"/><text class="viz-small" x="289.5" y="138" text-anchor="middle">100 ms</text>
+<line class="viz-axis" x1="402.2" y1="118" x2="402.2" y2="123"/><text class="viz-small" x="402.2" y="138" text-anchor="middle">150 ms</text>
+<line class="viz-axis" x1="514.9" y1="118" x2="514.9" y2="123"/><text class="viz-small" x="514.9" y="138" text-anchor="middle">200 ms</text>
+</svg>
+<p><code>time.sleep(0.2)</code>. The stopwatch ran for 205 ms; the timesheet has almost nothing on it. All waiting.</p>
+</div>
+<div class="step" data-label="The sums">
+<svg class="viz" viewBox="0 0 720 168" role="img" aria-label="The sums: wall 116 ms, CPU 116 ms.">
+<text x="0" y="42">wall</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.00s" x="64" y="22" width="262.5" height="30" rx="3"/><text class="viz-in" x="195.3" y="42" text-anchor="middle">computing</text>
+<text class="viz-small" x="336.5" y="42">116.42 ms</text>
+<text x="0" y="86">CPU</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.00s" x="64" y="66" width="262.3" height="30" rx="3"/><text class="viz-in" x="195.2" y="86" text-anchor="middle">computing</text>
+<text class="viz-small" x="336.3" y="86">116.36 ms · share 1.00</text>
+<line class="viz-axis" x1="64" y1="118" x2="560" y2="118"/>
+<line class="viz-axis" x1="64" y1="118" x2="64" y2="123"/><text class="viz-small" x="64" y="138" text-anchor="middle">0 ms</text>
+<line class="viz-axis" x1="176.7" y1="118" x2="176.7" y2="123"/><text class="viz-small" x="176.7" y="138" text-anchor="middle">50 ms</text>
+<line class="viz-axis" x1="289.5" y1="118" x2="289.5" y2="123"/><text class="viz-small" x="289.5" y="138" text-anchor="middle">100 ms</text>
+<line class="viz-axis" x1="402.2" y1="118" x2="402.2" y2="123"/><text class="viz-small" x="402.2" y="138" text-anchor="middle">150 ms</text>
+<line class="viz-axis" x1="514.9" y1="118" x2="514.9" y2="123"/><text class="viz-small" x="514.9" y="138" text-anchor="middle">200 ms</text>
+</svg>
+<p>Three million additions. The two bars are the same length: every moment of wall time was spent computing.</p>
+</div>
+<div class="step" data-label="Breakfast">
+<svg class="viz" viewBox="0 0 720 168" role="img" aria-label="Breakfast: wall 183 ms, of which 110 ms waiting and 73 ms computing; CPU 73 ms.">
+<text x="0" y="42">wall</text>
+<rect class="viz-seg viz-wait viz-grow" style="animation-delay:0.00s" x="64" y="22" width="248" height="30" rx="3"/><text class="viz-in" x="188" y="42" text-anchor="middle">waiting</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.45s" x="312" y="22" width="164.6" height="30" rx="3"/><text class="viz-in" x="394.3" y="42" text-anchor="middle">computing</text>
+<text class="viz-small" x="486.6" y="42">183.0 ms</text>
+<text x="0" y="86">CPU</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.00s" x="64" y="66" width="164.6" height="30" rx="3"/><text class="viz-in" x="146.3" y="86" text-anchor="middle">computing</text>
+<text class="viz-small" x="238.6" y="86">73.0 ms · share 0.40</text>
+<line class="viz-axis" x1="64" y1="118" x2="560" y2="118"/>
+<line class="viz-axis" x1="64" y1="118" x2="64" y2="123"/><text class="viz-small" x="64" y="138" text-anchor="middle">0 ms</text>
+<line class="viz-axis" x1="176.7" y1="118" x2="176.7" y2="123"/><text class="viz-small" x="176.7" y="138" text-anchor="middle">50 ms</text>
+<line class="viz-axis" x1="289.5" y1="118" x2="289.5" y2="123"/><text class="viz-small" x="289.5" y="138" text-anchor="middle">100 ms</text>
+<line class="viz-axis" x1="402.2" y1="118" x2="402.2" y2="123"/><text class="viz-small" x="402.2" y="138" text-anchor="middle">150 ms</text>
+<line class="viz-axis" x1="514.9" y1="118" x2="514.9" y2="123"/><text class="viz-small" x="514.9" y="138" text-anchor="middle">200 ms</text>
+</svg>
+<p>A sleep, then a loop. The wall bar holds both parts; the CPU bar holds only the second. Wall minus CPU is the waiting.</p>
+</div>
+<div class="step" data-label="Many hands">
+<svg class="viz" viewBox="0 0 720 168" role="img" aria-label="The matrix product: wall 32.9 ms; CPU 64.0 ms, the time of two cores added together.">
+<text x="0" y="42">wall</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.00s" x="64" y="22" width="233.1" height="30" rx="3"/><text class="viz-in" x="180.6" y="42" text-anchor="middle">computing</text>
+<text class="viz-small" x="307.1" y="42">32.9 ms</text>
+<text x="0" y="86">CPU</text>
+<rect class="viz-seg viz-work viz-grow" style="animation-delay:0.00s" x="64" y="66" width="226.7" height="30" rx="3"/><text class="viz-in" x="177.4" y="86" text-anchor="middle">one core</text>
+<rect class="viz-seg viz-work2 viz-grow" style="animation-delay:0.45s" x="290.7" y="66" width="226.8" height="30" rx="3"/><text class="viz-in" x="404.1" y="86" text-anchor="middle">another core</text>
+<text class="viz-small" x="527.5" y="86">64.0 ms · share 1.94</text>
+<line class="viz-axis" x1="64" y1="118" x2="560" y2="118"/>
+<line class="viz-axis" x1="64" y1="118" x2="64" y2="123"/><text class="viz-small" x="64" y="138" text-anchor="middle">0 ms</text>
+<line class="viz-axis" x1="134.9" y1="118" x2="134.9" y2="123"/><text class="viz-small" x="134.9" y="138" text-anchor="middle">10 ms</text>
+<line class="viz-axis" x1="205.7" y1="118" x2="205.7" y2="123"/><text class="viz-small" x="205.7" y="138" text-anchor="middle">20 ms</text>
+<line class="viz-axis" x1="276.6" y1="118" x2="276.6" y2="123"/><text class="viz-small" x="276.6" y="138" text-anchor="middle">30 ms</text>
+<line class="viz-axis" x1="347.4" y1="118" x2="347.4" y2="123"/><text class="viz-small" x="347.4" y="138" text-anchor="middle">40 ms</text>
+<line class="viz-axis" x1="418.3" y1="118" x2="418.3" y2="123"/><text class="viz-small" x="418.3" y="138" text-anchor="middle">50 ms</text>
+<line class="viz-axis" x1="489.1" y1="118" x2="489.1" y2="123"/><text class="viz-small" x="489.1" y="138" text-anchor="middle">60 ms</text>
+<line class="viz-axis" x1="560" y1="118" x2="560" y2="123"/><text class="viz-small" x="560" y="138" text-anchor="middle">70 ms</text>
+</svg>
+<p>The matrix product, on a shorter axis. The CPU bar is longer than the wall bar, because the account adds up the time of every core that worked.</p>
+</div>
+<figcaption>The numbers are the runs printed in this chapter. Step through the four jobs: each time, compare the length of the two bars.</figcaption>
+</figure>
 
 <div class="callout twin"><span class="label">In a real engine</span><p>A serving engine is timed with exactly these two subtractions. The client of vLLM's serving benchmark (<code>vllm bench serve</code>) reads <code>time.perf_counter()</code> when it sends a request and again each time a piece of the streamed answer arrives. <strong>Time to first token</strong> (TTFT) is the first arrival minus the send; each <strong>inter-token latency</strong> (ITL) is one arrival minus the one before. Inside the engine, each request carries stamps of the same kind (when it arrived, was scheduled, produced its first and its latest token), and the engine's metrics are differences of them. One warning for Module 6 onwards: work on a GPU runs <em>asynchronously</em>. Python asks the GPU to start, and the call returns at once, while the GPU is still computing. Either clock, read around that call, measures only the asking, unless you first wait for the GPU to finish (in PyTorch, <code>torch.mps.synchronize()</code> on the Mac and <code>torch.cuda.synchronize()</code> on an NVIDIA card).</p></div>
 

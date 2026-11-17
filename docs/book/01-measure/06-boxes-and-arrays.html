@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>06 · Boxes and arrays — Measure first</title>
-<link rel="stylesheet" href="../assets/book.css?v=1">
+<link rel="stylesheet" href="../assets/book.css?v=2">
 <link rel="stylesheet" href="../assets/tutor.css?v=1">
 <script src="../assets/theme.js?v=1"></script>
 <script defer src="book-config.js?v=1"></script>
-<script defer src="../assets/book.js?v=1"></script>
+<script defer src="../assets/book.js?v=2"></script>
 <script defer src="../assets/tutor.js?v=1"></script>
 </head>
 <body>
@@ -25,7 +25,7 @@
 <li>A list holds pointers to boxes; <code>array.array</code> and numpy hold raw numbers in one block.</li>
 <li>What the interpreter does for each element: <code>dis</code>.</li>
 <li>What numpy does instead, and the sum of a million numbers measured three ways.</li>
-<li>A trap: when numpy is slower.</li>
+<li>A trap: when numpy is slower. And how to tell a real difference from noise.</li>
 <li>A worked example: the memory of a list of floats, counted by hand.</li>
 </ul>
 </div>
@@ -432,6 +432,165 @@ one element of the array is a float64
 
 <div class="callout trap"><span class="label">Trap</span><p>numpy is fast only when the loop runs inside numpy. For a handful of numbers, plain Python is often faster. And a Python <code>for</code> loop over a numpy array, element by element, is slower than the same loop over a list. If you find yourself writing <code>for x in array</code>, look for the numpy operation that does the whole job in one call.</p></div>
 
+<h2>Is it really faster? Comparing two measurements</h2>
+<p>This chapter has compared things three times already, each from a single timing. That was safe, because the gaps were large: four times, twenty-five times. Most changes you will make to an engine are not like that. They are worth 3%, or 10%, or nothing, and a single timing cannot tell those apart. Here are three ways to write the loop: the plain one, one that uses <code>+=</code>, and one that fetches each price by its index. The plain one is entered twice.</p>
+<pre class="code" data-lang="python" data-file="is_it_faster.py" data-check="run"><code>import random
+import time
+
+
+def add_plain(prices):
+    total = 0.0
+    for price in prices:
+        total = total + price
+    return total
+
+
+def add_in_place(prices):
+    total = 0.0
+    for price in prices:
+        total += price
+    return total
+
+
+def add_by_index(prices):
+    total = 0.0
+    for i in range(len(prices)):
+        total = total + prices[i]
+    return total
+
+
+rng = random.Random(7)
+prices = [rng.uniform(0.5, 20.0) for _ in range(1_000_000)]
+
+versions = [
+    ("plain", add_plain),
+    ("plain again", add_plain),  # the same code twice: whatever separates these two is noise
+    ("in place", add_in_place),
+    ("by index", add_by_index),
+]
+readings = {name: [] for name, _ in versions}
+
+for _ in range(7):  # seven rounds, the versions in turns
+    for name, version in versions:
+        start = time.perf_counter_ns()
+        version(prices)
+        readings[name].append((time.perf_counter_ns() - start) / 1e6)
+
+print("first round: ", "   ".join(f"{name} {ms[0]:.2f} ms" for name, ms in readings.items()))
+for name, ms in readings.items():
+    in_order = sorted(ms)
+    print(f"{name:12} median {in_order[3]:5.2f} ms   lowest {in_order[0]:5.2f}   highest {in_order[-1]:5.2f}")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>first round:  plain 6.94 ms   plain again 6.59 ms   in place 6.63 ms   by index 11.48 ms
+plain        median  6.82 ms   lowest  6.60   highest  6.99
+plain again  median  6.66 ms   lowest  6.59   highest  6.89
+in place     median  6.66 ms   lowest  6.62   highest  6.93
+by index     median 11.47 ms   lowest 11.36   highest 11.54
+</code></pre>
+<p>Step through what those numbers say:</p>
+<figure class="steps" aria-label="Is the in-place loop faster? Four steps.">
+<div class="step" data-label="One run each">
+<svg class="viz" viewBox="0 0 720 178" role="img" aria-label="One reading each: plain 6.94 ms, in place 6.63 ms.">
+<line class="viz-axis" x1="128" y1="126" x2="696" y2="126"/>
+<line class="viz-axis" x1="231.3" y1="126" x2="231.3" y2="131"/><text class="viz-small" x="231.3" y="146" text-anchor="middle">6.6 ms</text>
+<line class="viz-axis" x1="334.5" y1="126" x2="334.5" y2="131"/><text class="viz-small" x="334.5" y="146" text-anchor="middle">6.7 ms</text>
+<line class="viz-axis" x1="437.8" y1="126" x2="437.8" y2="131"/><text class="viz-small" x="437.8" y="146" text-anchor="middle">6.8 ms</text>
+<line class="viz-axis" x1="541.1" y1="126" x2="541.1" y2="131"/><text class="viz-small" x="541.1" y="146" text-anchor="middle">6.9 ms</text>
+<line class="viz-axis" x1="644.4" y1="126" x2="644.4" y2="131"/><text class="viz-small" x="644.4" y="146" text-anchor="middle">7 ms</text>
+<text x="0" y="48">plain</text>
+<circle class="viz-mark viz-a" cx="583.9" cy="44" r="6"/>
+<text class="viz-small" x="595.9" y="48" text-anchor="start">6.94</text>
+<text x="0" y="92">in place</text>
+<rect class="viz-mark viz-b" x="254" y="82.5" width="11" height="11" rx="2"/>
+<text class="viz-small" x="271.5" y="92" text-anchor="start">6.63</text>
+</svg>
+<p>One reading of each loop. <code>total += price</code> came in at 6.63 ms against 6.94 ms: 4.5% faster. It is tempting to stop here and write that down.</p>
+</div>
+<div class="step" data-label="The same code twice">
+<svg class="viz" viewBox="0 0 720 222" role="img" aria-label="The same function timed twice in one round: 6.94 ms and 6.59 ms.">
+<line class="viz-axis" x1="128" y1="170" x2="696" y2="170"/>
+<line class="viz-axis" x1="231.3" y1="170" x2="231.3" y2="175"/><text class="viz-small" x="231.3" y="190" text-anchor="middle">6.6 ms</text>
+<line class="viz-axis" x1="334.5" y1="170" x2="334.5" y2="175"/><text class="viz-small" x="334.5" y="190" text-anchor="middle">6.7 ms</text>
+<line class="viz-axis" x1="437.8" y1="170" x2="437.8" y2="175"/><text class="viz-small" x="437.8" y="190" text-anchor="middle">6.8 ms</text>
+<line class="viz-axis" x1="541.1" y1="170" x2="541.1" y2="175"/><text class="viz-small" x="541.1" y="190" text-anchor="middle">6.9 ms</text>
+<line class="viz-axis" x1="644.4" y1="170" x2="644.4" y2="175"/><text class="viz-small" x="644.4" y="190" text-anchor="middle">7 ms</text>
+<text x="0" y="48">plain</text>
+<circle class="viz-mark viz-a" cx="583.9" cy="44" r="6"/>
+<text class="viz-small" x="595.9" y="48" text-anchor="start">6.94</text>
+<text x="0" y="92">plain again</text>
+<circle class="viz-mark viz-a viz-hollow" cx="224.6" cy="88" r="6"/>
+<text class="viz-small" x="212.6" y="92" text-anchor="end">6.59</text>
+<text x="0" y="136">in place</text>
+<rect class="viz-mark viz-b" x="254" y="126.5" width="11" height="11" rx="2"/>
+<text class="viz-small" x="271.5" y="136" text-anchor="start">6.63</text>
+</svg>
+<p>Now the control. The plain loop, timed a second time in the same round, read 6.59 ms: 5% faster than itself. The same code differs from itself by more than the "improvement" did.</p>
+</div>
+<div class="step" data-label="Seven rounds">
+<svg class="viz" viewBox="0 0 720 222" role="img" aria-label="Seven readings of each. Plain and plain again span 6.59 to 6.99 ms; every in-place reading falls inside that span.">
+<rect class="viz-band" x="220.9" y="22" width="413.1" height="148" rx="4"/>
+<text class="viz-small" x="427.5" y="16" text-anchor="middle">noise floor: plain against itself</text>
+<line class="viz-axis" x1="128" y1="170" x2="696" y2="170"/>
+<line class="viz-axis" x1="231.3" y1="170" x2="231.3" y2="175"/><text class="viz-small" x="231.3" y="190" text-anchor="middle">6.6 ms</text>
+<line class="viz-axis" x1="334.5" y1="170" x2="334.5" y2="175"/><text class="viz-small" x="334.5" y="190" text-anchor="middle">6.7 ms</text>
+<line class="viz-axis" x1="437.8" y1="170" x2="437.8" y2="175"/><text class="viz-small" x="437.8" y="190" text-anchor="middle">6.8 ms</text>
+<line class="viz-axis" x1="541.1" y1="170" x2="541.1" y2="175"/><text class="viz-small" x="541.1" y="190" text-anchor="middle">6.9 ms</text>
+<line class="viz-axis" x1="644.4" y1="170" x2="644.4" y2="175"/><text class="viz-small" x="644.4" y="190" text-anchor="middle">7 ms</text>
+<text x="0" y="48">plain</text>
+<circle class="viz-mark viz-a" cx="583.9" cy="44" r="6"/><circle class="viz-mark viz-a" cx="536.8" cy="44" r="6"/><circle class="viz-mark viz-a" cx="406.5" cy="44" r="6"/><circle class="viz-mark viz-a" cx="228.3" cy="44" r="6"/><circle class="viz-mark viz-a" cx="633.2" cy="44" r="6"/><circle class="viz-mark viz-a" cx="343.6" cy="44" r="6"/><circle class="viz-mark viz-a" cx="461.1" cy="44" r="6"/>
+<line class="viz-median" x1="461.1" y1="31" x2="461.1" y2="57"/>
+<text x="0" y="92">plain again</text>
+<circle class="viz-mark viz-a viz-hollow" cx="224.6" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="534.8" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="326.4" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="290.4" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="458.9" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="265.5" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="242.5" cy="88" r="6"/>
+<line class="viz-median" x1="290.4" y1="75" x2="290.4" y2="101"/>
+<text x="0" y="136">in place</text>
+<rect class="viz-mark viz-b" x="254" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="563" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="376.1" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="284.8" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="241.4" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="283.3" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="324.4" y="126.5" width="11" height="11" rx="2"/>
+<line class="viz-median" x1="290.3" y1="119" x2="290.3" y2="145"/>
+<text class="viz-small" x="696" y="218" text-anchor="end">the bar on each row is its median</text>
+</svg>
+<p>Seven rounds, the versions in turns. The two rows of the plain loop cover 6.59 to 6.99 ms between them: that band is the noise floor. Every reading of the in-place loop falls inside it, and its median (6.66 ms) equals that of "plain again". Verdict: no difference you can see with this measurement.</p>
+</div>
+<div class="step" data-label="A real difference">
+<svg class="viz" viewBox="0 0 720 266" role="img" aria-label="On a wider axis, the by-index loop reads 11.36 to 11.54 ms, far outside the noise floor at 6.59 to 6.99 ms.">
+<rect class="viz-band" x="183.9" y="22" width="37.8" height="192" rx="4"/>
+<text class="viz-small" x="202.8" y="16" text-anchor="middle">noise floor</text>
+<line class="viz-axis" x1="128" y1="214" x2="696" y2="214"/>
+<line class="viz-axis" x1="128" y1="214" x2="128" y2="219"/><text class="viz-small" x="128" y="234" text-anchor="middle">6 ms</text>
+<line class="viz-axis" x1="222.7" y1="214" x2="222.7" y2="219"/><text class="viz-small" x="222.7" y="234" text-anchor="middle">7 ms</text>
+<line class="viz-axis" x1="317.3" y1="214" x2="317.3" y2="219"/><text class="viz-small" x="317.3" y="234" text-anchor="middle">8 ms</text>
+<line class="viz-axis" x1="412" y1="214" x2="412" y2="219"/><text class="viz-small" x="412" y="234" text-anchor="middle">9 ms</text>
+<line class="viz-axis" x1="506.7" y1="214" x2="506.7" y2="219"/><text class="viz-small" x="506.7" y="234" text-anchor="middle">10 ms</text>
+<line class="viz-axis" x1="601.3" y1="214" x2="601.3" y2="219"/><text class="viz-small" x="601.3" y="234" text-anchor="middle">11 ms</text>
+<line class="viz-axis" x1="696" y1="214" x2="696" y2="219"/><text class="viz-small" x="696" y="234" text-anchor="middle">12 ms</text>
+<text x="0" y="48">plain</text>
+<circle class="viz-mark viz-a" cx="217.1" cy="44" r="6"/><circle class="viz-mark viz-a" cx="212.8" cy="44" r="6"/><circle class="viz-mark viz-a" cx="200.9" cy="44" r="6"/><circle class="viz-mark viz-a" cx="184.5" cy="44" r="6"/><circle class="viz-mark viz-a" cx="221.6" cy="44" r="6"/><circle class="viz-mark viz-a" cx="195.1" cy="44" r="6"/><circle class="viz-mark viz-a" cx="205.9" cy="44" r="6"/>
+<line class="viz-median" x1="205.9" y1="31" x2="205.9" y2="57"/>
+<text x="0" y="92">plain again</text>
+<circle class="viz-mark viz-a viz-hollow" cx="184.2" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="212.6" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="193.5" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="190.2" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="205.7" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="187.9" cy="88" r="6"/><circle class="viz-mark viz-a viz-hollow" cx="185.8" cy="88" r="6"/>
+<line class="viz-median" x1="190.2" y1="75" x2="190.2" y2="101"/>
+<text x="0" y="136">in place</text>
+<rect class="viz-mark viz-b" x="181.9" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="210.2" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="193.1" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="184.7" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="180.7" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="184.6" y="126.5" width="11" height="11" rx="2"/><rect class="viz-mark viz-b" x="188.3" y="126.5" width="11" height="11" rx="2"/>
+<line class="viz-median" x1="190.2" y1="119" x2="190.2" y2="145"/>
+<text x="0" y="180">by index</text>
+<circle class="viz-mark viz-c" cx="647" cy="176" r="6"/><circle class="viz-mark viz-c" cx="635.1" cy="176" r="6"/><circle class="viz-mark viz-c" cx="647.9" cy="176" r="6"/><circle class="viz-mark viz-c" cx="643.9" cy="176" r="6"/><circle class="viz-mark viz-c" cx="640.9" cy="176" r="6"/><circle class="viz-mark viz-c" cx="646.1" cy="176" r="6"/><circle class="viz-mark viz-c" cx="652.7" cy="176" r="6"/>
+<line class="viz-median" x1="646.1" y1="163" x2="646.1" y2="189"/>
+<text class="viz-small" x="623.4" y="180" text-anchor="end">1.7 times as long</text>
+<text class="viz-small" x="696" y="262" text-anchor="end">the bar on each row is its median</text>
+</svg>
+<p>The same picture on a wider axis, with a fourth loop that fetches each price by its index. Its readings sit between 11.36 and 11.54 ms, more than ten widths of the noise floor away from it. That is a result: 1.7 times as long, and it would be 1.7 times on any of the seven rounds.</p>
+</div>
+<figcaption>Measured on the M5 by <code>is_it_faster.py</code>, one run. Each mark is one timing of the whole loop over a million prices.</figcaption>
+</figure>
+
+<p>Three habits made that verdict possible, and they are the same for every comparison you will make.</p>
+<ul>
+<li><strong>A control.</strong> Measure one version against itself. The difference you get is the <strong>noise floor</strong> (chapter 1), and it is often larger than you expect: here "plain" was steadily about 2% slower than "plain again", although they are the same function. Its place in the round, first, straight after the slowest loop, is the only thing that differs.</li>
+<li><strong>In turns.</strong> The versions take turns inside each round, so a slow moment of the machine falls on all of them and not on whichever happened to be running.</li>
+<li><strong>A spread, not a number.</strong> Report the median with the lowest and the highest, and say "faster" only when the two spreads stand clear of each other.</li>
+</ul>
+<div class="callout principle"><span class="label">First principle</span><p>Making something faster is a loop of four steps, and the order matters. <strong>Predict</strong>: write down what you expect and why, before you run anything. <strong>Measure</strong>, with a control. <strong>Change one thing.</strong> <strong>Measure again</strong>, the same way. A prediction that turns out wrong is the valuable case: it shows where your picture of the machine is wrong. Change two things at once and you cannot say which of them the difference belongs to.</p></div>
+<p><code>BENCH.md</code> asks for exactly this in M7: the prediction committed first, then each measurement run three times, with its range beside it.</p>
+
 <h2>Worked example: counting the bytes by hand</h2>
 <p><code>sys.getsizeof</code> of a list does not include the boxes its slots point to, so to know what a list of floats really costs you add them up yourself: the list, plus each float. Here it is for a thousand prices, against a numpy array of the same numbers:</p>
 <pre class="code" data-lang="python" data-file="by_hand.py" data-check="run"><code>import sys
@@ -475,6 +634,7 @@ ratio:       4.1 times
 <div class="q"><p>The built-in <code>sum</code> was about four times faster than the <code>for</code> loop and about seven times slower than numpy. Give one reason for each gap.</p><details class="answer"><summary>Answer</summary><p>Against the loop: <code>sum</code>'s loop is in C, so there is no bytecode per element and no new box for each partial total. Against numpy: <code>sum</code> still follows a pointer to a separate box and checks its type for every element, while numpy reads raw doubles from one contiguous block.</p></details></div>
 <div class="q"><p>A colleague converts each incoming batch of 10 latencies to a numpy array to sum it. Why might that be slower than <code>sum()</code>?</p><details class="answer"><summary>Answer</summary><p>Each numpy call has a fixed cost of a couple of hundred nanoseconds, and converting a list to an array has to visit every box. For ten numbers that is more than the additions themselves; the built-in <code>sum</code> was about three times faster here.</p></details></div>
 <div class="q"><p>Why is <code>for x in block: total = total + x</code> slower when <code>block</code> is a numpy array than when it is a list?</p><details class="answer"><summary>Answer</summary><p>Taking each element out of the array into Python makes a new <code>numpy.float64</code> box, so the loop pays for a million new boxes on top of its bytecode. A list already has its boxes.</p></details></div>
+<div class="q"><p>You change one line of a function. Before the change one timing read 8.4 ms, and after it 8.1 ms. What three things do you do before you call it 4% faster?</p><details class="answer"><summary>Answer</summary><p>Time the old version against itself, to see how far apart two runs of the same code land (the noise floor). Time old and new in turns, several rounds each, so that a slow moment falls on both. Then compare the spreads, not two single numbers: if the new version's readings lie inside the old one's range, there is no difference you can see.</p></details></div>
 <div class="q"><p>Work out the KV cache per token for a model with 28 layers, 4 KV heads, head size 128, in bf16.</p><details class="answer"><summary>Answer</summary><p>2 × 28 × 4 × 128 × 2 = 57,344 bytes, 56 KiB per token. A thousand-token conversation takes about 57 MB.</p></details></div>
 </div>
 
@@ -486,6 +646,7 @@ ratio:       4.1 times
 <li>Read the bytecode of a small loop with <code>dis</code> and name what runs for each element.</li>
 <li>Explain what numpy does instead (one loop in C, contiguous memory, often SIMD), and time it against a loop and <code>sum</code>.</li>
 <li>Spot the cases where numpy is slower: tiny arrays and element-by-element loops.</li>
+<li>Compare two versions with a control, in turns, and say whether the difference stands clear of the noise floor.</li>
 <li>Count the memory of a list of floats by hand and compare it with an array.</li>
 </ul>
 </main>
