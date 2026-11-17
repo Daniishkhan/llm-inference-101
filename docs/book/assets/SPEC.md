@@ -91,14 +91,24 @@ label) refresh a construct in a few lines where a chapter first leans on it (clo
   rungs 1 and 3 do not name it either.
   No solution in any form, folded or not. Before the drills, one `h2` per pattern that teaches the
   pattern on a different problem, with a complete worked example.
-- **Build**: "The spec, restated" (short, linking the README), "Setup: read the red", then one `h2` per
-  milestone whose text starts **"Milestone N"** ("Milestone 1: time_calls"; the tutor panel looks for
-  that), each with these bold-labelled parts in order: **Goal**, **Re-read** (links to the exact
-  sections), **Turns green** (the command), **The hint ladder** (four `details.hint`: "Rung 1: where to
-  look", "Rung 2: the idea in words", "Rung 3: the shape", "Rung 4: the same mechanism on a different
-  problem"; rung 4 may hold a complete program on the different problem), **Common bugs** (symptom,
-  then cause), **Done when**, **Commit** (the message). Then "Make it yours" (stretch), the review
-  ritual, and the log.
+- **Build**: the page of the build block, opened one milestone a day, never read from top to bottom
+  (a note under the lede says so). Setup and reading the red belong to 00 and are linked, not
+  repeated; the README is linked, not restated. Two short `h2` come first, read once on day 1: "The
+  harness, one piece a day" (the path a measurement takes through the contract functions, as a
+  `data-lang="text"` diagram labelled with milestones, and a table of day, milestone and what the
+  harness can do after it) and "A build block, step by step" (the loop every milestone runs, the rules
+  and the hint ladder). Then one `h2` per milestone whose text starts **"Milestone N"** ("Milestone 1:
+  time_calls"; the tutor panel looks for that), each with these bold-labelled parts in order: **What
+  you build** (one plain phrase, then the function, the file and the day), **Read first** (links to the
+  exact sections, then the docstring), **Before you type** (two or three questions answered on paper
+  from the docstring, often its example worked by hand, with one `details.answer`), **The tests** (the
+  command with `-x`, then one or two sentences: how many, which comes first, which pass already), **If
+  you are stuck** (the common bugs, symptom then cause, in one `details.hint`, then the four rungs as
+  `details.hint`: "Rung 1: where to look", "Rung 2: the idea in words", "Rung 3: the shape", "Rung 4:
+  the same mechanism on a different problem"; rung 4 may hold a complete program on the different
+  problem), **Done** (the commit message). Then "When a test will not turn green" (the debugging
+  tools), "When the module is done" (the review, the log, the `done` list, and "Make it yours", the
+  stretch goals as an `h3`), Check yourself, and What you can do now.
 - **Appendix**: reading a traceback; the errors of this module as tables (message, cause, fix,
   chapter); cheat sheets (pytest, hypothesis, uv, the module's library calls); a glossary as a `dl`;
   what the next module brings.
