@@ -16,7 +16,7 @@
 <main>
 <p class="chapter-kicker">Chapter 01</p>
 <h1>Two clocks</h1>
-<p class="lede">At the end of this chapter you will be able to time a piece of Python with the right clock, tell waiting apart from computing, explain why the same code takes a different time on every run, and pass a function around as a value, which is what milestone M1 needs.</p>
+<p class="lede">At the end of this chapter you will be able to time a piece of Python with the right clock, tell waiting apart from computing, and explain why the same code takes a different time on every run. You will also know when a repeated call stops measuring what you meant, and how to pass a function around as a value, which is what milestone M1 needs.</p>
 
 <div class="callout note"><span class="label">In this chapter</span>
 <ul>
@@ -24,8 +24,8 @@
 <li>What a clock is to the computer, and the three clocks of Python's <code>time</code> module.</li>
 <li>A kettle and a sum: waiting against computing, measured with two clocks at once.</li>
 <li>Where the picture breaks: more CPU time than wall time.</li>
-<li>Why one run is not enough: noise, cores, caches, the garbage collector, and warm-up.</li>
-<li>What it costs to read a clock.</li>
+<li>Why one run is not enough: noise, cores, caches, the garbage collector, and warm-up. The opposite trap: a call that changes its own input.</li>
+<li>What it costs to read a clock, the two kinds of CPU time, and how a batch (<code>timeit</code>) times a call too short for one reading.</li>
 <li>Functions as values, <code>lambda</code> and closures.</li>
 </ul>
 </div>
@@ -53,7 +53,7 @@ total 1,999,999,000,000, wall time 11.70 ms
 <p>The total is the same every time, as it must be. The time is not: the second run took a quarter longer than the first. Had you run it once and written "summing two million numbers takes 14.3 ms", you would have told the truth about one run and misled about all the others. To answer "how long does this take?" you need the right clock, read the right way, and the habit of never trusting a single reading. This chapter gives you both; the next one shows how to summarise many readings honestly.</p>
 
 <h2>What a clock is to the computer</h2>
-<div class="callout principle"><span class="label">First principle</span><p>A computer clock is a counter. A crystal on the board vibrates at a fixed rate, and a piece of hardware counts the vibrations. On Apple silicon the counter that Python reads goes up 24 million times a second, so one tick is 1 / 24,000,000 of a second: about 41.7 nanoseconds. "Reading the clock" means asking for the current count. A duration is the difference between two counts, multiplied by the length of a tick. The operating system keeps a second, different kind of clock as well: an account, for each process, of how long it has actually been running on a core. Each time the scheduler takes your process off a core, it adds the time it just ran to that account.</p></div>
+<div class="callout principle"><span class="label">First principle</span><p>A computer clock is a counter. A crystal on the board vibrates at a fixed rate, and a piece of hardware counts the vibrations. On Apple silicon the counter that Python reads goes up 24 million times a second, so one tick is 1 / 24,000,000 of a second: about 41.7 nanoseconds. "Reading the clock" means asking for the current count. A duration is the difference between two counts, multiplied by the length of a tick. The <strong>kernel</strong>, the part of the operating system that owns the hardware and decides which process runs on which core, keeps a second, different kind of clock as well: an account, for each process, of how long it has actually been running on a core.</p></div>
 <p>A <strong>nanosecond</strong> (ns) is a billionth of a second. A <strong>microsecond</strong> (µs) is a thousand nanoseconds, and a <strong>millisecond</strong> (ms) a thousand microseconds. Python's <code>_ns</code> functions return whole numbers of nanoseconds, as an <code>int</code>, which is why <code>one_sum.py</code> divides by 1,000,000 to print milliseconds. Whole numbers are exact; the older functions without <code>_ns</code> return seconds as a <code>float</code>, which loses the last digits once the count is large.</p>
 
 <h2>Three clocks in the time module</h2>
@@ -147,18 +147,19 @@ print(f"wall {wall_ms:.1f} ms   cpu {cpu_ms:.1f} ms   cpu share {cpu_ms / wall_m
 <p>One run on the M5; yours will differ:</p>
 <pre class="output"><code>wall 32.9 ms   cpu 64.0 ms   cpu share 1.94
 </code></pre>
-<p>A CPU share of almost 2: on average two cores were busy for the whole 33 ms (another run gave 1.18; even this moves). The matrix product is the operation a language model spends most of its time in, so you will meet it again. For your harness, a CPU share above 1 is not a bug: the work ran in parallel.</p>
+<p>A CPU share of almost 2: on average two cores were busy for the whole 33 ms. The matrix product is the operation a language model spends most of its time in, so you will meet it again. For your harness, a CPU share above 1 is not a bug: the work ran on more than one core. It is not a speed-up of the same size either. Held to one core (start the program with <code>VECLIB_MAXIMUM_THREADS=1</code> in front of the command), the same product took 38 ms with a share of 1.00: the second core bought 5 ms of wall time and cost 25 ms of CPU time.</p>
 
 <h2>Why one run is not enough</h2>
 <p>Back to the five runs of <code>one_sum.py</code>. Why did the same code take between 11.4 and 14.3 ms? Nothing in the program changed. Everything around it did.</p>
 <ul>
 <li><strong>Other processes.</strong> Your Mac is running a hundred other programs: the browser, the editor, Spotlight indexing a file. When one of them wants a core at the wrong moment, your program waits, and the wall clock keeps running.</li>
-<li><strong>Frequency changes.</strong> A core does not run at one fixed speed. It speeds up when there is work and slows down to save power and stay cool. The first few milliseconds of a burst of work can run on a core that has not yet sped up.</li>
-<li><strong>Two kinds of core.</strong> The M5 has 4 performance cores and 6 efficiency cores. The efficiency cores are slower and use much less power. macOS decides which kind your process runs on, and can move it in the middle of a run. The same loop on an efficiency core can take twice as long.</li>
+<li><strong>Frequency changes.</strong> A core does not run at one fixed speed. It speeds up when there is work and slows down to save power and stay cool. A burst of work starts on a core that has not yet sped up: on this Mac, a loop started straight after a half-second pause ran its first few milliseconds at well under half the speed it reached 30 ms later.</li>
+<li><strong>Two kinds of core.</strong> The M5 has 4 performance cores and 6 efficiency cores. The efficiency cores are slower and use much less power. macOS decides which kind your process runs on, and can move it in the middle of a run. The same loop can take several times as long there: pushed onto the efficiency cores on purpose (<code>taskpolicy -b</code> in front of the command), a loop that takes 90 ms here took 650 ms.</li>
 <li><strong>Caches.</strong> The processor keeps recently used memory in small, fast <strong>caches</strong> close to the core. The first time code touches some data, it comes from main memory, which is slow; the second time it is probably in a cache. Your program's own instructions are cached the same way.</li>
 <li><strong>The garbage collector.</strong> Python frees most objects as soon as nothing refers to them. Objects that refer to each other in a circle need a separate tidy-up, the <strong>cyclic garbage collector</strong>, which runs every so often (by default once about 2,000 more container objects, such as lists, dicts and instances, have been created than freed). When it runs in the middle of your timing, that call is slower. Python's own <code>timeit</code> module switches it off while it times, for this reason.</li>
 </ul>
-<p>You cannot remove all of this, and your users' machines have the same noise. You can time many calls and look at how they spread (chapter 2), and keep the conditions steady and written down: power cable in, heavy programs closed (<code>docs/setup.md</code>, "Measuring on this Mac").</p>
+<p>You cannot remove all of this, and your users' machines have the same noise. You can time many calls and look at how they spread (chapter 2), and keep the conditions steady and written down: power cable in, heavy programs closed (<code>docs/setup.md</code>, "Measuring on this Mac"). A thousand calls inside one process also share whatever that process happened to get: where its memory landed, which cores it was given. So repeat the whole measurement in a fresh process at least three times, and report the median of the runs and how far apart they were.</p>
+<p>Comparing two versions of some code needs two more habits. Measure them in turns (A, B, A, B) and not all of A followed by all of B, so that anything that drifts, such as a background job or a warming machine, falls on both. And first measure one version against itself: the difference you see between two runs of the same code is your <strong>noise floor</strong>, and only a difference clearly larger than that is a result.</p>
 
 <h2>Warm-up</h2>
 <p>One source of difference is not noise at all, because it is the same every time: the first call. Many functions do extra work the first time they run, and then reuse it. Here is a function that builds a table of all primes below two million on its first call, keeps it in a dictionary, and only looks things up after that:</p>
@@ -193,9 +194,33 @@ call 2: nth_prime(10_000) = 104743, 1.6 µs
 call 3: nth_prime(10_000) = 104743, 0.2 µs
 </code></pre>
 <p>The first call took 64 ms, because it built the table (the sieve of Eratosthenes: cross out every multiple of every prime, and what is left is prime). The third took 0.2 µs: three hundred thousand times less. A benchmark that includes the first call reports something that is true once and never again.</p>
-<p>The second call is still eight times slower than the third, although the table already existed. The dictionary is the visible warm-up; there are invisible ones. The processor's caches had just been filled with the sieve, not the lookup. And Python 3.13 rewrites a function's bytecode as it runs, specialising each instruction for the types it sees, so a function gets a little faster over its first few calls. You cannot list every warm-up effect of a given function, so the rule is simple: make some calls before you start recording, and throw their times away. Your harness takes a <code>warmup</code> count for exactly this.</p>
+<p>The second call is still eight times slower than the third, although the table already existed. The dictionary is the visible warm-up; there are invisible ones. The processor's caches had just been filled with the sieve, not the lookup. And Python 3.13 rewrites a function's bytecode as it runs, specialising each instruction for the types it sees, so a function gets a little faster over its first few calls. You cannot list every warm-up effect of a given function, so the rule is simple: make some calls before you start recording, and throw their times away. Your harness takes a <code>warmup</code> count for exactly this. How many is enough? No number is right for every function, but the recorded times can tell you: if the first tenth of them is typically slower than the last tenth, the warm-up was too short, or the machine drifted while you measured.</p>
 <div class="callout try"><span class="label">Try it</span><p>Add the line <code>nth_prime(0)</code> just before the <code>for</code> loop, and predict the three times before you run it.</p></div>
 <details class="answer"><summary>Show the answer</summary><p>All three are now small, around a microsecond or less, because the table is built by the call before the loop and none of the timed calls has to build it. The first timed call may still be a little slower than the others: the invisible warm-ups (processor caches, specialised bytecode) are not finished after one call.</p></details>
+
+<h2>When repeating changes the work</h2>
+<p>Warm-up says: the first call is special, so throw it away. There is a trap on the other side. Some calls change the thing they work on, and then every later call does a different job. Sorting a list in place is the plainest case:</p>
+<pre class="code" data-lang="python" data-file="stale_input.py" data-check="run"><code>import random
+import time
+
+rng = random.Random(1)
+marks = [rng.random() for _ in range(1_000_000)]
+
+for attempt in range(1, 4):
+    start = time.perf_counter_ns()
+    marks.sort()  # in place: the list stays sorted for the next attempt
+    stop = time.perf_counter_ns()
+    print(f"attempt {attempt}: {(stop - start) / 1_000_000:6.2f} ms")
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>attempt 1:  94.32 ms
+attempt 2:   5.66 ms
+attempt 3:   5.46 ms
+</code></pre>
+<p>The first attempt sorted a million shuffled numbers. The other two were handed a list already in order, which Python's sort notices in one pass and leaves alone. Here the first reading is the only honest one: a warm-up call would have thrown it away and reported 5 ms for a 94 ms job. No harness can see this, because a harness calls what it is given. Whoever writes the benchmark has to ask of every call: <em>does it leave the world as it found it?</em> A list put in order, a queue emptied, a cache filled: each makes the next call cheaper or dearer than the first.</p>
+<div class="callout try"><span class="label">Try it</span><p>Change <code>stale_input.py</code> so that every attempt sorts shuffled numbers, in two ways: copy the list before the first clock read and sort the copy, or call <code>sorted(marks)</code>, which builds a new list and leaves <code>marks</code> alone. Predict how the readings will differ, then run both.</p></div>
+<details class="answer"><summary>What the M5 showed</summary><p>With the copy made outside the timed stretch, every attempt took about 93 ms. With <code>sorted(marks)</code>, about 97 ms: the reading now includes building the new list, which costs 1 to 4 ms on its own. Neither is wrong; a benchmark has to say which it measured. When the work has to be one function of no arguments, the copy can only be made inside it, so time the copy alone as well and report both numbers.</p></details>
+<p>So which is the truth, the first call or the thousandth? It depends on the question. A server that answers requests all day lives in its <strong>steady state</strong>, the calls after everything has warmed up: warm up, then measure. A tool that runs once and exits is all <strong>cold start</strong>: measure it in a fresh process each time. Say which you measured.</p>
 
 <h2>The cost of reading a clock</h2>
 <p>Reading a clock is itself a function call, and it takes time. To see how much, read a clock a million times in a loop, and subtract what the empty loop costs:</p>
@@ -232,11 +257,43 @@ process_time_ns():   267.1 ns per read
 </code></pre>
 <p>The stopwatch costs about 25 ns to read, because it reads the hardware counter without asking the kernel. The CPU clock costs ten times as much: the process's account lives in the kernel, and asking the kernel anything is a <strong>system call</strong>, a switch from your program into the operating system and back. Three consequences for timing a single call:</p>
 <ul>
-<li>Every timing includes some of the clock's own cost: nothing for a 10 ms call, a third of the answer for a 1 µs call. <code>BENCH.md</code> asks you to measure this floor with your own harness.</li>
-<li>Steps matter for short calls. On the M5, a sum of 300 numbers timed on its own read 1,250 to 1,458 ns on the stopwatch (multiples of the 41.7 ns tick) and exactly 1,000 or 2,000 ns on the CPU clock. One CPU reading of a short call says almost nothing; the total over many calls is what means something.</li>
+<li>Every timing includes some of the clocks' own cost: nothing for a 10 ms call, a third of the answer for a 1 µs call timed with both clocks. <code>BENCH.md</code> suggests measuring this floor with your own harness.</li>
+<li>Steps matter for short calls. On the M5, <code>sum(range(300))</code>, timed on its own between both clocks as in <code>kettle_and_sums.py</code>, read 1,250 to 1,458 ns on the stopwatch (multiples of the 41.7 ns tick). The CPU clock said 1,000 ns three times in four, and otherwise 2,000 or 0. One CPU reading of a short call says almost nothing; the total over many calls is what means something.</li>
 <li>Put the cheaper, finer clock on the outside, as in <code>kettle_and_sums.py</code>: the wall time then includes the CPU clock's 267 ns, and the CPU time includes none of the stopwatch's.</li>
 </ul>
 <div class="callout trap"><span class="label">Trap</span><p>Do not put anything between the clock reads but the work. A <code>print</code>, an <code>append</code> to a list or a format string inside the timed stretch is timed too, and for a short call it can cost more than the call itself. Read the clock, call, read the clock; everything else goes outside.</p></div>
+
+<h2>Two kinds of CPU time: user and system</h2>
+<p>The kernel keeps the CPU account in two parts. <strong>User time</strong> is the time a core spent running your program's own instructions, the Python interpreter's included. <strong>System time</strong> is the time a core spent inside the kernel on your program's behalf, in system calls: copying the bytes of a file, handing out memory, sending on a network. <code>process_time_ns</code> returns the two added together, which is all a CPU share needs. The shell shows them apart for a whole program: put <code>time</code> in front of a command.</p>
+<pre class="shell"><code>$ time uv run python scratch/one_sum.py
+</code></pre>
+<p>One run on the M5, the last line zsh prints; yours will differ:</p>
+<pre class="output"><code>uv run python scratch/one_sum.py  0.02s user 0.01s system 91% cpu 0.032 total
+</code></pre>
+<p>That is user time, system time, the CPU share as a percentage, and the wall time (<code>total</code>) of the whole process, starting Python included. The split tells you where to look next. High user time: the cost is in your code or in Python, and a profiler finds the line (chapter 5). High system time: you are asking the kernel for a lot, in many small requests or many bytes moved. Wall time on neither account: the process was off the core, waiting, and no faster code will shorten that.</p>
+
+<h2>Short calls: time a batch</h2>
+<p><code>sum(range(300))</code> read about 1,300 ns when it was timed on its own with both clocks. How much of that was the sum? For a call this short the answer comes from another way of timing: make many calls between <em>one</em> pair of clock reads, and divide. The clock's cost and its step are then spread over the whole batch. Python ships a tool that does this, <code>timeit</code>:</p>
+<pre class="shell"><code>$ uv run python -m timeit "sum(range(300))"
+</code></pre>
+<p>One run on the M5; yours will differ:</p>
+<pre class="output"><code>500000 loops, best of 5: 781 nsec per loop
+</code></pre>
+<p>Two decisions are packed into that line, and a third is out of sight.</p>
+<ul>
+<li><strong>500000 loops.</strong> <code>timeit</code> tried batches of 1, 2, 5, 10 and so on, until one batch took at least 0.2 s, and then divided the batch's time by its size. A batch of 0.4 s is ten million ticks of the stopwatch, so one tick and one clock read no longer matter.</li>
+<li><strong>Best of 5.</strong> It timed five batches and reported the fastest. For pure computation, noise almost always adds time: another process can make the sum slower, and nothing makes it faster than the machine is. So the smallest reading is the one closest to the cost of the code itself.</li>
+<li>It switched the cyclic garbage collector off while it timed.</li>
+</ul>
+<p>So the sum costs about 780 ns, and some 500 ns of the 1,300 was the measuring: two reads of the CPU clock, at 267 ns each, sat inside the stopwatch's reading.</p>
+<div class="callout trap"><span class="label">Trap</span><p>Give <code>timeit</code> something to compute. <code>python -m timeit "2**10"</code> reports 2 ns on the M5, because Python worked out 1024 once, when it compiled the line, and the loop then times nothing. With the 2 in a variable (<code>-s "x = 2" "x**10"</code>) it reports 16 ns. And the <code>-s</code> setup runs once per batch, not once per loop, so a setup that builds a list and a statement that sorts it is the stale input again.</p></div>
+<p>A batch buys precision and pays for it with the spread: one number for half a million calls, the slow ones averaged in among the fast. Which number to report depends on the question:</p>
+<ul>
+<li>"What does this code cost, and which of two ways of writing it costs less?" The <strong>minimum</strong>, from batches.</li>
+<li>"How long does a call typically take?" The <strong>median</strong> of single calls.</li>
+<li>"How long will a user wait on a bad day?" The high percentiles, p95 and p99, of single calls (chapter 2).</li>
+</ul>
+<p>Your harness times every call singly, because the spread is its purpose. That suits calls that take far longer than the clocks cost, from some tens of microseconds upward.</p>
 
 <h2>Functions are values</h2>
 <p>Your harness has to call a function it is given, many times, without knowing in advance which function that is. That needs one idea from Python that you may have used without naming it: a function is an ordinary value, like a number or a list. You can pass it to another function, keep it in a variable, and call it later.</p>
@@ -336,22 +393,23 @@ print(f"wall {wall_ms:.1f} ms, cpu {cpu_ms:.1f} ms, waiting {wall_ms - cpu_ms:.1
       f"cpu share {cpu_ms / wall_ms:.2f}")
 </code></pre>
 <p>One run on the M5; yours will differ:</p>
-<pre class="output"><code>wall 177.4 ms, cpu 76.3 ms, waiting 101.1 ms, cpu share 0.43
+<pre class="output"><code>wall 183.0 ms, cpu 73.0 ms, waiting 110.0 ms, cpu share 0.40
 </code></pre>
-<p>The prediction held, and wall time minus CPU time recovers the 100 ms of waiting. That subtraction is a tool on its own: when a real program is slow, it tells you how much of the slowness is waiting (for a disk, a network, a lock), which no faster arithmetic will fix.</p>
+<p>The prediction held, and wall time minus CPU time recovers the waiting: the 100 ms that was asked for and the 10 ms by which this sleep overshot. That subtraction is a tool on its own: when a real program is slow, it tells you how much of the slowness is waiting (for a disk, a network, a lock), which no faster arithmetic will fix. (Strictly, the difference is time off the core: mostly waiting for something, but also any time spent ready to run while another process held the core.)</p>
 <div class="callout try"><span class="label">Try it</span><p>Change the sleep to <code>time.sleep(0.3)</code> and keep the loop. Work out the new CPU share on paper first, then run it.</p></div>
 <details class="answer"><summary>Show the answer</summary><p>CPU time stays about 75 ms, because the work did not change. Wall time grows to about 75 + 300 plus a little overshoot, say 380 ms. The share falls to about 75 / 380, roughly 0.2. Waiting dilutes the share; it never changes the CPU time.</p></details>
 
-<div class="callout twin"><span class="label">In a real engine</span><p>A serving engine is timed with exactly these two subtractions. The client of vLLM's serving benchmark (<code>vllm bench serve</code>) reads <code>time.perf_counter()</code> when it sends a request and again each time a piece of the streamed answer arrives. <strong>Time to first token</strong> (TTFT) is the first arrival minus the send; each <strong>inter-token latency</strong> (ITL) is one arrival minus the one before. Inside the engine, each request carries stamps of the same kind (when it arrived, was scheduled, produced its first and its latest token), and the engine's metrics are differences of them. One warning for Phase 3: work on a GPU runs <em>asynchronously</em>. Python asks the GPU to start, and the call returns at once, while the GPU is still computing. A CPU clock read around that call measures only the asking, unless you first wait for the GPU to finish (in PyTorch, <code>torch.cuda.synchronize()</code>).</p></div>
+<div class="callout twin"><span class="label">In a real engine</span><p>A serving engine is timed with exactly these two subtractions. The client of vLLM's serving benchmark (<code>vllm bench serve</code>) reads <code>time.perf_counter()</code> when it sends a request and again each time a piece of the streamed answer arrives. <strong>Time to first token</strong> (TTFT) is the first arrival minus the send; each <strong>inter-token latency</strong> (ITL) is one arrival minus the one before. Inside the engine, each request carries stamps of the same kind (when it arrived, was scheduled, produced its first and its latest token), and the engine's metrics are differences of them. One warning for Module 6 onwards: work on a GPU runs <em>asynchronously</em>. Python asks the GPU to start, and the call returns at once, while the GPU is still computing. Either clock, read around that call, measures only the asking, unless you first wait for the GPU to finish (in PyTorch, <code>torch.mps.synchronize()</code> on the Mac and <code>torch.cuda.synchronize()</code> on an NVIDIA card).</p></div>
 
 <h2>Check yourself</h2>
 <div class="quiz">
 <div class="q"><p>Why is <code>time.time()</code> the wrong clock for measuring how long something took, even though it shows the right time of day?</p><details class="answer"><summary>Answer</summary><p>It is adjustable and not monotonic: the Mac may correct it against a time server between your two readings, so the difference includes the correction and can even be negative. <code>perf_counter_ns</code> never goes backwards and nothing outside your program changes it.</p></details></div>
 <div class="q"><p>A function waits 50 ms for a file to arrive over the network and then computes for 10 ms. Predict its wall time, CPU time and CPU share.</p><details class="answer"><summary>Answer</summary><p>Wall time about 60 ms, CPU time about 10 ms, CPU share about 10 / 60 ≈ 0.17. The waiting shows only on the stopwatch.</p></details></div>
 <div class="q"><p>A benchmark reports a CPU share of 3.2. Is the benchmark broken?</p><details class="answer"><summary>Answer</summary><p>Not necessarily. The CPU clock adds up the time on every core the process used. A share of 3.2 means that, on average, a little over three cores were busy during the call, as when numpy hands a matrix product to a multi-core library.</p></details></div>
-<div class="q"><p><code>get_clock_info("process_time").resolution</code> is 1e-06 on the M5. You time a call that takes about 300 ns with the CPU clock. What readings do you expect?</p><details class="answer"><summary>Answer</summary><p>Mostly 0, sometimes 1,000 ns. The CPU clock moves in whole microseconds, so a call far shorter than a microsecond usually starts and ends within the same step. Only the total over many calls is meaningful.</p></details></div>
-<div class="q"><p>Name three reasons why the same code runs in a different time on two runs, and say for each whether warm-up calls would remove it.</p><details class="answer"><summary>Answer</summary><p>Any three of: other processes taking a core (no), frequency changes (partly: a short burst of work before recording lets the core speed up), being placed on an efficiency core instead of a performance core (no), cold caches (yes, mostly), the garbage collector running mid-call (no), a cache the function itself builds on its first call (yes).</p></details></div>
-<div class="q"><p>What does this print, and why? <code>fs = [lambda: s.upper() for s in ["a", "b"]]</code>, then <code>print(fs[0]())</code>.</p><details class="answer"><summary>Answer</summary><p><code>B</code>. Both lambdas look up <code>s</code> when they are called, after the loop has finished with <code>s</code> equal to <code>"b"</code>. <code>lambda s=s: s.upper()</code> would freeze each value and print <code>A</code>.</p></details></div>
+<div class="q"><p><code>get_clock_info("process_time").resolution</code> is 1e-06 on the M5. You time a call that takes about 300 ns with the CPU clock. What readings do you expect?</p><details class="answer"><summary>Answer</summary><p>Only 0, 1,000 and now and then 2,000 ns, with 0 and 1,000 about equally often. The CPU clock moves in whole microseconds, so the reading says how many steps the call happened to straddle, and never 300. Only the total over many calls is meaningful.</p></details></div>
+<div class="q"><p>Name three reasons why the same code runs in a different time on two runs, and say for each whether warm-up calls would remove it.</p><details class="answer"><summary>Answer</summary><p>Any three of: other processes taking a core (no), frequency changes (partly: some tens of milliseconds of work before recording let the core speed up), being placed on an efficiency core instead of a performance core (no), cold caches (yes, mostly), the garbage collector running mid-call (no), a cache the function itself builds on its first call (yes).</p></details></div>
+<div class="q"><p>A benchmark script calls <code>queue.sort()</code> three times to warm up and then times twenty more calls, on a queue of a million shuffled numbers. Its median reading is 5 ms. What did it measure, and what do you change?</p><details class="answer"><summary>Answer</summary><p>It measured sorting a list that is already sorted: the first warm-up call put the queue in order, and every later call found it so. To measure sorting shuffled numbers, each call needs a fresh shuffled copy, with the cost of making the copy measured and reported beside it.</p></details></div>
+<div class="q"><p><code>python -m timeit</code> says a call costs 800 ns, "best of 5". Your service makes that call once per request, and you are asked what its p99 is. Why can <code>timeit</code>'s number not answer that, and why is it still the right number for choosing between two ways of writing the call?</p><details class="answer"><summary>Answer</summary><p>Each of <code>timeit</code>'s readings is one batch of many calls divided by its size, so the slow calls are averaged away, and "best of" then keeps the quietest batch: the tail is exactly what it removes. A p99 needs every call timed singly. For choosing between two ways of writing a small computation, that removal is the point: the minimum is the reading with the least noise in it.</p></details></div>
 <div class="q"><p>You want to hand <code>shout("tea")</code> to code that will only ever call <code>fn()</code>, with no arguments. What do you pass?</p><details class="answer"><summary>Answer</summary><p><code>lambda: shout("tea")</code>: a function of no arguments that, when called, calls <code>shout</code> with <code>"tea"</code>. Passing <code>shout("tea")</code> would call it right away and pass its result, a string, which cannot be called.</p></details></div>
 </div>
 
@@ -360,9 +418,10 @@ print(f"wall {wall_ms:.1f} ms, cpu {cpu_ms:.1f} ms, waiting {wall_ms - cpu_ms:.1
 <li>Show, with five runs, why a single timing cannot be trusted.</li>
 <li>Choose between <code>perf_counter_ns</code>, <code>process_time_ns</code> and <code>time.time</code>, and read <code>get_clock_info</code>.</li>
 <li>Time a piece of code with both clocks at once, in the right order, and read its CPU share.</li>
-<li>Explain a CPU share above 1.</li>
+<li>Explain a CPU share above 1, and say what user time and system time are.</li>
 <li>Name the sources of noise on the M5, and show warm-up on a function that builds a cache.</li>
-<li>Say what reading each clock costs, and what that means for short calls.</li>
+<li>Spot a call that changes its own input, and say whether you measured a cold start or the steady state.</li>
+<li>Say what reading each clock costs, when to time a batch with <code>timeit</code> instead of single calls, and which of minimum, median and p99 answers which question.</li>
 <li>Pass functions as values, wrap a call in a <code>lambda</code>, and avoid the late-binding trap.</li>
 </ul>
 </main>

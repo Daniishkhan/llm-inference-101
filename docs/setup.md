@@ -46,9 +46,9 @@ uv run python tools/book-check.py
 ## Measuring on this Mac
 
 macOS decides which cores a Python process runs on, and the M5 has two kinds. So for numbers you want
-to compare: plug in the power cable, close anything heavy, run each measurement at least three times,
-and report the median with the date and the machine. A number without its machine and date is not
-evidence. Each module's `BENCH.md` has columns for this.
+to compare: plug in the power cable, switch Low Power Mode off, close anything heavy, run each
+measurement at least three times, and report the median with the date and the machine. A number
+without its machine and date is not evidence. Each module's `BENCH.md` has columns for this.
 
 ## What arrives when
 

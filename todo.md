@@ -27,8 +27,8 @@ open the answers. In every drill block, redos come first, and every attempt gets
       (15 min), `top_endpoints` (20), `pair_with_sum` (20), `balanced` (15), `merge_intervals` (25),
       `moving_average` (20). Every lookup goes in log.md's "Diagnostic" list. The redos fall due on
       Wed 18 and Mon 23 Nov. Then ask Claude for the review.
-- [ ] Block 3: chapter 0, Start here (5 questions), and chapter 1, Two clocks (10 programs, 3 Try its,
-      7 questions).
+- [ ] Block 3: chapter 0, Start here (5 questions), and chapter 1, Two clocks (11 programs, 4 Try its,
+      8 questions).
 - [ ] Block 4, 2 h today: M1 `time_calls`, with chapter 8's "Milestone 1".
       `uv run pytest tests/m01 -k time_calls` turns green; commit `M1: time_calls green`.
 - [ ] Block 5: the review, five lines under "Mon 16 Nov 2026" in log.md, and five rows of

@@ -475,6 +475,8 @@ rain in [3, 5, 8] mm
 <tr><td><code>time.monotonic_ns()</code></td><td>Wall time that never goes backwards, often coarser than <code>perf_counter</code></td><td>Timeouts and deadlines</td></tr>
 <tr><td><code>time.time()</code></td><td>The calendar clock: seconds since 1 January 1970; can be set, and can jump</td><td>Timestamps in a log, never durations</td></tr>
 <tr><td><code>time.get_clock_info("perf_counter")</code></td><td>A clock's resolution, and whether it is monotonic or adjustable</td><td>Knowing what a clock can see</td></tr>
+<tr><td><code>python -m timeit "STATEMENT"</code></td><td>The fastest of five batches of calls, divided by the batch size, with the garbage collector off</td><td>The cost of a call too short to time singly; never a tail</td></tr>
+<tr><td><code>time COMMAND</code> (the shell)</td><td>User time, system time and wall time of a whole program</td><td>A first look at where a program's time went</td></tr>
 </tbody>
 </table>
 <p>The four clocks on this Mac. One run on the M5; on another machine the resolutions differ:</p>
@@ -600,9 +602,10 @@ wettest: Jan
 <dt>Bin</dt><dd>One of the equal-width ranges of a histogram, and the count of values that fall in it (2).</dd>
 <dt>Binary search</dt><dd>Finding a value in a sorted list by looking at the middle and throwing away the half it cannot be in, again and again (3).</dd>
 <dt>Box</dt><dd>The object Python wraps around every value, with its type and reference count, which is why a float takes 24 bytes and not 8 (6).</dd>
+<dt>Cold start</dt><dd>The first call, or a whole run in a fresh process, with nothing warmed up; what a tool that runs once and exits lives in (1).</dd>
 <dt>Contiguous</dt><dd>Stored side by side in one block of memory, as the numbers in a numpy array are and the floats of a list are not (6).</dd>
 <dt>CPU share</dt><dd>CPU time divided by wall time: about 1 for busy work, about 0 for waiting (1).</dd>
-<dt>CPU time</dt><dd>The time a process spent computing, measured with <code>time.process_time_ns</code>; it stops while the process waits (1).</dd>
+<dt>CPU time</dt><dd>The time a process spent computing, measured with <code>time.process_time_ns</code>; it stops while the process waits. It is user time plus system time (1).</dd>
 <dt>Edge</dt><dd>A boundary between two bins of a histogram; n bins have n + 1 edges (2).</dd>
 <dt>Event</dt><dd>One thing a tracer is told about: a call, a line, a return or an exception (5).</dd>
 <dt>Expected value</dt><dd>The average result of something random over many tries, such as 3.5 for one die (3).</dd>
@@ -611,7 +614,9 @@ wettest: Jan
 <dt>Hash</dt><dd>A number computed from a key, used by a dict or a set to jump to the key's slot without searching (7).</dd>
 <dt>Histogram</dt><dd>A count of how many values fall in each of a row of bins, drawn as bars: the shape of a spread (2).</dd>
 <dt>Interpolation</dt><dd>Reading a value between two known ones on the straight line that joins them (2).</dd>
+<dt>Kernel</dt><dd>The part of the operating system that owns the hardware, decides which process runs on which core, and keeps each process's CPU account (1).</dd>
 <dt>Markup</dt><dd>rich's square-bracket tags, such as <code>[bold]</code>, that style text instead of being printed (4).</dd>
+<dt>Noise floor</dt><dd>The difference you measure between two runs of the same code; a difference between two versions counts only if it is clearly larger (1).</dd>
 <dt>Oracle</dt><dd>A slow or trusted way to get the right answer, used to check a fast one; numpy is this module's (8).</dd>
 <dt>p50, p95, p99</dt><dd>The 50th, 95th and 99th percentiles: the typical call, and the slow calls one in twenty and one in a hundred users meet (2).</dd>
 <dt>Partition</dt><dd>Splitting items around a pivot into smaller, equal and larger groups (3).</dd>
@@ -627,10 +632,14 @@ wettest: Jan
 <dt>Shrinking</dt><dd>Hypothesis's search for the smallest, simplest input that still fails (2).</dd>
 <dt>Sliding window</dt><dd>A fixed-width run of consecutive items that moves one step at a time, one item in and one out (7).</dd>
 <dt>Stack</dt><dd>A pile where you only touch the top: last in, first out (7).</dd>
+<dt>Steady state</dt><dd>The calls that come after everything has warmed up; what a server that runs all day lives in (1).</dd>
+<dt>System call</dt><dd>A request from a program to the kernel, such as reading a file or asking for the CPU clock; it costs a switch into the kernel and back (1).</dd>
+<dt>System time</dt><dd>CPU time spent inside the kernel on a program's behalf (1).</dd>
 <dt>Tail</dt><dd>The slow end of a spread of timings, where p95 and p99 live (2).</dd>
 <dt>Throughput</dt><dd>Calls completed per second of wall time; the docstring of <code>summarise</code> defines it (8).</dd>
 <dt>Traceback</dt><dd>The printout of the calls in progress when an exception was raised, oldest first (9).</dd>
 <dt>Tracer</dt><dd>A function the interpreter calls on every event once it is installed with <code>sys.settrace</code> (5).</dd>
+<dt>User time</dt><dd>CPU time spent running a program's own instructions, the interpreter's included (1).</dd>
 <dt>Wall time</dt><dd>Time on a stopwatch, waiting included, measured with <code>time.perf_counter_ns</code> (1).</dd>
 <dt>Warm-up</dt><dd>Calls made before recording starts, so that one-time costs such as filling a cache are not counted (1).</dd>
 </dl>
