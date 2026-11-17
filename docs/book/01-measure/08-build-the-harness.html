@@ -349,7 +349,7 @@ for hour, count in enumerate(counts):
 
 <h2>Milestone 7: the Experiment</h2>
 <p><strong>Goal.</strong> <a href="../../../modules/01-measure/BENCH.md">BENCH.md</a> answers its question: a prediction written first, a measurement made with your harness, and two sentences of explanation.</p>
-<p><strong>Re-read.</strong> <a href="06-boxes-and-arrays.html">Chapter 6</a>, all of it, and the template in BENCH.md.</p>
+<p><strong>Re-read.</strong> <a href="06-boxes-and-arrays.html">Chapter 6</a>, all of it, with <a href="06-boxes-and-arrays.html#is-it-really-faster-comparing-two-measurements">"Is it really faster?"</a> last, and the template in BENCH.md.</p>
 <p><strong>Turns green.</strong> No test. The Experiment is done when every cell of BENCH.md is filled, and git shows that the prediction came first, because you committed it before you measured.</p>
 <p><strong>The hint ladder.</strong></p>
 
@@ -374,6 +374,7 @@ for hour, count in enumerate(counts):
 <li>The list is built inside the timed function: you timed the building, not the summing.</li>
 <li><code>n</code> of 3: three calls cannot give a p99 worth reading (chapter 2).</li>
 <li>Numbers taken on battery, or with a video playing: plug in and close what you can (<a href="../../../docs/setup.md">docs/setup.md</a>, "Measuring on this Mac").</li>
+<li>One run of each, and a ratio with no range: run the whole script three times and write down the lowest and the highest p50 (chapter 6, "Is it really faster?").</li>
 <li>A prediction edited after the run: the commit before the measurement is what makes it a prediction.</li>
 </ul>
 <p><strong>Done when.</strong> BENCH.md is complete, its headline number is in the Measurements table of the top-level <a href="../../../README.md">README</a>, and the module's five lines are in log.md.</p>

@@ -86,7 +86,7 @@ open the answers. In every drill block, redos come first, and every attempt gets
 
 - [ ] Block 1: the `longest_streak` redo, then the mock round: say "mock" to Claude Code. This week
       the mock is a drill ([docs/methodology.md](docs/methodology.md), "The day").
-- [ ] Block 3: chapter 6, Boxes and arrays (11 programs, 3 Try its, 6 questions).
+- [ ] Block 3: chapter 6, Boxes and arrays (12 programs, 3 Try its, 7 questions).
 - [ ] Block 4: M7, the Experiment in [BENCH.md](modules/01-measure/BENCH.md). Write the prediction and
       commit it (`M7: prediction`) before any run; then measure, explain, and commit
       `M7: the Experiment`.

@@ -409,6 +409,73 @@ pre.code, pre.output, pre.shell {
 figure { margin: 1.6rem 0; }
 figcaption { color: var(--muted); font-family: var(--ui); font-size: .78rem; margin-top: .5rem; }
 
+/* Stepped figures: <figure class="steps"> holds <div class="step" data-label="…"> blocks, each an
+   inline <svg class="viz"> and one <p>. book.js shows one step at a time and adds the controls;
+   without it every step is shown, one under the other. Marks take their colours from the theme. */
+figure.steps {
+  border: 1px solid var(--rule); border-radius: var(--radius); background: var(--bg-elev);
+  padding: 1rem 1.2rem 1.1rem; margin: 1.8rem 0;
+}
+.steps .step > p { margin: .5rem 0 0; font-size: .95em; min-height: 4.6em; }
+.steps:not(.js) .step { padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--rule); }
+.steps:not(.js) .step::before, .steps-now {
+  content: attr(data-label); display: block; font-family: var(--ui); font-size: .8rem; font-weight: 650;
+  letter-spacing: .02em; color: var(--accent); margin-bottom: .5rem;
+}
+.steps.js .step { display: none; }
+.steps.js .step.is-active { display: block; }
+.steps-now .of { color: var(--faint); font-weight: 500; margin-right: .6rem; }
+.steps-nav { display: flex; align-items: flex-start; gap: .8rem; margin-top: .9rem; font-family: var(--ui); }
+.steps-track { display: flex; flex: 1; list-style: none; margin: 0; padding: 0; }
+.steps-track li { flex: 1; position: relative; text-align: center; margin: 0; }
+.steps-track li + li::before {
+  content: ""; position: absolute; top: 12px; right: 50%; width: 100%; height: 2px; background: var(--rule-strong);
+}
+.steps-track li.is-done::before, .steps-track li.is-active::before { background: var(--accent); }
+.steps-track button {
+  position: relative; z-index: 1; background: none; border: 0; padding: 0; cursor: pointer;
+  font-size: .72rem; color: var(--muted); line-height: 1.25;
+}
+.steps-track .n {
+  display: block; width: 24px; height: 24px; line-height: 21px; margin: 0 auto .3rem; border-radius: 50%;
+  border: 2px solid var(--rule-strong); background: var(--bg-elev); color: var(--muted); font-weight: 650;
+}
+.steps-track li.is-done .n { border-color: var(--accent); color: var(--accent); }
+.steps-track li.is-active .n { border-color: var(--accent); background: var(--accent); color: var(--bg-elev); }
+.steps-track li.is-active button { color: var(--fg); font-weight: 600; }
+.steps-btn {
+  flex: none; font-size: .8rem; padding: .3rem .75rem; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--rule-strong); background: var(--bg-elev); color: var(--fg);
+}
+.steps-btn:hover { background: var(--code-bg); }
+.steps-btn[disabled] { opacity: .35; cursor: default; }
+.steps-btn.next { border-color: var(--accent); }
+@media (max-width: 640px) { .steps-track button .t { display: none; } }
+
+svg.viz { display: block; width: 100%; height: auto; overflow: visible; }
+.viz text { font-family: var(--ui); font-size: 14px; fill: var(--fg); }
+.viz .viz-small { font-size: 12px; fill: var(--muted); }
+.viz .viz-in { font-size: 12px; fill: var(--bg-elev); font-weight: 600; }
+.viz .viz-axis { stroke: var(--rule-strong); stroke-width: 1.5; }
+.viz .viz-band { fill: var(--callout-try); stroke: var(--callout-try-b); stroke-dasharray: 4 3; }
+.viz .viz-mark { fill-opacity: .8; stroke-width: 2; }
+.viz .viz-a { fill: var(--link); stroke: var(--link); }
+.viz .viz-b { fill: var(--accent); stroke: var(--accent); }
+.viz .viz-c { fill: var(--callout-analogy-b); stroke: var(--callout-analogy-b); }
+.viz .viz-hollow { fill: var(--bg-elev); fill-opacity: 1; }
+.viz .viz-median { stroke: var(--fg); stroke-width: 2.5; stroke-linecap: round; }
+.viz .viz-work { fill: var(--link); }
+.viz .viz-work2 { fill: var(--callout-analogy-b); }
+.viz .viz-wait { fill: var(--faint); }
+@media (prefers-reduced-motion: no-preference) {
+  .steps.js .step.is-active .viz-grow {
+    transform-box: fill-box; transform-origin: left center; animation: viz-grow .45s ease-out both;
+  }
+  .steps.js .step.is-active .viz-mark { animation: viz-pop .3s ease-out both; }
+}
+@keyframes viz-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes viz-pop { from { opacity: 0; } to { opacity: 1; } }
+
 /* ======================================================================
    8. Callouts
    ====================================================================== */

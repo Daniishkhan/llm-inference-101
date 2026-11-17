@@ -132,6 +132,28 @@ label) refresh a construct in a few lines where a chapter first leans on it (clo
 `principle` (First principle), `analogy` (Analogy), `twin` (In a real engine), `trap` (Trap), `try`
 (Try it), `note` (In this chapter, Python you need, or any other label).
 
+**Stepped figures:** a picture that changes in a few steps, each with one sentence or two of
+narration. `book.js` shows one step at a time, with a numbered track and Back and Next; without it
+the steps appear one under the other.
+
+```html
+<figure class="steps" aria-label="What the figure shows">
+<div class="step" data-label="One run each">
+<svg class="viz" viewBox="0 0 720 180" role="img" aria-label="The step, in words">…</svg>
+<p>What this step shows.</p>
+</div>
+…
+<figcaption>Where the numbers come from.</figcaption>
+</figure>
+```
+
+Two to five steps, each `data-label` of one to three words. The `svg` is inline and takes its
+colours from the classes in `book.css` (`viz-a`, `viz-b`, `viz-c`, `viz-band`, `viz-axis`,
+`viz-work`, `viz-wait`, `viz-small`), never from a colour written in the page, so that every
+theme works. Every number in a figure is a number printed by a program of the same chapter. A figure
+shows measurements or a mechanism on the chapter's teaching problem; it never draws the steps of a
+contract function or a drill. At most two stepped figures per chapter.
+
 **Hints and answers:** `<details class="hint"><summary>…</summary>…</details>` and
 `<details class="answer"><summary>…</summary>…</details>`.
 
